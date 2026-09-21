@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tmc/langchaingo/llms"
-
 	"github.com/purujawa06-bot/PURU-AI/internal/config"
 	"github.com/purujawa06-bot/PURU-AI/internal/history"
 	"github.com/purujawa06-bot/PURU-AI/internal/memory"
@@ -48,16 +46,6 @@ func TestFmtInt(t *testing.T) {
 	}
 }
 
-type stubModel struct{ content string }
-
-func (s *stubModel) GenerateContent(ctx context.Context, msgs []llms.MessageContent, opts ...llms.CallOption) (*llms.ContentResponse, error) {
-	return &llms.ContentResponse{Choices: []*llms.ContentChoice{{Content: s.content}}}, nil
-}
-
-func (s *stubModel) Call(ctx context.Context, prompt string, opts ...llms.CallOption) (string, error) {
-	return s.content, nil
-}
-
 func userTextMsg(s string) *messages.Message {
 	m := &messages.Message{Role: "user"}
 	messages.SetContentString(m, s)
@@ -68,11 +56,18 @@ func TestMaybeCompactInjectsPathOnly(t *testing.T) {
 	ws := t.TempDir()
 	cfg := &config.Config{Workspace: ws, HistoryTokenLimit: 1} // paksa trigger
 	hist := history.New(t.TempDir())
-	mem := memory.New(&stubModel{content: "TITLE: Topik A\n\n- bahas A"}, ws)
+	mem := memory.New(ws)
 	a := New(cfg, nil, hist, nil, mem)
 
-	stored := []*messages.Message{userTextMsg("halo, bahas topik A yang panjang")}
+	assistant := &messages.Message{Role: "assistant"}
+	messages.SetContentString(assistant, "jawaban lama")
+	stored := []*messages.Message{
+		userTextMsg("lama, harus ikut ke-dump"),
+		assistant,
+		userTextMsg("halo, bahas topik A yang panjang"),
+	}
 	got := a.maybeCompact(context.Background(), 42, stored)
+	// wipe total: cuma 1 system note berisi path.
 	if len(got) != 1 || got[0].Role != "system" {
 		t.Fatalf("harus 1 system note, got %+v", got)
 	}
@@ -92,7 +87,7 @@ func TestMaybeCompactBelowLimit(t *testing.T) {
 	ws := t.TempDir()
 	cfg := &config.Config{Workspace: ws, HistoryTokenLimit: 30000}
 	hist := history.New(t.TempDir())
-	a := New(cfg, nil, hist, nil, memory.New(&stubModel{}, ws))
+	a := New(cfg, nil, hist, nil, memory.New(ws))
 	stored := []*messages.Message{userTextMsg("hai")}
 	if got := a.maybeCompact(context.Background(), 1, stored); len(got) != 1 || got[0] != stored[0] {
 		t.Fatalf("di bawah limit harus dikembalikan utuh")

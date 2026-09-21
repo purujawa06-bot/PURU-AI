@@ -47,6 +47,9 @@ func TestLoadDefaults(t *testing.T) {
 	if c.LoopDelaySeconds != DefaultLoopDelaySeconds {
 		t.Errorf("LoopDelaySeconds = %d, want %d", c.LoopDelaySeconds, DefaultLoopDelaySeconds)
 	}
+	if c.ExecMemoryMB != DefaultExecMemoryMB {
+		t.Errorf("ExecMemoryMB = %d, want %d", c.ExecMemoryMB, DefaultExecMemoryMB)
+	}
 }
 
 func TestToolsPreviewExplicit(t *testing.T) {
@@ -68,6 +71,14 @@ func TestToolsPreviewExplicit(t *testing.T) {
 	}
 	if c.LoopDelaySeconds != MaxLoopDelaySeconds {
 		t.Errorf("LoopDelaySeconds harus di-clamp ke %d, got %d", MaxLoopDelaySeconds, c.LoopDelaySeconds)
+	}
+	p = writeCfg(t, `{"telegram_bot_token":"x","model":{"base_url":"http://m/v1","model":"puru"},"exec_memory_mb":10}`)
+	c, err = Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.ExecMemoryMB != MinExecMemoryMB {
+		t.Errorf("ExecMemoryMB harus di-clamp ke min %d, got %d", MinExecMemoryMB, c.ExecMemoryMB)
 	}
 }
 

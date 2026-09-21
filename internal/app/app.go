@@ -154,8 +154,8 @@ func (a *App) renderedSystem() string {
 }
 
 // maybeCompact checks the token trigger BEFORE the new prompt: when hit,
-// summarize full history into context/YYYY-MM-DD_title.md, wipe history, and
-// inject back ONLY the summary path as a system note (content is never
+// dump full history raw into context/YYYY-MM-DD_HH-MM-SS.json, wipe history,
+// and inject back ONLY the dump path as a system note (content is never
 // injected — the AI reads the file when it needs old context).
 func (a *App) maybeCompact(ctx context.Context, userID int64, stored []*messages.Message) []*messages.Message {
 	limit := a.cfg.HistoryTokenLimit
@@ -167,7 +167,7 @@ func (a *App) maybeCompact(ctx context.Context, userID int64, stored []*messages
 	}
 	cctx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
-	rel, err := a.mem.Compact(cctx, historyToText(stored))
+	rel, err := a.mem.Compact(cctx, stored)
 	if err != nil {
 		log.Printf("[memory] compact failed: %v", err)
 		return stored
@@ -175,37 +175,14 @@ func (a *App) maybeCompact(ctx context.Context, userID int64, stored []*messages
 	if rel == "" {
 		return stored
 	}
-	if err := a.hist.Clear(userID); err != nil {
-		log.Printf("[memory] clear history failed: %v", err)
-	}
 	note := &messages.Message{Role: "system"}
 	messages.SetContentString(note, memory.SummaryNote(rel))
-	if err := a.hist.Set(userID, []*messages.Message{note}); err != nil {
+	kept := []*messages.Message{note}
+	if err := a.hist.Set(userID, kept); err != nil {
 		log.Printf("[memory] save note failed: %v", err)
 	}
 	log.Printf("[memory] compacted -> %s for user %d", rel, userID)
-	return []*messages.Message{note}
-}
-
-func historyToText(msgs []*messages.Message) string {
-	var sb strings.Builder
-	for _, m := range msgs {
-		if m == nil {
-			continue
-		}
-		text := m.Text()
-		if len(text) > 2000 {
-			text = text[:2000]
-		}
-		if strings.TrimSpace(text) == "" {
-			continue
-		}
-		sb.WriteString(m.Role)
-		sb.WriteString(": ")
-		sb.WriteString(text)
-		sb.WriteString("\n")
-	}
-	return sb.String()
+	return kept
 }
 
 func (a *App) processMessage(ctx context.Context, msg *telegram.Message, userMessage string) error {
@@ -277,7 +254,7 @@ func (a *App) previewHook(ctx context.Context, chatID, msgID int64) func(string,
 // toolArgPreview shows the most relevant arg for a tool call.
 func toolArgPreview(name string, args map[string]any) string {
 	switch name {
-	case "read_file", "write_file", "edit_file", "telegram_sendfile":
+	case "edit_file", "telegram_sendfile":
 		return previewStr(args["path"])
 	case "exec":
 		return previewStr(args["command"])

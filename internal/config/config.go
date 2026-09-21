@@ -25,6 +25,10 @@ const (
 	// DefaultLoopDelaySeconds: jeda antar loop/iterasi agent.
 	DefaultLoopDelaySeconds = 3
 	MaxLoopDelaySeconds     = 60
+	// DefaultExecMemoryMB: budget RAM grup proses exec (default = minimal 64MB).
+	// Lebih dari ini → grup proses di-kill. Wajib di VPS kecil.
+	DefaultExecMemoryMB = 64
+	MinExecMemoryMB     = 64
 )
 
 // ModelConfig is the single OpenAI-compatible endpoint. No fallback,
@@ -53,8 +57,11 @@ type Config struct {
 	// dipakai AI via edit message. Pointer agar "tidak diisi" = true.
 	ToolsPreview *bool `json:"tools_preview"`
 	// LoopDelaySeconds: jeda antar loop/iterasi agent (default 3, maks 60).
-	LoopDelaySeconds int    `json:"loop_delay_seconds"`
-	ConfigDir        string `json:"-"`
+	LoopDelaySeconds int `json:"loop_delay_seconds"`
+	// ExecMemoryMB: budget RAM untuk tiap perintah exec (default 256, min 64).
+	// Grup proses yang lewat budget langsung di-kill (linux).
+	ExecMemoryMB int    `json:"exec_memory_mb"`
+	ConfigDir    string `json:"-"`
 }
 
 // DefaultDir returns $HOME/.puru (/root/.puru for root).
@@ -122,6 +129,12 @@ func Load(path string) (*Config, error) {
 	}
 	if c.LoopDelaySeconds > MaxLoopDelaySeconds {
 		c.LoopDelaySeconds = MaxLoopDelaySeconds
+	}
+	if c.ExecMemoryMB <= 0 {
+		c.ExecMemoryMB = DefaultExecMemoryMB
+	}
+	if c.ExecMemoryMB < MinExecMemoryMB {
+		c.ExecMemoryMB = MinExecMemoryMB
 	}
 	if c.Workspace == "" {
 		c.Workspace = filepath.Join(DefaultDir(), "workspace")

@@ -1,6 +1,6 @@
 // Package ai implements the lightweight local tool-calling agent.
 //
-// Single model from config.json, 6 tools (read_file, write_file, edit_file,
+// Single model from config.json, 4 tools (edit_file,
 // exec, telegram_sendfile, telegram_getuser), no fallback: one executor run
 // per request, max iterations from config (default 500), pause between
 // iterations from config (loop_delay_seconds, default 3s). Every model call
@@ -523,8 +523,8 @@ func (a *Agent) runOnce(ctx context.Context, system string, history []*messages.
 }
 
 // ProcessMessage runs one request: NO history trimming here — the caller
-// (app layer) compacts history into a context/*.md summary file when the
-// token limit is hit, then wipes it (only the file path is injected back).
+// (app layer) dumps history raw into a context/*.json file when the
+// token limit is hit (only the file path is injected back).
 // Single executor run, no provider fallback; API errors are retried per model
 // call (5x total, 2s delay) inside the model wrapper.
 func (a *Agent) ProcessMessage(ctx context.Context, userMessage string, history []*messages.Message, opts *ProcessOptions) *ProcessResult {

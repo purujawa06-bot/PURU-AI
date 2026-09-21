@@ -89,7 +89,7 @@ func TestToolCallAssemblyHF(t *testing.T) {
 	// Simulates the HF gateway: each delta's tool_calls entry carries a full
 	// index+type+function object, including argument-only fragments.
 	idx0 := 0
-	first := deltaLineWithID("call_1", "write_file")
+	first := deltaLineWithID("call_1", "edit_file")
 	mid := deltaLineIdx(&idx0, "function", `{"path":"a`)
 	tail := deltaLineIdx(&idx0, "function", `bs.txt","content":"hello"}`)
 	fin := deltaLine(nil)
@@ -125,7 +125,7 @@ func TestToolCallAssemblyHF(t *testing.T) {
 	if tc.ID != "call_1" {
 		t.Errorf("unexpected id: %q", tc.ID)
 	}
-	if tc.FunctionCall == nil || tc.FunctionCall.Name != "write_file" {
+	if tc.FunctionCall == nil || tc.FunctionCall.Name != "edit_file" {
 		t.Errorf("unexpected function name: %+v", tc.FunctionCall)
 	}
 	wantArgs := `{"path":"abs.txt","content":"hello"}`
@@ -298,7 +298,7 @@ func TestBuildMessagesToolCall(t *testing.T) {
 				llms.ToolCall{
 					ID:           "call_1",
 					Type:         "function",
-					FunctionCall: &llms.FunctionCall{Name: "write_file", Arguments: `{"path":"a.txt"}`},
+					FunctionCall: &llms.FunctionCall{Name: "edit_file", Arguments: `{"path":"a.txt"}`},
 				},
 			},
 		},
@@ -315,7 +315,7 @@ func TestBuildMessagesToolCall(t *testing.T) {
 	if msgs[0].Role != "assistant" || msgs[0].Content != "thinking" {
 		t.Errorf("assistant msg = %+v", msgs[0])
 	}
-	if len(msgs[0].ToolCalls) != 1 || msgs[0].ToolCalls[0].Function.Name != "write_file" {
+	if len(msgs[0].ToolCalls) != 1 || msgs[0].ToolCalls[0].Function.Name != "edit_file" {
 		t.Errorf("assistant tool calls = %+v", msgs[0].ToolCalls)
 	}
 	if msgs[1].Role != "tool" || msgs[1].ToolCallID != "call_1" || msgs[1].Content != "ok" {

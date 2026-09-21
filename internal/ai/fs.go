@@ -1,8 +1,8 @@
 // Package ai: lightweight local assistant agent.
 //
-// Tools (6, all jailed to Workspace when
+// Tools (4, all jailed to Workspace when
 // Config.RestrictWorkspace is true):
-//   - read_file, write_file, edit_file, exec
+//   - edit_file, exec
 //   - telegram_sendfile, telegram_getuser (need a Telegram request context)
 //
 // No VFS, no sandbox, no web, no fallback, no skills.
@@ -16,7 +16,6 @@ import (
 	"strings"
 )
 
-const maxReadChars = 30_000
 const maxExecOutput = 20_000
 
 // resolvePath maps a tool path to an absolute filesystem path.
@@ -70,33 +69,6 @@ func resolveWorkdir(workspace string, restrict bool, w string) (string, error) {
 		return workspace, nil
 	}
 	return resolvePath(workspace, restrict, w)
-}
-
-func readLocalFile(workspace string, restrict bool, p string) (string, error) {
-	abs, err := resolvePath(workspace, restrict, p)
-	if err != nil {
-		return "", err
-	}
-	b, err := os.ReadFile(abs)
-	if err != nil {
-		return "", fmt.Errorf("read %s: %w", p, err)
-	}
-	s := string(b)
-	if len(s) > maxReadChars {
-		s = s[:maxReadChars] + "\n...[truncated]"
-	}
-	return s, nil
-}
-
-func writeLocalFile(workspace string, restrict bool, p, content string) error {
-	abs, err := resolvePath(workspace, restrict, p)
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(abs, []byte(content), 0o644)
 }
 
 func editLocalFile(workspace string, restrict bool, p, oldStr, newStr string) error {

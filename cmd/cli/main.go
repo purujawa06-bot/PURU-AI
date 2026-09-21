@@ -40,7 +40,7 @@ func main() {
 		log.Fatalf("ai model: %v", err)
 	}
 	hist := history.New(cfg.HistoryDir())
-	mem := memory.New(llm, cfg.Workspace)
+	mem := memory.New(cfg.Workspace)
 	agent := &ai.Agent{Client: llm, Config: cfg, HTTP: hc}
 	ctx := context.Background()
 
@@ -79,25 +79,17 @@ func main() {
 func process(ctx context.Context, agent *ai.Agent, hist *history.Store, mem *memory.Manager, cfg *config.Config, chatID int64, prompt string) string {
 	stored := hist.Get(chatID)
 	if history.TokenCountFull(renderedSystemPrompt(cfg), stored) >= cfg.HistoryTokenLimit && len(stored) > 0 {
-		var sb strings.Builder
-		for _, m := range stored {
-			if m == nil {
-				continue
-			}
-			sb.WriteString(m.Role + ": " + m.Text() + "\n")
-		}
 		cctx, cancel := context.WithTimeout(ctx, 90*time.Second)
-		rel, cerr := mem.Compact(cctx, sb.String())
+		rel, cerr := mem.Compact(cctx, stored)
 		cancel()
 		if cerr != nil {
 			log.Printf("compact: %v", cerr)
 		} else if rel != "" {
-			_ = hist.Clear(chatID)
 			note := &messages.Message{Role: "system"}
 			messages.SetContentString(note, memory.SummaryNote(rel))
-			_ = hist.Set(chatID, []*messages.Message{note})
 			stored = []*messages.Message{note}
-			fmt.Printf("(ringkasan: %s)\n", rel)
+			_ = hist.Set(chatID, stored)
+			fmt.Printf("(tersimpan: %s)\n", rel)
 		}
 	}
 	opts := &ai.ProcessOptions{ChatID: chatID}

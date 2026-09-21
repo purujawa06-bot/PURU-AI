@@ -104,8 +104,8 @@ func (r *retryModel) GenerateContentWithReasoning(ctx context.Context, messages 
 }
 
 // NewModel builds the single model from config (no fallback, no relay).
-// Every API call streams (agent Plan + memory Compact always set a
-// StreamingFunc) and is retried up to 5x total on API errors.
+// Every API call streams (agent Plan always sets a StreamingFunc)
+// and is retried up to 5x total on API errors.
 func NewModel(cfg *config.Config, hc *http.Client) (llms.Model, error) {
 	inner, err := openai.New(cfg.Model.BaseURL, cfg.Model.APIKey, cfg.Model.Model, hc)
 	if err != nil {

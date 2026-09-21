@@ -42,7 +42,7 @@ func main() {
 		log.Fatalf("ai model: %v", err)
 	}
 	histStore := history.New(cfg.HistoryDir())
-	memSvc := memory.New(llm, cfg.Workspace)
+	memSvc := memory.New(cfg.Workspace)
 	tg, err := telegram.New(cfg.TelegramBotToken, hc)
 	if err != nil {
 		log.Fatalf("telegram: %v", err)

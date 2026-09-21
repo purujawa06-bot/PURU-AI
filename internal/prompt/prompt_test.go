@@ -13,9 +13,14 @@ func TestGetRendersMemory(t *testing.T) {
 	if !strings.Contains(out, "memory-x") {
 		t.Fatalf("memory not injected")
 	}
-	for _, tool := range []string{"read_file", "write_file", "edit_file", "exec"} {
+	for _, tool := range []string{"edit_file", "exec", "telegram_sendfile", "telegram_getuser"} {
 		if !strings.Contains(out, tool) {
 			t.Fatalf("tool %s missing in prompt", tool)
+		}
+	}
+	for _, gone := range []string{"read_file", "write_file"} {
+		if strings.Contains(out, gone) {
+			t.Fatalf("removed tool %s still in prompt", gone)
 		}
 	}
 	if strings.Contains(out, "e2b") || strings.Contains(out, "skills") {

@@ -573,7 +573,7 @@ type assembledToolCall struct {
 // Real OpenAI streams fragment a single tool call across several deltas:
 //
 //	delta.tool_calls = [{index:0, id:"call_1", type:"function",
-//	    function:{name:"write_file", arguments:""}}]
+//	    function:{name:"edit_file", arguments:""}}]
 //	delta.tool_calls = [{index:0, function:{arguments:"{\"path\":\"a"}}]
 //	delta.tool_calls = [{index:0, function:{arguments:"\"}}"}}]
 //

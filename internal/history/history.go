@@ -2,8 +2,8 @@
 //
 // Files: ~/.puru/history/{chatID}.json (JSON array of messages).
 // No Firebase, no cache TTL complexity — small in-memory map + disk.
-// History is NEVER trimmed here; the app layer compacts it into a
-// context/*.md summary file when the token limit is hit, then wipes it clean.
+// History is NEVER trimmed here; the app layer dumps it raw into a
+// context/*.json file when the token limit is hit, keeping only the dump path.
 package history
 
 import (

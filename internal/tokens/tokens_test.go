@@ -17,7 +17,7 @@ func toolResultMsg(payload string) *messages.Message {
 	messages.SetContentParts(m, []messages.Part{{
 		"type":       mustJSON("tool-result"),
 		"toolCallId": mustJSON("c1"),
-		"toolName":   mustJSON("read_file"),
+		"toolName":   mustJSON("edit_file"),
 		"output":     mustJSON(map[string]any{"type": "json", "value": payload}),
 	}})
 	return m
@@ -26,9 +26,9 @@ func toolResultMsg(payload string) *messages.Message {
 func toolCallMsg() *messages.Message {
 	m := &messages.Message{Role: "assistant"}
 	messages.SetContentParts(m, []messages.Part{
-		{"type": mustJSON("reasoning"), "text": mustJSON("pengguna ingin baca file, pakai read_file")},
+		{"type": mustJSON("reasoning"), "text": mustJSON("pengguna ingin ubah file, pakai edit_file")},
 		{"type": mustJSON("tool-call"), "toolCallId": mustJSON("c1"),
-			"toolName": mustJSON("read_file"), "input": mustJSON(map[string]any{"path": "catatan/penting.txt"})},
+			"toolName": mustJSON("edit_file"), "input": mustJSON(map[string]any{"path": "catatan/penting.txt"})},
 	})
 	return m
 }
@@ -45,8 +45,8 @@ func TestCountMessageToolResult(t *testing.T) {
 // Tool-call name+args and reasoning must be counted (previously skipped).
 func TestCountMessageToolCall(t *testing.T) {
 	got := CountMessage(toolCallMsg())
-	min := Count("read_file") + Count(`{"path":"catatan/penting.txt"}`) +
-		Count("pengguna ingin baca file, pakai read_file")
+	min := Count("edit_file") + Count(`{"path":"catatan/penting.txt"}`) +
+		Count("pengguna ingin ubah file, pakai edit_file")
 	if got < min {
 		t.Fatalf("tool-call/reasoning tidak dihitung: got %d, want >= %d", got, min)
 	}

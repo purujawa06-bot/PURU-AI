@@ -13,5 +13,6 @@
   "host": "0.0.0.0",
   "port": 8080,
   "tools_preview": true,
-  "loop_delay_seconds": 3
+  "loop_delay_seconds": 3,
+  "exec_memory_mb": 64
 }

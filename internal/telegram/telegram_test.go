@@ -102,7 +102,7 @@ func TestGetTelegramUser(t *testing.T) {
 func TestEditMessage(t *testing.T) {
 	api, done := fakeBot(t, "/editMessageText", `{"ok":true,"result":{"message_id":5,"chat":{"id":1,"type":"private"},"date":1,"text":"x"}}`, 200)
 	defer done()
-	if err := api.EditMessage(context.Background(), 1, 5, "🔧 read_file"); err != nil {
+	if err := api.EditMessage(context.Background(), 1, 5, "🔧 edit_file"); err != nil {
 		t.Fatal(err)
 	}
 }
