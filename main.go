@@ -17,6 +17,7 @@ import (
 	"github.com/purujawa06-bot/PURU-AI/internal/ai"
 	"github.com/purujawa06-bot/PURU-AI/internal/app"
 	"github.com/purujawa06-bot/PURU-AI/internal/config"
+	"github.com/purujawa06-bot/PURU-AI/internal/health"
 	"github.com/purujawa06-bot/PURU-AI/internal/history"
 	"github.com/purujawa06-bot/PURU-AI/internal/memory"
 	"github.com/purujawa06-bot/PURU-AI/internal/telegram"
@@ -43,10 +44,21 @@ func main() {
 	histStore := history.New(cfg.HistoryDir())
 	memSvc := memory.New(llm, cfg.MemoryPath())
 	agentSvc := &ai.Agent{Client: llm, Config: cfg, HTTP: hc}
-	tg := telegram.New(cfg.TelegramBotToken, hc)
+	tg, err := telegram.New(cfg.TelegramBotToken, hc)
+	if err != nil {
+		log.Fatalf("telegram: %v", err)
+	}
 	appSvc := app.New(cfg, tg, histStore, agentSvc, memSvc)
 
 	ctx := context.Background()
+	// Health check saja (GET /health) — tidak blokir polling Telegram.
+	go func() {
+		addr := health.Addr(cfg.Host, cfg.Port)
+		log.Printf("health: %s/health", addr)
+		if err := health.Serve(addr); err != nil {
+			log.Printf("health: %v", err)
+		}
+	}()
 	me, err := tg.GetMe(ctx)
 	if err != nil {
 		log.Fatalf("Cannot reach Telegram API: %v", err)

@@ -1,8 +1,10 @@
 // Package ai implements the lightweight local tool-calling agent.
 //
 // Single model from config.json, exactly 4 local tools
-// (read_file, write_file, edit_file, exec), no fallback, no retry storm:
-// one executor run per request, max iterations from config (default 500).
+// (read_file, write_file, edit_file, exec), no fallback: one executor run per
+// request, max iterations from config (default 500). Every model call streams,
+// and API errors are retried up to 5x total (2s delay) per call — failed tools
+// are never re-run because retries happen inside the model call, not the run.
 package ai
 
 import (
@@ -516,7 +518,8 @@ func (a *Agent) runOnce(ctx context.Context, system string, history []*messages.
 
 // ProcessMessage runs one request: NO history trimming here — the caller
 // (app layer) compacts history into MEMORY.md when the 30k token limit is
-// hit, then wipes it. Single attempt, no provider fallback.
+// hit, then wipes it. Single executor run, no provider fallback; API errors
+// are retried per model call (5x total, 2s delay) inside the model wrapper.
 func (a *Agent) ProcessMessage(ctx context.Context, userMessage string, history []*messages.Message, opts *ProcessOptions) *ProcessResult {
 	memoryContent := ""
 	if a.Config != nil {

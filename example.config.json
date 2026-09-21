@@ -9,5 +9,7 @@
   "workspace": "/root/.puru/workspace",
   "restrict_workspace": true,
   "max_iterations": 500,
-  "history_token_limit": 30000
+  "history_token_limit": 30000,
+  "host": "0.0.0.0",
+  "port": 8080
 }

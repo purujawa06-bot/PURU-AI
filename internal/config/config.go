@@ -16,6 +16,9 @@ const (
 	DefaultHistoryTokLimit = 30000
 	DefaultExecTimeoutSec  = 60
 	MaxExecTimeoutSec      = 300
+	// DefaultHealthHost/Port: health check HTTP saja (GET /healthz).
+	DefaultHealthHost = "0.0.0.0"
+	DefaultHealthPort = 8080
 )
 
 // ModelConfig is the single OpenAI-compatible endpoint. No fallback,
@@ -34,10 +37,13 @@ type Config struct {
 	// RestrictWorkspace jails the agent inside Workspace: file tools reject
 	// absolute paths / ../ escapes outside it, and exec runs with Dir forced
 	// inside it.
-	RestrictWorkspace bool   `json:"restrict_workspace"`
-	MaxIterations     int    `json:"max_iterations"`
-	HistoryTokenLimit int    `json:"history_token_limit"`
-	ConfigDir         string `json:"-"`
+	RestrictWorkspace bool `json:"restrict_workspace"`
+	MaxIterations     int  `json:"max_iterations"`
+	HistoryTokenLimit int  `json:"history_token_limit"`
+	// Host/Port hanya untuk health check HTTP (GET /healthz).
+	Host      string `json:"host"`
+	Port      int    `json:"port"`
+	ConfigDir string `json:"-"`
 }
 
 // DefaultDir returns $HOME/.puru (/root/.puru for root).
@@ -93,6 +99,12 @@ func Load(path string) (*Config, error) {
 	}
 	if c.HistoryTokenLimit <= 0 {
 		c.HistoryTokenLimit = DefaultHistoryTokLimit
+	}
+	if c.Host == "" {
+		c.Host = DefaultHealthHost
+	}
+	if c.Port <= 0 {
+		c.Port = DefaultHealthPort
 	}
 	if c.Workspace == "" {
 		c.Workspace = filepath.Join(DefaultDir(), "workspace")

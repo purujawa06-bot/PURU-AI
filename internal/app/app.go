@@ -162,11 +162,7 @@ func (a *App) processMessage(ctx context.Context, msg *telegram.Message, userMes
 }
 
 func (a *App) sendThinking(ctx context.Context, msg *telegram.Message) (int64, error) {
-	raw, err := a.tg.SendMessage(ctx, msg.Chat.ID, "🤔 ...", map[string]any{"reply_to_message_id": msg.MessageID})
-	if err != nil {
-		return 0, err
-	}
-	return extractMessageID(raw), nil
+	return a.tg.SendMessage(ctx, msg.Chat.ID, "🤔 ...", map[string]any{"reply_to_message_id": msg.MessageID})
 }
 
 func (a *App) safeReply(ctx context.Context, msg *telegram.Message, text string, replyTo bool) error {
@@ -190,9 +186,7 @@ func (a *App) safeReply(ctx context.Context, msg *telegram.Message, text string,
 func (a *App) safeSend(ctx context.Context, msg *telegram.Message, text string) error {
 	if len(text) > maxMessageLength {
 		_ = a.safeReply(ctx, msg, "⚠️ Respon terlalu panjang, dikirim sebagai file.", false)
-		_, err := a.tg.SendFile(ctx, msg.Chat.ID, "respon.md", []byte(text), "sendDocument",
-			map[string]any{"caption": "Respon lengkap."})
-		return err
+		return a.tg.SendFile(ctx, msg.Chat.ID, "respon.md", []byte(text), "Respon lengkap.")
 	}
 	return a.safeReply(ctx, msg, text, true)
 }

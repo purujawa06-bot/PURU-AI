@@ -8,7 +8,8 @@ Bot Telegram AI Go yang ringan: satu model OpenAI-compatible, agent tool-calling
 - **exec aman** — default timeout 60 dtk bila agent tidak mengisi `timeout_seconds`, clamp maks 300 dtk; saat timeout process group di-kill (unix `setpgid` + `SIGKILL`) agar tidak bocor RAM. Output di-cap 20k char.
 - **Memory ringkas** — history per-chat (`~/.puru/history/{chat}.json`) **tidak pernah dipotong**. Setiap prompt baru: bila history ≥ `history_token_limit` (default 30k token), model peringkas menulis ulang `<workspace>/MEMORY.md` (bullet `-` ringkas, tepat 3 seksi: `## Complete`, `## Active`, `## Relevant Files`), lalu history dihapus total bersih.
 - **Ringan & boot cepat** — GOMEMLIMIT 50MB (`debug.SetMemoryLimit` + `ENV GOMEMLIMIT=50MiB`), tanpa web server/Firebase/init berat. Max tool iteration default 500 (`max_iterations`).
-- **Satu model, satu attempt** — tanpa fallback provider, tanpa retry storm.
+- **Satu model, satu attempt per run** — tanpa fallback provider. Setiap pemanggilan API selalu streaming, dan API error di-retry total 5x dengan jeda 2 dtk (per model call; tools yang sudah jalan tidak diulang).
+- **Health check** — `GET /health` → `{"status":"ok"}` di `host:port` (default `0.0.0.0:8080`), khusus untuk liveness/readiness container.
 
 ## Konfigurasi
 
@@ -30,7 +31,9 @@ cp example.config.json ~/.puru/config.json  # /root/.puru/config.json untuk root
   "workspace": "/root/.puru/workspace",
   "restrict_workspace": true,
   "max_iterations": 500,
-  "history_token_limit": 30000
+  "history_token_limit": 30000,
+  "host": "0.0.0.0",
+  "port": 8080
 }
 ```
 

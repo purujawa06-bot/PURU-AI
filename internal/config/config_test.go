@@ -34,6 +34,12 @@ func TestLoadDefaults(t *testing.T) {
 	if c.MemoryPath() == "" || c.HistoryDir() == "" {
 		t.Errorf("MemoryPath/HistoryDir kosong")
 	}
+	if c.Host != DefaultHealthHost {
+		t.Errorf("Host = %q, want %q", c.Host, DefaultHealthHost)
+	}
+	if c.Port != DefaultHealthPort {
+		t.Errorf("Port = %d, want %d", c.Port, DefaultHealthPort)
+	}
 }
 
 func TestLoadRejectsEmptyToken(t *testing.T) {

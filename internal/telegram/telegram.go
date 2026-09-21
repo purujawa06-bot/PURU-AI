@@ -1,38 +1,47 @@
-// Package telegram is a minimal long-polling Telegram Bot API client. It is
-// deliberately a hand-rolled HTTP client so the bot keeps single-threaded
-// sequential update processing and precise conflict (409) detection, matching
-// the previous grammY setup (bot.start) behaviour.
+// Package telegram is a thin adapter over telego (long-polling Bot API).
+// It keeps the bot's small local model (Update/Message/User/Chat) and its
+// TelegramError semantics (409 conflict detection, 400 parse-entities check)
+// so the app layer stays unchanged.
 package telegram
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"fmt"
-	"io"
-	"mime/multipart"
+	"errors"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mymmrac/telego"
+	"github.com/mymmrac/telego/telegoapi"
+	"github.com/mymmrac/telego/telegoutil"
 )
 
-// BaseURL is the Telegram Bot API base URL. It is a var so tests can point the
-// client at an httptest server; production always uses the real endpoint.
-var BaseURL = "https://api.telegram.org"
-
+// API wraps a telego bot.
 type API struct {
-	token   string
-	http    *http.Client
-	baseURL string
+	bot *telego.Bot
 }
 
-func New(token string, hc *http.Client) *API {
+// New builds the bot with the shared HTTP client.
+func New(token string, hc *http.Client) (*API, error) {
+	return newWithServer(token, hc, "")
+}
+
+// newWithServer is New with an overridable API server URL (tests point it at
+// an httptest server; production always uses api.telegram.org).
+func newWithServer(token string, hc *http.Client, serverURL string) (*API, error) {
 	if hc == nil {
 		hc = &http.Client{Timeout: 70 * time.Second}
 	}
-	return &API{token: token, http: hc, baseURL: BaseURL}
+	opts := []telego.BotOption{telego.WithHTTPClient(hc)}
+	if serverURL != "" {
+		opts = append(opts, telego.WithAPIServer(serverURL))
+	}
+	bot, err := telego.NewBot(token, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &API{bot: bot}, nil
 }
 
 // TelegramError is a non-OK response from the Bot API.
@@ -43,7 +52,7 @@ type TelegramError struct {
 }
 
 func (e *TelegramError) Error() string {
-	return fmt.Sprintf("telegram %s: %d %s", e.Method, e.Code, e.Message)
+	return "telegram " + e.Method + ": " + strconv.Itoa(e.Code) + " " + e.Message
 }
 
 // IsConflict matches the old conflict detection in index.ts.
@@ -51,11 +60,17 @@ func (e *TelegramError) IsConflict() bool {
 	return e.Code == 409 || strings.Contains(strings.ToLower(e.Message), "conflict")
 }
 
-type envelope struct {
-	OK          bool            `json:"ok"`
-	Result      json.RawMessage `json:"result"`
-	Description string          `json:"description"`
-	ErrorCode   int             `json:"error_code"`
+// wrapErr converts a telego API error into TelegramError, preserving Code for
+// conflict (409) and parse-entities (400) checks. Non-API errors pass through.
+func wrapErr(method string, err error) error {
+	if err == nil {
+		return nil
+	}
+	var terr *telegoapi.Error
+	if errors.As(err, &terr) {
+		return &TelegramError{Code: terr.ErrorCode, Message: terr.Description, Method: method}
+	}
+	return err
 }
 
 // ---------------------------------------------------------------------------
@@ -63,152 +78,48 @@ type envelope struct {
 // ---------------------------------------------------------------------------
 
 type Update struct {
-	UpdateID int64    `json:"update_id"`
-	Message  *Message `json:"message"`
+	UpdateID int64
+	Message  *Message
 }
 
 type User struct {
-	ID       int64  `json:"id"`
-	Username string `json:"username"`
+	ID       int64
+	Username string
 }
 
 type Chat struct {
-	ID   int64  `json:"id"`
-	Type string `json:"type"`
-}
-
-type Document struct {
-	FileID   string `json:"file_id"`
-	FileName string `json:"file_name"`
-	FileSize int64  `json:"file_size"`
-}
-
-// PhotoSize is one entry of a photo message: Telegram sends the same image in
-// several resolutions; the largest one is what the bot downloads and analyses.
-type PhotoSize struct {
-	FileID   string `json:"file_id"`
-	Width    int    `json:"width"`
-	Height   int    `json:"height"`
-	FileSize int64  `json:"file_size"`
+	ID   int64
+	Type string
 }
 
 type Message struct {
-	MessageID int64       `json:"message_id"`
-	From      *User       `json:"from"`
-	Chat      *Chat       `json:"chat"`
-	Text      string      `json:"text"`
-	Caption   string      `json:"caption"`
-	Document  *Document   `json:"document"`
-	Photo     []PhotoSize `json:"photo"`
+	MessageID int64
+	From      *User
+	Chat      *Chat
+	Text      string
 }
 
-// File is the getFile result (used to download documents).
-type File struct {
-	FileID   string `json:"file_id"`
-	FilePath string `json:"file_path"`
+func toUpdate(u telego.Update) Update {
+	out := Update{UpdateID: int64(u.UpdateID)}
+	if u.Message != nil {
+		out.Message = toMessage(u.Message)
+	}
+	return out
 }
 
-// ---------------------------------------------------------------------------
-// Low-level calls
-// ---------------------------------------------------------------------------
-
-type uploadFile struct {
-	field    string
-	filename string
-	data     []byte
-}
-
-func (a *API) do(ctx context.Context, methodName string, params url.Values, up *uploadFile) (json.RawMessage, error) {
-	u := a.baseURL + "/bot" + a.token + "/" + methodName
-
-	var req *http.Request
-	var err error
-	if up == nil {
-		req, err = http.NewRequestWithContext(ctx, http.MethodPost, u, strings.NewReader(params.Encode()))
-		if err == nil {
-			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		}
-	} else {
-		buf := &bytes.Buffer{}
-		w := multipart.NewWriter(buf)
-		for k, vs := range params {
-			for _, v := range vs {
-				_ = w.WriteField(k, v)
-			}
-		}
-		fw, err2 := w.CreateFormFile(up.field, up.filename)
-		if err2 != nil {
-			return nil, err2
-		}
-		_, _ = fw.Write(up.data)
-		_ = w.Close()
-		req, err = http.NewRequestWithContext(ctx, http.MethodPost, u, buf)
-		if err == nil {
-			req.Header.Set("Content-Type", w.FormDataContentType())
-		}
+func toMessage(m *telego.Message) *Message {
+	if m == nil {
+		return nil
 	}
-	if err != nil {
-		return nil, err
+	out := &Message{
+		MessageID: int64(m.MessageID),
+		Text:      m.Text,
+		Chat:      &Chat{ID: m.Chat.ID, Type: m.Chat.Type},
 	}
-
-	resp, err := a.http.Do(req)
-	if err != nil {
-		return nil, err
+	if m.From != nil {
+		out.From = &User{ID: m.From.ID, Username: m.From.Username}
 	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-	var out envelope
-	if err := json.Unmarshal(body, &out); err != nil {
-		return nil, fmt.Errorf("telegram %s: invalid response: %s", methodName, truncate(string(body), 300))
-	}
-	if !out.OK {
-		return nil, &TelegramError{Code: out.ErrorCode, Message: out.Description, Method: methodName}
-	}
-	return out.Result, nil
-}
-
-func params(m map[string]any) url.Values {
-	v := url.Values{}
-	for k, val := range m {
-		v.Set(k, toParam(val))
-	}
-	return v
-}
-
-func toParam(v any) string {
-	switch t := v.(type) {
-	case string:
-		return sanitizeText(t)
-	case int:
-		return strconv.Itoa(t)
-	case int64:
-		return strconv.FormatInt(t, 10)
-	case bool:
-		if t {
-			return "true"
-		}
-		return "false"
-	default:
-		b, _ := json.Marshal(t)
-		return string(b)
-	}
-}
-
-// sanitizeText replaces invalid UTF-8 byte sequences (which can leak in from
-// model output or scraped content) with U+FFFD so Telegram never rejects the
-// request with "400 text must be encoded in UTF-8".
-func sanitizeText(s string) string {
-	return strings.ToValidUTF8(s, "\uFFFD")
-}
-
-func truncate(s string, n int) string {
-	if len(s) > n {
-		return s[:n]
-	}
-	return s
+	return out
 }
 
 // ---------------------------------------------------------------------------
@@ -216,116 +127,89 @@ func truncate(s string, n int) string {
 // ---------------------------------------------------------------------------
 
 func (a *API) GetMe(ctx context.Context) (*User, error) {
-	raw, err := a.do(ctx, "getMe", url.Values{}, nil)
+	u, err := a.bot.GetMe(ctx)
 	if err != nil {
-		return nil, err
+		return nil, wrapErr("getMe", err)
 	}
-	var u User
-	if err := json.Unmarshal(raw, &u); err != nil {
-		return nil, err
-	}
-	return &u, nil
+	return &User{ID: u.ID, Username: u.Username}, nil
 }
 
 func (a *API) DeleteWebhook(ctx context.Context, dropPending bool) error {
-	v := url.Values{}
-	if dropPending {
-		v.Set("drop_pending_updates", "true")
-	}
-	_, err := a.do(ctx, "deleteWebhook", v, nil)
-	return err
+	return wrapErr("deleteWebhook", a.bot.DeleteWebhook(ctx, &telego.DeleteWebhookParams{
+		DropPendingUpdates: dropPending,
+	}))
 }
 
 // GetUpdates long-polls (timeout seconds). Multiple updates can be returned;
 // the caller processes them sequentially.
 func (a *API) GetUpdates(ctx context.Context, offset int64, timeout int) ([]Update, error) {
-	v := url.Values{}
-	v.Set("offset", strconv.FormatInt(offset, 10))
-	v.Set("timeout", strconv.Itoa(timeout))
-	v.Set("allowed_updates", `["message"]`)
-	raw, err := a.do(ctx, "getUpdates", v, nil)
+	updates, err := a.bot.GetUpdates(ctx, &telego.GetUpdatesParams{
+		Offset:         int(offset),
+		Timeout:        timeout,
+		AllowedUpdates: []string{telego.MessageUpdates},
+	})
 	if err != nil {
-		return nil, err
+		return nil, wrapErr("getUpdates", err)
 	}
-	var updates []Update
-	if err := json.Unmarshal(raw, &updates); err != nil {
-		return nil, err
+	out := make([]Update, 0, len(updates))
+	for _, u := range updates {
+		out = append(out, toUpdate(u))
 	}
-	return updates, nil
+	return out, nil
 }
 
-func (a *API) SendMessage(ctx context.Context, chatID int64, text string, opts map[string]any) (json.RawMessage, error) {
-	v := params(opts)
-	v.Set("chat_id", strconv.FormatInt(chatID, 10))
-	v.Set("text", sanitizeText(text))
-	return a.do(ctx, "sendMessage", v, nil)
-}
-
-func (a *API) EditMessageText(ctx context.Context, chatID int64, messageID int64, text string, opts map[string]any) (json.RawMessage, error) {
-	v := params(opts)
-	v.Set("chat_id", strconv.FormatInt(chatID, 10))
-	v.Set("message_id", strconv.FormatInt(messageID, 10))
-	v.Set("text", sanitizeText(text))
-	return a.do(ctx, "editMessageText", v, nil)
+// SendMessage sends text; opts supports "parse_mode" (string) and
+// "reply_to_message_id" (int/int64). Returns the sent message id.
+func (a *API) SendMessage(ctx context.Context, chatID int64, text string, opts map[string]any) (int64, error) {
+	p := &telego.SendMessageParams{
+		ChatID: telego.ChatID{ID: chatID},
+		Text:   sanitizeText(text),
+	}
+	if pm, _ := opts["parse_mode"].(string); pm != "" {
+		p.ParseMode = pm
+	}
+	if id := optInt(opts["reply_to_message_id"]); id > 0 {
+		p.ReplyParameters = &telego.ReplyParameters{MessageID: int(id)}
+	}
+	m, err := a.bot.SendMessage(ctx, p)
+	if err != nil {
+		return 0, wrapErr("sendMessage", err)
+	}
+	return int64(m.MessageID), nil
 }
 
 func (a *API) DeleteMessage(ctx context.Context, chatID int64, messageID int64) error {
-	v := url.Values{}
-	v.Set("chat_id", strconv.FormatInt(chatID, 10))
-	v.Set("message_id", strconv.FormatInt(messageID, 10))
-	_, err := a.do(ctx, "deleteMessage", v, nil)
-	return err
+	return wrapErr("deleteMessage", a.bot.DeleteMessage(ctx, &telego.DeleteMessageParams{
+		ChatID:    telego.ChatID{ID: chatID},
+		MessageID: int(messageID),
+	}))
 }
 
-func (a *API) SendFile(ctx context.Context, chatID int64, filename string, data []byte, method string, opts map[string]any) (json.RawMessage, error) {
-	v := params(opts)
-	v.Set("chat_id", strconv.FormatInt(chatID, 10))
-	up := &uploadFile{field: methodField(method), filename: filename, data: data}
-	return a.do(ctx, method, v, up)
+// SendFile sends data as a document with a caption.
+func (a *API) SendFile(ctx context.Context, chatID int64, filename string, data []byte, caption string) error {
+	_, err := a.bot.SendDocument(ctx, &telego.SendDocumentParams{
+		ChatID:   telego.ChatID{ID: chatID},
+		Document: telegoutil.FileFromBytes(data, filename),
+		Caption:  caption,
+	})
+	return wrapErr("sendDocument", err)
 }
 
-func methodField(method string) string {
-	switch method {
-	case "sendDocument":
-		return "document"
-	case "sendAudio":
-		return "audio"
-	case "sendVideo":
-		return "video"
-	case "sendPhoto":
-		return "photo"
-	default:
-		return "document"
+func optInt(v any) int64 {
+	switch n := v.(type) {
+	case int:
+		return int64(n)
+	case int64:
+		return n
+	case float64:
+		return int64(n)
 	}
+	return 0
 }
 
-func (a *API) GetFile(ctx context.Context, fileID string) (*File, error) {
-	v := url.Values{}
-	v.Set("file_id", fileID)
-	raw, err := a.do(ctx, "getFile", v, nil)
-	if err != nil {
-		return nil, err
-	}
-	var f File
-	if err := json.Unmarshal(raw, &f); err != nil {
-		return nil, err
-	}
-	return &f, nil
-}
-
-func (a *API) DownloadFile(ctx context.Context, filePath string) ([]byte, error) {
-	u := a.baseURL + "/file/bot" + a.token + "/" + filePath
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := a.http.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("telegram download: HTTP %d", resp.StatusCode)
-	}
-	return io.ReadAll(resp.Body)
+// sanitizeText replaces invalid UTF-8 byte sequences (which can leak in from
+// model output or scraped content) with U+FFFD so Telegram never rejects the
+// request with "400 text must be encoded in UTF-8".
+func sanitizeText(s string) string {
+	return strings.ToValidUTF8(s, "\uFFFD")
 }
