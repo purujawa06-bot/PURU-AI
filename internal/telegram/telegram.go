@@ -15,6 +15,8 @@ import (
 	"github.com/mymmrac/telego"
 	"github.com/mymmrac/telego/telegoapi"
 	"github.com/mymmrac/telego/telegoutil"
+
+	"github.com/purujawa06-bot/PURU-AI/internal/ai"
 )
 
 // API wraps a telego bot.
@@ -83,8 +85,10 @@ type Update struct {
 }
 
 type User struct {
-	ID       int64
-	Username string
+	ID        int64
+	Username  string
+	FirstName string
+	LastName  string
 }
 
 type Chat struct {
@@ -117,7 +121,7 @@ func toMessage(m *telego.Message) *Message {
 		Chat:      &Chat{ID: m.Chat.ID, Type: m.Chat.Type},
 	}
 	if m.From != nil {
-		out.From = &User{ID: m.From.ID, Username: m.From.Username}
+		out.From = &User{ID: m.From.ID, Username: m.From.Username, FirstName: m.From.FirstName, LastName: m.From.LastName}
 	}
 	return out
 }
@@ -138,6 +142,37 @@ func (a *API) DeleteWebhook(ctx context.Context, dropPending bool) error {
 	return wrapErr("deleteWebhook", a.bot.DeleteWebhook(ctx, &telego.DeleteWebhookParams{
 		DropPendingUpdates: dropPending,
 	}))
+}
+
+// botCommands is the registered menu: only /help, /clear, /token.
+func botCommands() []telego.BotCommand {
+	return []telego.BotCommand{
+		{Command: "help", Description: "Bantuan"},
+		{Command: "clear", Description: "Hapus history chat"},
+		{Command: "token", Description: "Info pemakaian token memory"},
+	}
+}
+
+// SetCommands registers the bot menu (non-fatal when it fails).
+func (a *API) SetCommands(ctx context.Context) error {
+	return wrapErr("setMyCommands", a.bot.SetMyCommands(ctx, &telego.SetMyCommandsParams{
+		Commands: botCommands(),
+	}))
+}
+
+// GetTelegramUser fetches a user's name, id and info live via getChat.
+// Works for any user id the bot may look up (fails for unknown users).
+func (a *API) GetTelegramUser(ctx context.Context, userID int64) (*ai.TelegramUserInfo, error) {
+	c, err := a.bot.GetChat(ctx, &telego.GetChatParams{
+		ChatID: telego.ChatID{ID: userID},
+	})
+	if err != nil {
+		return nil, wrapErr("getChat", err)
+	}
+	return &ai.TelegramUserInfo{
+		ID: c.ID, Username: c.Username,
+		FirstName: c.FirstName, LastName: c.LastName, Bio: c.Bio,
+	}, nil
 }
 
 // GetUpdates long-polls (timeout seconds). Multiple updates can be returned;
@@ -183,6 +218,16 @@ func (a *API) DeleteMessage(ctx context.Context, chatID int64, messageID int64) 
 		ChatID:    telego.ChatID{ID: chatID},
 		MessageID: int(messageID),
 	}))
+}
+
+// EditMessage replaces a sent message's text (live tool-call preview).
+func (a *API) EditMessage(ctx context.Context, chatID int64, messageID int64, text string) error {
+	_, err := a.bot.EditMessageText(ctx, &telego.EditMessageTextParams{
+		ChatID:    telego.ChatID{ID: chatID},
+		MessageID: int(messageID),
+		Text:      sanitizeText(text),
+	})
+	return wrapErr("editMessageText", err)
 }
 
 // SendFile sends data as a document with a caption.

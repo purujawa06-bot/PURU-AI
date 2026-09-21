@@ -42,12 +42,12 @@ func main() {
 		log.Fatalf("ai model: %v", err)
 	}
 	histStore := history.New(cfg.HistoryDir())
-	memSvc := memory.New(llm, cfg.MemoryPath())
-	agentSvc := &ai.Agent{Client: llm, Config: cfg, HTTP: hc}
+	memSvc := memory.New(llm, cfg.Workspace)
 	tg, err := telegram.New(cfg.TelegramBotToken, hc)
 	if err != nil {
 		log.Fatalf("telegram: %v", err)
 	}
+	agentSvc := &ai.Agent{Client: llm, Config: cfg, HTTP: hc, Telegram: tg}
 	appSvc := app.New(cfg, tg, histStore, agentSvc, memSvc)
 
 	ctx := context.Background()
@@ -67,6 +67,10 @@ func main() {
 
 	if err := tg.DeleteWebhook(ctx, true); err != nil {
 		log.Printf("deleteWebhook: %v", err)
+	}
+
+	if err := tg.SetCommands(ctx); err != nil {
+		log.Printf("setMyCommands: %v", err)
 	}
 
 	var offset int64

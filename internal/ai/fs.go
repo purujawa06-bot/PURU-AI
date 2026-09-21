@@ -1,8 +1,9 @@
 // Package ai: lightweight local assistant agent.
 //
-// Tools (exactly 4, all local, all jailed to Workspace when
+// Tools (6, all jailed to Workspace when
 // Config.RestrictWorkspace is true):
 //   - read_file, write_file, edit_file, exec
+//   - telegram_sendfile, telegram_getuser (need a Telegram request context)
 //
 // No VFS, no sandbox, no web, no fallback, no skills.
 package ai

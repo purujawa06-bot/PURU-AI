@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func writeCfg(t *testing.T, content string) string {
@@ -39,6 +40,34 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if c.Port != DefaultHealthPort {
 		t.Errorf("Port = %d, want %d", c.Port, DefaultHealthPort)
+	}
+	if !c.ShowToolsPreview() {
+		t.Errorf("ShowToolsPreview default harus true")
+	}
+	if c.LoopDelaySeconds != DefaultLoopDelaySeconds {
+		t.Errorf("LoopDelaySeconds = %d, want %d", c.LoopDelaySeconds, DefaultLoopDelaySeconds)
+	}
+}
+
+func TestToolsPreviewExplicit(t *testing.T) {
+	p := writeCfg(t, `{"telegram_bot_token":"x","model":{"base_url":"http://m/v1","model":"puru"},"tools_preview":false,"loop_delay_seconds":10}`)
+	c, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.ShowToolsPreview() {
+		t.Errorf("ShowToolsPreview harus false bila di-set false")
+	}
+	if c.LoopDelay() != 10*time.Second {
+		t.Errorf("LoopDelay = %v, want 10s", c.LoopDelay())
+	}
+	p = writeCfg(t, `{"telegram_bot_token":"x","model":{"base_url":"http://m/v1","model":"puru"},"loop_delay_seconds":999}`)
+	c, err = Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.LoopDelaySeconds != MaxLoopDelaySeconds {
+		t.Errorf("LoopDelaySeconds harus di-clamp ke %d, got %d", MaxLoopDelaySeconds, c.LoopDelaySeconds)
 	}
 }
 

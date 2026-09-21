@@ -39,7 +39,7 @@ func main() {
 		log.Fatalf("ai model: %v", err)
 	}
 	hist := history.New(cfg.HistoryDir())
-	mem := memory.New(llm, cfg.MemoryPath())
+	mem := memory.New(llm, cfg.Workspace)
 	agent := &ai.Agent{Client: llm, Config: cfg, HTTP: hc}
 	ctx := context.Background()
 
@@ -86,12 +86,26 @@ func process(ctx context.Context, agent *ai.Agent, hist *history.Store, mem *mem
 			sb.WriteString(m.Role + ": " + m.Text() + "\n")
 		}
 		cctx, cancel := context.WithTimeout(ctx, 90*time.Second)
-		_, _ = mem.Compact(cctx, mem.Read(), sb.String())
+		rel, cerr := mem.Compact(cctx, sb.String())
 		cancel()
-		_ = hist.Clear(chatID)
-		stored = nil
+		if cerr != nil {
+			log.Printf("compact: %v", cerr)
+		} else if rel != "" {
+			_ = hist.Clear(chatID)
+			note := &messages.Message{Role: "system"}
+			messages.SetContentString(note, memory.SummaryNote(rel))
+			_ = hist.Set(chatID, []*messages.Message{note})
+			stored = []*messages.Message{note}
+			fmt.Printf("(ringkasan: %s)\n", rel)
+		}
 	}
-	res := agent.ProcessMessage(ctx, prompt, stored, &ai.ProcessOptions{ChatID: chatID})
+	opts := &ai.ProcessOptions{ChatID: chatID}
+	if cfg.ShowToolsPreview() {
+		opts.OnTool = func(name string, args map[string]any) {
+			fmt.Printf("🔧 %s\n", name)
+		}
+	}
+	res := agent.ProcessMessage(ctx, prompt, stored, opts)
 	saved := append(append([]*messages.Message{}, stored...), userMsg(prompt)...)
 	saved = append(saved, messages.SanitizeHistoryMessages(res.ResponseMessages)...)
 	_ = hist.Set(chatID, saved)

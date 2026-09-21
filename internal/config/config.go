@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 const (
@@ -19,6 +20,11 @@ const (
 	// DefaultHealthHost/Port: health check HTTP saja (GET /healthz).
 	DefaultHealthHost = "0.0.0.0"
 	DefaultHealthPort = 8080
+	// DefaultToolsPreview: tampilkan tools yang dipakai AI secara live.
+	DefaultToolsPreview = true
+	// DefaultLoopDelaySeconds: jeda antar loop/iterasi agent.
+	DefaultLoopDelaySeconds = 3
+	MaxLoopDelaySeconds     = 60
 )
 
 // ModelConfig is the single OpenAI-compatible endpoint. No fallback,
@@ -41,9 +47,14 @@ type Config struct {
 	MaxIterations     int  `json:"max_iterations"`
 	HistoryTokenLimit int  `json:"history_token_limit"`
 	// Host/Port hanya untuk health check HTTP (GET /healthz).
-	Host      string `json:"host"`
-	Port      int    `json:"port"`
-	ConfigDir string `json:"-"`
+	Host string `json:"host"`
+	Port int    `json:"port"`
+	// ToolsPreview: bila true (default), bot menampilkan live tools apa yang
+	// dipakai AI via edit message. Pointer agar "tidak diisi" = true.
+	ToolsPreview *bool `json:"tools_preview"`
+	// LoopDelaySeconds: jeda antar loop/iterasi agent (default 3, maks 60).
+	LoopDelaySeconds int    `json:"loop_delay_seconds"`
+	ConfigDir        string `json:"-"`
 }
 
 // DefaultDir returns $HOME/.puru (/root/.puru for root).
@@ -106,6 +117,12 @@ func Load(path string) (*Config, error) {
 	if c.Port <= 0 {
 		c.Port = DefaultHealthPort
 	}
+	if c.LoopDelaySeconds <= 0 {
+		c.LoopDelaySeconds = DefaultLoopDelaySeconds
+	}
+	if c.LoopDelaySeconds > MaxLoopDelaySeconds {
+		c.LoopDelaySeconds = MaxLoopDelaySeconds
+	}
 	if c.Workspace == "" {
 		c.Workspace = filepath.Join(DefaultDir(), "workspace")
 	}
@@ -121,6 +138,23 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("buat history dir: %w", err)
 	}
 	return &c, nil
+}
+
+// ShowToolsPreview reports whether live tool-call preview is enabled
+// (default true when unset).
+func (c *Config) ShowToolsPreview() bool {
+	if c == nil || c.ToolsPreview == nil {
+		return DefaultToolsPreview
+	}
+	return *c.ToolsPreview
+}
+
+// LoopDelay is the pause between agent iterations.
+func (c *Config) LoopDelay() time.Duration {
+	if c == nil || c.LoopDelaySeconds <= 0 {
+		return time.Duration(DefaultLoopDelaySeconds) * time.Second
+	}
+	return time.Duration(c.LoopDelaySeconds) * time.Second
 }
 
 // MemoryPath is <workspace>/MEMORY.md — single memory file, local.

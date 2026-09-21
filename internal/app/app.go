@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -72,24 +73,72 @@ func (a *App) Handle(ctx context.Context, upd *telegram.Update) error {
 
 func isCommand(s string) bool {
 	t := strings.TrimSpace(s)
-	return strings.HasPrefix(t, "/start") || strings.HasPrefix(t, "/menu") ||
-		strings.HasPrefix(t, "/clear") || strings.HasPrefix(t, "/reset") ||
-		strings.HasPrefix(t, "/help")
+	return strings.HasPrefix(t, "/help") ||
+		strings.HasPrefix(t, "/clear") ||
+		strings.HasPrefix(t, "/token")
 }
 
 func (a *App) handleCommand(ctx context.Context, msg *telegram.Message) error {
 	t := strings.TrimSpace(msg.Text)
 	switch {
-	case strings.HasPrefix(t, "/start"), strings.HasPrefix(t, "/menu"), strings.HasPrefix(t, "/help"):
-		return a.safeReply(ctx, msg, "PURU-AI lightweight — kirim pesan apa saja. /clear = hapus history.", true)
-	default: // /clear, /reset
+	case strings.HasPrefix(t, "/token"):
+		return a.safeReply(ctx, msg, tokenInfo(history.TokenCount(a.hist.Get(msg.From.ID)), a.cfg.HistoryTokenLimit), true)
+	case strings.HasPrefix(t, "/help"):
+		return a.safeReply(ctx, msg, "PURU-AI lightweight — kirim pesan apa saja.\n/clear = hapus history.\n/token = info pemakaian token memory.", true)
+	default: // /clear
 		_ = a.hist.Clear(msg.From.ID)
 		return a.safeReply(ctx, msg, "History dihapus.", true)
 	}
 }
 
-// maybeCompact checks the 30k token trigger BEFORE the new prompt: when hit,
-// summarize old memory + full history into MEMORY.md, then wipe history clean.
+// tokenInfo reports history usage vs the compaction limit: how full memory is
+// before it gets summarized (100%) and wiped.
+func tokenInfo(used, limit int) string {
+	if limit <= 0 {
+		limit = 30000
+	}
+	if used < 0 {
+		used = 0
+	}
+	pct := float64(used) / float64(limit) * 100
+	left := limit - used
+	if left < 0 {
+		left = 0
+	}
+	return "📊 Token memory: " + fmtInt(used) + " / " + fmtInt(limit) +
+		" (" + fmtPct(pct) + ")\nSummarize + hapus history saat 100% (sisa " + fmtInt(left) + ")."
+}
+
+// fmtInt formats n with '.' thousands separator (id style): 30000 -> "30.000".
+func fmtInt(n int) string {
+	s := strconv.Itoa(n)
+	neg := strings.HasPrefix(s, "-")
+	if neg {
+		s = s[1:]
+	}
+	var b strings.Builder
+	for i, c := range s {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			b.WriteByte('.')
+		}
+		b.WriteRune(c)
+	}
+	if neg {
+		return "-" + b.String()
+	}
+	return b.String()
+}
+
+// fmtPct formats a percent with one comma decimal: 4.06 -> "4,1%".
+func fmtPct(p float64) string {
+	s := strconv.FormatFloat(p, 'f', 1, 64)
+	return strings.Replace(s, ".", ",", 1) + "%"
+}
+
+// maybeCompact checks the token trigger BEFORE the new prompt: when hit,
+// summarize full history into context/YYYY-MM-DD_title.md, wipe history, and
+// inject back ONLY the summary path as a system note (content is never
+// injected — the AI reads the file when it needs old context).
 func (a *App) maybeCompact(ctx context.Context, userID int64, stored []*messages.Message) []*messages.Message {
 	limit := a.cfg.HistoryTokenLimit
 	if limit <= 0 || a.mem == nil || len(stored) == 0 {
@@ -98,18 +147,26 @@ func (a *App) maybeCompact(ctx context.Context, userID int64, stored []*messages
 	if history.TokenCount(stored) < limit {
 		return stored
 	}
-	oldMem := a.mem.Read()
 	cctx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
-	if _, err := a.mem.Compact(cctx, oldMem, historyToText(stored)); err != nil {
+	rel, err := a.mem.Compact(cctx, historyToText(stored))
+	if err != nil {
 		log.Printf("[memory] compact failed: %v", err)
+		return stored
+	}
+	if rel == "" {
 		return stored
 	}
 	if err := a.hist.Clear(userID); err != nil {
 		log.Printf("[memory] clear history failed: %v", err)
 	}
-	log.Printf("[memory] compacted + history wiped for user %d", userID)
-	return nil
+	note := &messages.Message{Role: "system"}
+	messages.SetContentString(note, memory.SummaryNote(rel))
+	if err := a.hist.Set(userID, []*messages.Message{note}); err != nil {
+		log.Printf("[memory] save note failed: %v", err)
+	}
+	log.Printf("[memory] compacted -> %s for user %d", rel, userID)
+	return []*messages.Message{note}
 }
 
 func historyToText(msgs []*messages.Message) string {
@@ -136,7 +193,7 @@ func historyToText(msgs []*messages.Message) string {
 func (a *App) processMessage(ctx context.Context, msg *telegram.Message, userMessage string) error {
 	userID := msg.From.ID
 	stored := a.hist.Get(userID)
-	// No pruning/capping — history grows until the 30k compaction trigger.
+	// No pruning/capping — history grows until the compaction trigger.
 	stored = a.maybeCompact(ctx, userID, stored)
 
 	thID, err := a.sendThinking(ctx, msg)
@@ -144,7 +201,18 @@ func (a *App) processMessage(ctx context.Context, msg *telegram.Message, userMes
 		return err
 	}
 
-	res := a.agent.ProcessMessage(ctx, userMessage, stored, &ai.ProcessOptions{ChatID: userID})
+	opts := &ai.ProcessOptions{ChatID: userID}
+	if msg.From != nil {
+		opts.User = &ai.TelegramUser{
+			ID: msg.From.ID, Username: msg.From.Username,
+			FirstName: msg.From.FirstName, LastName: msg.From.LastName,
+		}
+	}
+	if a.cfg.ShowToolsPreview() {
+		opts.OnTool = a.previewHook(ctx, msg.Chat.ID, thID)
+	}
+
+	res := a.agent.ProcessMessage(ctx, userMessage, stored, opts)
 
 	saved := make([]*messages.Message, 0, len(stored)+1+len(res.ResponseMessages))
 	saved = append(saved, stored...)
@@ -163,6 +231,54 @@ func (a *App) processMessage(ctx context.Context, msg *telegram.Message, userMes
 
 func (a *App) sendThinking(ctx context.Context, msg *telegram.Message) (int64, error) {
 	return a.tg.SendMessage(ctx, msg.Chat.ID, "🤔 ...", map[string]any{"reply_to_message_id": msg.MessageID})
+}
+
+// previewHook returns an OnTool callback that live-edits the thinking message
+// with the tools being used (throttled: max ~1 edit per 1.2s).
+func (a *App) previewHook(ctx context.Context, chatID, msgID int64) func(string, map[string]any) {
+	var mu sync.Mutex
+	lines := []string{}
+	var last time.Time
+	return func(name string, args map[string]any) {
+		mu.Lock()
+		defer mu.Unlock()
+		lines = append(lines, "🔧 "+name+" "+truncPreview(toolArgPreview(name, args)))
+		if len(lines) > 6 {
+			lines = lines[len(lines)-6:]
+		}
+		if time.Since(last) < 1200*time.Millisecond {
+			return
+		}
+		last = time.Now()
+		if err := a.tg.EditMessage(ctx, chatID, msgID, strings.Join(lines, "\n")); err != nil {
+			log.Printf("[app] preview edit: %v", err)
+		}
+	}
+}
+
+// toolArgPreview shows the most relevant arg for a tool call.
+func toolArgPreview(name string, args map[string]any) string {
+	switch name {
+	case "read_file", "write_file", "edit_file", "telegram_sendfile":
+		return previewStr(args["path"])
+	case "exec":
+		return previewStr(args["command"])
+	default:
+		return ""
+	}
+}
+
+func previewStr(v any) string {
+	s, _ := v.(string)
+	return strings.TrimSpace(s)
+}
+
+func truncPreview(s string) string {
+	s = strings.ReplaceAll(s, "\n", " ")
+	if len(s) > 60 {
+		return s[:60] + "…"
+	}
+	return s
 }
 
 func (a *App) safeReply(ctx context.Context, msg *telegram.Message, text string, replyTo bool) error {

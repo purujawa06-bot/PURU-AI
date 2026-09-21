@@ -87,6 +87,37 @@ func TestGetUpdatesMapsTypes(t *testing.T) {
 	}
 }
 
+func TestGetTelegramUser(t *testing.T) {
+	api, done := fakeBot(t, "/getChat", `{"ok":true,"result":{"id":123,"type":"private","username":"siti","first_name":"Siti","last_name":"Ayu","bio":"halo"}}`, 200)
+	defer done()
+	u, err := api.GetTelegramUser(context.Background(), 123)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.ID != 123 || u.Username != "siti" || u.FirstName != "Siti" || u.LastName != "Ayu" || u.Bio != "halo" {
+		t.Fatalf("got %+v", u)
+	}
+}
+
+func TestEditMessage(t *testing.T) {
+	api, done := fakeBot(t, "/editMessageText", `{"ok":true,"result":{"message_id":5,"chat":{"id":1,"type":"private"},"date":1,"text":"x"}}`, 200)
+	defer done()
+	if err := api.EditMessage(context.Background(), 1, 5, "🔧 read_file"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSetCommands(t *testing.T) {
+	api, done := fakeBot(t, "/setMyCommands", `{"ok":true,"result":true}`, 200)
+	defer done()
+	if err := api.SetCommands(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if cmds := botCommands(); len(cmds) != 3 || cmds[0].Command != "help" || cmds[1].Command != "clear" || cmds[2].Command != "token" {
+		t.Fatalf("menu harus tepat /help /clear /token, got %+v", cmds)
+	}
+}
+
 func TestConflictWrapped(t *testing.T) {
 	api, done := fakeBot(t, "/getUpdates", `{"ok":false,"error_code":409,"description":"Conflict: terminated by other getUpdates request"}`, 200)
 	defer done()

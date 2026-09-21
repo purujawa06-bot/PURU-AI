@@ -1,10 +1,12 @@
 // Package ai implements the lightweight local tool-calling agent.
 //
-// Single model from config.json, exactly 4 local tools
-// (read_file, write_file, edit_file, exec), no fallback: one executor run per
-// request, max iterations from config (default 500). Every model call streams,
-// and API errors are retried up to 5x total (2s delay) per call — failed tools
-// are never re-run because retries happen inside the model call, not the run.
+// Single model from config.json, 6 tools (read_file, write_file, edit_file,
+// exec, telegram_sendfile, telegram_getuser), no fallback: one executor run
+// per request, max iterations from config (default 500), pause between
+// iterations from config (loop_delay_seconds, default 3s). Every model call
+// streams, and API errors are retried up to 5x total (2s delay) per call —
+// failed tools are never re-run because retries happen inside the model call,
+// not the run.
 package ai
 
 import (
@@ -75,14 +77,20 @@ type Tool struct {
 
 // Agent owns one model + local workspace. No per-user overrides.
 type Agent struct {
-	Client     llms.Model
-	Config     *config.Config
-	HTTP       *http.Client
+	Client   llms.Model
+	Config   *config.Config
+	HTTP     *http.Client
+	Telegram TelegramClient
+	// ToolsBuild overrides tool construction (default BuildTools).
 	ToolsBuild func(opts *ProcessOptions) (map[string]*Tool, error)
 }
 
 type ProcessOptions struct {
 	ChatID int64
+	// User is the Telegram requester (nil in CLI).
+	User *TelegramUser
+	// OnTool fires synchronously on every tool call (live preview hook).
+	OnTool func(name string, args map[string]any)
 }
 
 type ProcessResult struct {
@@ -283,6 +291,8 @@ type requestAgent struct {
 	functions    []llms.FunctionDefinition
 	temperature  float64
 	chatTemplate prompts.ChatPromptTemplate
+	loopDelay    time.Duration
+	plans        int
 
 	totalTokens      int
 	lastUsage        Usage
@@ -292,7 +302,7 @@ type requestAgent struct {
 	lastReasoning    string
 }
 
-func newRequestAgent(model llms.Model, system string, history []*messages.Message, toolMap map[string]*Tool, temperature float64) *requestAgent {
+func newRequestAgent(model llms.Model, system string, history []*messages.Message, toolMap map[string]*Tool, temperature float64, loopDelay time.Duration) *requestAgent {
 	conv := toChatHistory(history)
 	if conv == nil {
 		conv = []llms.ChatMessage{}
@@ -304,6 +314,7 @@ func newRequestAgent(model llms.Model, system string, history []*messages.Messag
 		functions:   toFunctionDefinitions(toolMap),
 		temperature: temperature,
 		history:     conv,
+		loopDelay:   loopDelay,
 		chatTemplate: prompts.NewChatPromptTemplate([]prompts.MessageFormatter{
 			systemMessageFormatter(system),
 			prompts.MessagesPlaceholder{VariableName: "chat_history"},
@@ -319,6 +330,14 @@ func (ra *requestAgent) Plan(
 	inputs map[string]string,
 	options ...chains.ChainCallOption,
 ) ([]schema.AgentAction, *schema.AgentFinish, error) {
+	// Jeda antar loop (bukan sebelum iterasi pertama); hormat ctx cancel.
+	if ra.plans > 0 && ra.loopDelay > 0 {
+		sleepCtx(ctx, ra.loopDelay)
+		if ctx.Err() != nil {
+			return nil, nil, ctx.Err()
+		}
+	}
+	ra.plans++
 	pv, err := ra.chatTemplate.FormatPrompt(map[string]any{
 		"input":            inputs["input"],
 		"chat_history":     ra.history,
@@ -457,6 +476,23 @@ func (a *Agent) temperature() float64 {
 	return 0
 }
 
+func (a *Agent) loopDelay() time.Duration {
+	if a.Config != nil {
+		return a.Config.LoopDelay()
+	}
+	return config.DefaultLoopDelaySeconds * time.Second
+}
+
+// sleepCtx sleeps d or until ctx is done.
+func sleepCtx(ctx context.Context, d time.Duration) {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+	case <-t.C:
+	}
+}
+
 func (a *Agent) toolsFor(opts *ProcessOptions) (map[string]*Tool, error) {
 	if a.ToolsBuild != nil {
 		return a.ToolsBuild(opts)
@@ -472,7 +508,7 @@ func (a *Agent) runOnce(ctx context.Context, system string, history []*messages.
 		return nil, errNoModel
 	}
 	maxSteps := a.maxSteps()
-	ra := newRequestAgent(a.Client, system, history, toolMap, a.temperature())
+	ra := newRequestAgent(a.Client, system, history, toolMap, a.temperature(), a.loopDelay())
 
 	executor := agents.NewExecutor(ra,
 		agents.WithMaxIterations(maxSteps),
@@ -517,9 +553,10 @@ func (a *Agent) runOnce(ctx context.Context, system string, history []*messages.
 }
 
 // ProcessMessage runs one request: NO history trimming here — the caller
-// (app layer) compacts history into MEMORY.md when the 30k token limit is
-// hit, then wipes it. Single executor run, no provider fallback; API errors
-// are retried per model call (5x total, 2s delay) inside the model wrapper.
+// (app layer) compacts history into a context/*.md summary file when the
+// token limit is hit, then wipes it (only the file path is injected back).
+// Single executor run, no provider fallback; API errors are retried per model
+// call (5x total, 2s delay) inside the model wrapper.
 func (a *Agent) ProcessMessage(ctx context.Context, userMessage string, history []*messages.Message, opts *ProcessOptions) *ProcessResult {
 	memoryContent := ""
 	if a.Config != nil {

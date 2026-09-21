@@ -11,5 +11,7 @@
   "max_iterations": 500,
   "history_token_limit": 30000,
   "host": "0.0.0.0",
-  "port": 8080
+  "port": 8080,
+  "tools_preview": true,
+  "loop_delay_seconds": 3
 }

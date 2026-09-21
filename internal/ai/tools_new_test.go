@@ -12,12 +12,12 @@ func testAgent(ws string) *Agent {
 	return &Agent{Config: &config.Config{Workspace: ws, RestrictWorkspace: true}}
 }
 
-func TestOnlyFourTools(t *testing.T) {
+func TestSixTools(t *testing.T) {
 	tools := BuildTools(testAgent(t.TempDir()), nil)
-	if len(tools) != 4 {
-		t.Fatalf("tools = %d, want exactly 4", len(tools))
+	if len(tools) != 6 {
+		t.Fatalf("tools = %d, want exactly 6", len(tools))
 	}
-	for _, n := range []string{"read_file", "write_file", "edit_file", "exec"} {
+	for _, n := range []string{"read_file", "write_file", "edit_file", "exec", "telegram_sendfile", "telegram_getuser"} {
 		if tools[n] == nil {
 			t.Fatalf("tool %s missing", n)
 		}
