@@ -1,402 +1,210 @@
-// Package app wires the Telegram update handling together: command dispatch,
-// message pipeline (prune / cap / sanitize / token / memory), safe replies and
-// file handling — a faithful port of the old src/bot.ts.
+// Package app: slim Telegram handler for the lightweight local assistant.
+// Text only. No uploads, no vision, no scheduler, no web, no usage tracking.
 package app
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/purujawa06-bot/PURU-AI/internal/ai"
-	"github.com/purujawa06-bot/PURU-AI/internal/auth"
 	"github.com/purujawa06-bot/PURU-AI/internal/config"
 	"github.com/purujawa06-bot/PURU-AI/internal/history"
 	"github.com/purujawa06-bot/PURU-AI/internal/memory"
 	"github.com/purujawa06-bot/PURU-AI/internal/messages"
-	"github.com/purujawa06-bot/PURU-AI/internal/scheduler"
-	"github.com/purujawa06-bot/PURU-AI/internal/settings"
-	"github.com/purujawa06-bot/PURU-AI/internal/skills"
 	"github.com/purujawa06-bot/PURU-AI/internal/telegram"
-	"github.com/purujawa06-bot/PURU-AI/internal/usage"
-	"github.com/purujawa06-bot/PURU-AI/internal/vfs"
 )
 
-const (
-	maxMessageLength = 4096
-	maxUploadSize    = 10 * 1024 * 1024
-	pipelineUsers    = 5
-)
-
-var knownCommands = []string{"/start", "/menu", "/clear", "/token", "/info", "/reset", "/login", "/pw"}
+const maxMessageLength = 4096
 
 type App struct {
-	cfg      *config.Config
-	tg       *telegram.API
-	hist     *history.Store
-	vfs      *vfs.VFS
-	agent    *ai.Agent
-	mem      *memory.Manager
-	catalog  *skills.Catalog
-	registry *skills.Registry
-	sched    *scheduler.Manager
-	// Usage is optional; when set, every model reply's token usage is recorded
-	// to the usage store (powers the web dashboard Usage section).
-	Usage    *usage.Manager
-	Settings *settings.Manager
-	Auth     *auth.Manager
-	busy     sync.Map // set of user IDs with an in-flight request
-	memMu    sync.Map // per-user mutex serializing background memory updates
+	cfg   *config.Config
+	tg    *telegram.API
+	hist  *history.Store
+	agent *ai.Agent
+	mem   *memory.Manager
+	busy  sync.Map
 }
 
-func New(cfg *config.Config, tg *telegram.API, h *history.Store, v *vfs.VFS, a *ai.Agent, m *memory.Manager, c *skills.Catalog, r *skills.Registry, sched *scheduler.Manager) *App {
-	app := &App{cfg: cfg, tg: tg, hist: h, vfs: v, agent: a, mem: m, catalog: c, registry: r, sched: sched}
-	a.ToolsBuild = func(opts *ai.ProcessOptions) (map[string]*ai.Tool, error) {
-		return ai.BuildTools(a, opts), nil
-	}
-	// Wire scheduler hooks
-	if sched != nil {
-		a.ScheduleTask = func(ctx context.Context, userID int64, prompt string, runAt int64, tz string) (*scheduler.Task, error) {
-			return sched.Schedule(ctx, userID, prompt, runAt, tz)
-		}
-		a.ListSchedules = func(ctx context.Context, userID int64) ([]*scheduler.Task, error) {
-			return sched.List(ctx, userID)
-		}
-		a.CancelSchedule = func(ctx context.Context, userID int64, id string) error {
-			return sched.Cancel(ctx, userID, id)
-		}
-		sched.SetRunner(app.runScheduled)
-	}
-	return app
+func New(cfg *config.Config, tg *telegram.API, h *history.Store, a *ai.Agent, m *memory.Manager) *App {
+	return &App{cfg: cfg, tg: tg, hist: h, agent: a, mem: m}
 }
 
-// tryAcquire marks a user as busy; false means the user already has an
-// in-flight request and the new one must be rejected.
 func (a *App) tryAcquire(userID int64) bool {
 	_, loaded := a.busy.LoadOrStore(userID, struct{}{})
 	return !loaded
 }
 
-func (a *App) release(userID int64) {
-	a.busy.Delete(userID)
-}
+func (a *App) release(userID int64) { a.busy.Delete(userID) }
 
-// memMuFor returns the per-user mutex serializing background memory updates so
-// two memory refreshes for the same user can never race on meta/counter.
-func (a *App) memMuFor(userID int64) *sync.Mutex {
-	v, _ := a.memMu.LoadOrStore(userID, &sync.Mutex{})
-	return v.(*sync.Mutex)
-}
-
-// Handle dispatches one Telegram update. Processing runs in a goroutine so
-// different users are handled in parallel; a second update from the same user
-// while one is still in-flight gets a busy reply instead of queueing.
+// Handle dispatches one update async per user (busy-guarded).
 func (a *App) Handle(ctx context.Context, upd *telegram.Update) error {
 	if upd.Message == nil || upd.Message.From == nil || upd.Message.Chat == nil {
 		return nil
 	}
 	msg := upd.Message
-	if msg.Document == nil && len(msg.Photo) == 0 && msg.Text == "" {
+	if strings.TrimSpace(msg.Text) == "" {
 		return nil
 	}
 	userID := msg.From.ID
-
-	// Non-AI commands run immediately and are never swallowed by the busy
-	// guard: they don't touch the per-user AI pipeline. Only plain text, /ai
-	// commands, documents and photos are serialized per user.
-	if msg.Document == nil && isCommandText(msg.Text) {
-		direct, _ := splitCommand(msg.Text)
-		if direct != "/ai" {
-			go func() {
-				if err := a.handleText(ctx, msg); err != nil {
-					log.Printf("[app] async command for user %d failed: %v", userID, err)
-				}
-			}()
-			return nil
-		}
+	if isCommand(msg.Text) {
+		go func() {
+			if err := a.handleCommand(ctx, msg); err != nil {
+				log.Printf("[app] command user %d: %v", userID, err)
+			}
+		}()
+		return nil
 	}
-
 	if !a.tryAcquire(userID) {
-		return a.safeReply(ctx, msg, "⏳ Masih ada yang lagi diproses, tunggu sebentar ya...", true)
+		return a.safeReply(ctx, msg, "⏳ Masih ada yang diproses, tunggu sebentar ya...", true)
 	}
 	go func() {
 		defer a.release(userID)
-		var err error
-		if msg.Document != nil {
-			err = a.handleDocument(ctx, msg)
-		} else if len(msg.Photo) > 0 {
-			err = a.handlePhoto(ctx, msg)
-		} else {
-			err = a.handleText(ctx, msg)
-		}
-		if err != nil {
-			log.Printf("[app] async handle for user %d failed: %v", userID, err)
+		if err := a.processMessage(ctx, msg, msg.Text); err != nil {
+			log.Printf("[app] handle user %d: %v", userID, err)
 		}
 	}()
 	return nil
 }
 
-func (a *App) isGroup(msg *telegram.Message) bool {
-	return msg.Chat.Type == "group" || msg.Chat.Type == "supergroup"
+func isCommand(s string) bool {
+	t := strings.TrimSpace(s)
+	return strings.HasPrefix(t, "/start") || strings.HasPrefix(t, "/menu") ||
+		strings.HasPrefix(t, "/clear") || strings.HasPrefix(t, "/reset") ||
+		strings.HasPrefix(t, "/help")
 }
 
-// ---------------------------------------------------------------------------
-// Long message => file fallback
-// ---------------------------------------------------------------------------
-
-type sendTextFn func(parseMode string) error
-
-func (a *App) withMarkdownFallback(fn sendTextFn) error {
-	err := fn("Markdown")
-	if err == nil {
-		return nil
+func (a *App) handleCommand(ctx context.Context, msg *telegram.Message) error {
+	t := strings.TrimSpace(msg.Text)
+	switch {
+	case strings.HasPrefix(t, "/start"), strings.HasPrefix(t, "/menu"), strings.HasPrefix(t, "/help"):
+		return a.safeReply(ctx, msg, "PURU-AI lightweight — kirim pesan apa saja. /clear = hapus history.", true)
+	default: // /clear, /reset
+		_ = a.hist.Clear(msg.From.ID)
+		return a.safeReply(ctx, msg, "History dihapus.", true)
 	}
-	var te *telegram.TelegramError
-	if errors.As(err, &te) && te.Code == 400 && strings.Contains(te.Message, "parse entities") {
-		return fn("")
-	}
-	return err
 }
 
-func optsWithReply(replyTo *telegram.Message) map[string]any {
-	if replyTo != nil && replyTo.MessageID > 0 {
-		return map[string]any{"reply_to_message_id": replyTo.MessageID}
+// maybeCompact checks the 30k token trigger BEFORE the new prompt: when hit,
+// summarize old memory + full history into MEMORY.md, then wipe history clean.
+func (a *App) maybeCompact(ctx context.Context, userID int64, stored []*messages.Message) []*messages.Message {
+	limit := a.cfg.HistoryTokenLimit
+	if limit <= 0 || a.mem == nil || len(stored) == 0 {
+		return stored
 	}
-	return map[string]any{}
+	if history.TokenCount(stored) < limit {
+		return stored
+	}
+	oldMem := a.mem.Read()
+	cctx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+	if _, err := a.mem.Compact(cctx, oldMem, historyToText(stored)); err != nil {
+		log.Printf("[memory] compact failed: %v", err)
+		return stored
+	}
+	if err := a.hist.Clear(userID); err != nil {
+		log.Printf("[memory] clear history failed: %v", err)
+	}
+	log.Printf("[memory] compacted + history wiped for user %d", userID)
+	return nil
+}
+
+func historyToText(msgs []*messages.Message) string {
+	var sb strings.Builder
+	for _, m := range msgs {
+		if m == nil {
+			continue
+		}
+		text := m.Text()
+		if len(text) > 2000 {
+			text = text[:2000]
+		}
+		if strings.TrimSpace(text) == "" {
+			continue
+		}
+		sb.WriteString(m.Role)
+		sb.WriteString(": ")
+		sb.WriteString(text)
+		sb.WriteString("\n")
+	}
+	return sb.String()
+}
+
+func (a *App) processMessage(ctx context.Context, msg *telegram.Message, userMessage string) error {
+	userID := msg.From.ID
+	stored := a.hist.Get(userID)
+	// No pruning/capping — history grows until the 30k compaction trigger.
+	stored = a.maybeCompact(ctx, userID, stored)
+
+	thID, err := a.sendThinking(ctx, msg)
+	if err != nil {
+		return err
+	}
+
+	res := a.agent.ProcessMessage(ctx, userMessage, stored, &ai.ProcessOptions{ChatID: userID})
+
+	saved := make([]*messages.Message, 0, len(stored)+1+len(res.ResponseMessages))
+	saved = append(saved, stored...)
+	u := &messages.Message{Role: "user"}
+	messages.SetContentString(u, userMessage)
+	saved = append(saved, u)
+	saved = append(saved, messages.SanitizeHistoryMessages(res.ResponseMessages)...)
+	_ = a.hist.Set(userID, saved)
+
+	if err := a.safeSend(ctx, msg, res.Text); err != nil {
+		log.Printf("[app] send reply failed: %v", err)
+	}
+	_ = a.tg.DeleteMessage(ctx, msg.Chat.ID, thID)
+	return nil
+}
+
+func (a *App) sendThinking(ctx context.Context, msg *telegram.Message) (int64, error) {
+	raw, err := a.tg.SendMessage(ctx, msg.Chat.ID, "🤔 ...", map[string]any{"reply_to_message_id": msg.MessageID})
+	if err != nil {
+		return 0, err
+	}
+	return extractMessageID(raw), nil
 }
 
 func (a *App) safeReply(ctx context.Context, msg *telegram.Message, text string, replyTo bool) error {
-	o := optsWithReply(msg)
-	if !replyTo {
-		o = map[string]any{}
+	opts := map[string]any{}
+	if replyTo && msg.MessageID > 0 {
+		opts["reply_to_message_id"] = msg.MessageID
 	}
 	return a.withMarkdownFallback(func(pm string) error {
-		opts := copyOpts(o)
-		if pm != "" {
-			opts["parse_mode"] = pm
+		o := map[string]any{}
+		for k, v := range opts {
+			o[k] = v
 		}
-		_, err := a.tg.SendMessage(ctx, msg.Chat.ID, text, opts)
+		if pm != "" {
+			o["parse_mode"] = pm
+		}
+		_, err := a.tg.SendMessage(ctx, msg.Chat.ID, text, o)
 		return err
 	})
 }
 
-// safeSend delivers the final AI reply as a brand-new message (replied to the
-// user's message). Oversized replies fall back to a short note + a file.
 func (a *App) safeSend(ctx context.Context, msg *telegram.Message, text string) error {
 	if len(text) > maxMessageLength {
 		_ = a.safeReply(ctx, msg, "⚠️ Respon terlalu panjang, dikirim sebagai file.", false)
 		_, err := a.tg.SendFile(ctx, msg.Chat.ID, "respon.md", []byte(text), "sendDocument",
-			map[string]any{"caption": "Respon lengkap terlalu panjang untuk ditampilkan di chat."})
+			map[string]any{"caption": "Respon lengkap."})
 		return err
 	}
 	return a.safeReply(ctx, msg, text, true)
 }
 
-func (a *App) safeEdit(ctx context.Context, chatID, msgID int64, text string) error {
-	if len(text) > maxMessageLength {
-		// edit placeholder to a short note, then send the full text as a file
-		_ = a.withMarkdownFallback(func(pm string) error {
-			opts := map[string]any{}
-			if pm != "" {
-				opts["parse_mode"] = pm
-			}
-			_, err := a.tg.EditMessageText(ctx, chatID, msgID, "⚠️ Respon terlalu panjang, dikirim sebagai file.", opts)
-			return err
-		})
-		_, err := a.tg.SendFile(ctx, chatID, "respon.md", []byte(text), "sendDocument",
-			map[string]any{"caption": "Respon lengkap terlalu panjang untuk ditampilkan di chat."})
+func (a *App) withMarkdownFallback(fn func(parseMode string) error) error {
+	if err := fn("Markdown"); err == nil {
+		return nil
+	} else {
+		var te *telegram.TelegramError
+		if errors.As(err, &te) && te.Code == 400 && strings.Contains(te.Message, "parse entities") {
+			return fn("")
+		}
 		return err
-	}
-	return a.withMarkdownFallback(func(pm string) error {
-		opts := map[string]any{}
-		if pm != "" {
-			opts["parse_mode"] = pm
-		}
-		_, err := a.tg.EditMessageText(ctx, chatID, msgID, text, opts)
-		return err
-	})
-}
-
-func copyOpts(o map[string]any) map[string]any {
-	out := make(map[string]any, len(o))
-	for k, v := range o {
-		out[k] = v
-	}
-	return out
-}
-
-func extractMessageID(raw json.RawMessage) (int64, error) {
-	var r struct {
-		MessageID int64 `json:"message_id"`
-	}
-	if err := json.Unmarshal(raw, &r); err != nil {
-		return 0, err
-	}
-	return r.MessageID, nil
-}
-
-// sendBuffer dispatches a binary file by extension (audio/video/document).
-func (a *App) sendBuffer(ctx context.Context, chat *telegram.Message, data []byte, filename, caption string) error {
-	ext := strings.ToLower(extFromName(filename))
-	method := "sendDocument"
-	switch ext {
-	case "mp3", "wav", "flac", "ogg", "m4a", "aac", "wma":
-		method = "sendAudio"
-	case "mp4", "webm", "avi", "mkv", "mov":
-		method = "sendVideo"
-	}
-	opts := map[string]any{}
-	if caption != "" {
-		opts["caption"] = caption
-	}
-	_, err := a.tg.SendFile(ctx, chat.Chat.ID, filename, data, method, opts)
-	return err
-}
-
-func extFromName(name string) string {
-	if i := strings.LastIndex(name, "."); i >= 0 {
-		return name[i+1:]
-	}
-	return ""
-}
-
-// ---------------------------------------------------------------------------
-// Token formatting
-// ---------------------------------------------------------------------------
-
-type msgCounter struct{ user, assistant int }
-
-func countRoles(msgs []*messages.Message) (user, assistant int) {
-	for _, m := range msgs {
-		if m == nil {
-			continue
-		}
-		if m.Role == "user" {
-			user++
-		} else if m.Role == "assistant" {
-			assistant++
-		}
-	}
-	return
-}
-
-func idFormat(n int) string {
-	s := itoa(n)
-	if len(s) <= 3 {
-		return s
-	}
-	var b strings.Builder
-	for i, c := range s {
-		if i > 0 && (len(s)-i)%3 == 0 {
-			b.WriteByte(',')
-		}
-		b.WriteRune(c)
-	}
-	return b.String()
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	neg := n < 0
-	if neg {
-		n = -n
-	}
-	var buf [12]byte
-	i := len(buf)
-	for n > 0 {
-		i--
-		buf[i] = byte('0' + n%10)
-		n /= 10
-	}
-	if neg {
-		i--
-		buf[i] = '-'
-	}
-	return string(buf[i:])
-}
-
-// runScheduled executes a scheduled task: runs the prompt through the agent
-// and sends the result to the user's private chat (userID == chatID).
-func (a *App) runScheduled(ctx context.Context, task *scheduler.Task) {
-	userID := task.UserID
-	prompt := task.Prompt
-
-	// Create a context with timeout for the scheduled task execution
-	taskCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
-	defer cancel()
-
-	// Run the prompt through the agent with empty history (fresh context)
-	// but with MEMORY.md injected via system prompt
-	res := a.agent.ProcessMessage(taskCtx, prompt, nil, &ai.ProcessOptions{
-		ChatID: userID,
-		SendFile: func(content, filename, caption string) error {
-			opts := map[string]any{}
-			c := caption
-			if c == "" {
-				c = filename
-			}
-			opts["caption"] = c
-			_, err := a.tg.SendFile(taskCtx, userID, filename, []byte(content), "sendDocument", opts)
-			return err
-		},
-		SendBuffer: func(data []byte, filename, caption string) error {
-			return a.sendBuffer(taskCtx, &telegram.Message{Chat: &telegram.Chat{ID: userID}}, data, filename, caption)
-		},
-	})
-
-	// Format result message
-	header := "⏰ *Hasil Tugas Terjadwal*\n\n"
-	header += fmt.Sprintf("📋 *Prompt:* %s\n\n", prompt)
-	header += "🤖 *Hasil:*\n"
-	fullText := header + res.Text
-
-	// Send to user's private chat
-	if err := a.sendToPrivateChat(taskCtx, userID, fullText); err != nil {
-		log.Printf("[scheduler] send result to user %d failed: %v", userID, err)
-		task.Error = "Gagal mengirim hasil: " + err.Error()
-		return
-	}
-
-	task.Result = res.Text
-}
-
-// sendToPrivateChat sends a message to user's private chat (userID == chatID).
-// Falls back to file if message too long. Uses markdown with fallback.
-func (a *App) sendToPrivateChat(ctx context.Context, userID int64, text string) error {
-	if len(text) > maxMessageLength {
-		// Send short note + file
-		note := "⚠️ Respon terlalu panjang, dikirim sebagai file."
-		if err := a.sendSimpleMessage(ctx, userID, note); err != nil {
-			return err
-		}
-		_, err := a.tg.SendFile(ctx, userID, "scheduled_result.md", []byte(text), "sendDocument",
-			map[string]any{"caption": "Hasil tugas terjadwal terlalu panjang untuk ditampilkan di chat."})
-		return err
-	}
-	return a.sendSimpleMessage(ctx, userID, text)
-}
-
-func (a *App) sendSimpleMessage(ctx context.Context, chatID int64, text string) error {
-	return a.withMarkdownFallback(func(pm string) error {
-		opts := map[string]any{}
-		if pm != "" {
-			opts["parse_mode"] = pm
-		}
-		_, err := a.tg.SendMessage(ctx, chatID, text, opts)
-		return err
-	})
-}
-
-// StartScheduler starts the scheduler background loop.
-func (a *App) StartScheduler(ctx context.Context) {
-	if a.sched != nil {
-		a.sched.Start(ctx)
 	}
 }

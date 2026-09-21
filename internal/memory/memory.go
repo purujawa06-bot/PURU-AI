@@ -1,110 +1,71 @@
-// Package memory auto-updates /memory/MEMORY.md via an internal model call.
-// The memory stays minimal: max 5 numbered important points plus a short
-// "current topic" section; obsolete/irrelevant entries are dropped.
+// Package memory: compact summarizer for the lightweight assistant.
+//
+// Flow (no history trimming anywhere else):
+//   - Before each new prompt, the app counts history tokens.
+//   - If history >= HistoryTokenLimit (default 30k), Compact is called:
+//     the model summarizes old MEMORY.md + full history into a compact
+//     MEMORY.md (bullet points only, 3 sections), then history is wiped clean.
+//
+// MEMORY.md style: concise "-", 3 sections: Complete, Active, Relevant Files.
 package memory
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/tmc/langchaingo/llms"
-
-	"github.com/purujawa06-bot/PURU-AI/internal/messages"
-	"github.com/purujawa06-bot/PURU-AI/internal/vfs"
 )
 
-const memoryMaxOutput = 1500
+const memoryMaxOutput = 2000
 
-const memoryPrompt = `You are the memory manager for AI assistant "PURU-AI".
+const memoryPrompt = `You are the memory compactor for local assistant "PURU-AI".
+Read the old MEMORY.md and the full conversation, then write a new compact MEMORY.md.
 
-Read the old MEMORY.md and the recent conversation, then write a new MEMORY.md:
-- Keep ONLY the most important facts: user info, decisions, preferences, ongoing tasks, unfinished threads.
-- Max 5 numbered points (1-5), short and clear. Remove everything outdated or irrelevant.
-- End with a short "Topik sedang dibahas:" line describing what is currently being discussed (write "—" when nothing is).
-- Output ONLY the MEMORY.md content (markdown, max 1500 chars), no title or preamble.`
+Rules:
+- Output ONLY markdown, concise bullet points with "- " prefix. No preamble, no prose paragraphs.
+- Exactly these 3 sections, in order:
+  ## Complete
+  ## Active
+  ## Relevant Files
+- Complete = finished tasks/decisions (bullets, or "- none").
+- Active = ongoing threads, open todos, user preferences (bullets).
+- Relevant Files = workspace paths worth remembering with one-line why (bullets, or "- none").
+- Drop everything outdated/irrelevant. Keep it tight, max 2000 chars.`
 
 func noopStream(context.Context, []byte) error { return nil }
 
 type Manager struct {
-	model llms.Model
-	vfs   *vfs.VFS
-	// ClientFor resolves the model per chat so users with their own API
-	// settings get memory updates through their key too. Nil uses model.
-	ClientFor func(ctx context.Context, chatID int64) llms.Model
+	Model      llms.Model
+	MemoryPath string
+	MaxOutput  int
 }
 
-func New(model llms.Model, v *vfs.VFS) *Manager {
-	return &Manager{model: model, vfs: v}
+func New(model llms.Model, memoryPath string) *Manager {
+	return &Manager{Model: model, MemoryPath: memoryPath, MaxOutput: memoryMaxOutput}
 }
 
-func (m *Manager) modelFor(ctx context.Context, chatID int64) llms.Model {
-	if m.ClientFor != nil {
-		if mo := m.ClientFor(ctx, chatID); mo != nil {
-			return mo
-		}
-	}
-	return m.model
-}
+func messageText(m interface{ Text() string }) string { return m.Text() }
 
-func messageToText(m *messages.Message) string {
-	if messages.IsParts(m) {
-		var sb strings.Builder
-		for _, p := range messages.ContentParts(m) {
-			if s := p.Text(); s != "" {
-				sb.WriteString(s)
-			}
-		}
-		return sb.String()
-	}
-	if s, ok := messages.ContentString(m); ok {
-		return s
-	}
-	return ""
-}
+func dirOf(p string) string { return filepath.Dir(p) }
 
-// UpdateMemory rewrites MEMORY.md for the chat from the recent conversation.
-// Returns the new content, or an empty string when nothing was produced.
-func (m *Manager) UpdateMemory(ctx context.Context, chatID int64, recent []*messages.Message) (string, error) {
-	current := "(kosong)"
-	if s, ok := m.vfs.ReadFile(ctx, chatID, "memory/MEMORY.md"); ok {
-		current = s
+// Compact summarizes old memory + history into MEMORY.md.
+// Returns new content ("" when nothing produced).
+func (m *Manager) Compact(ctx context.Context, oldMemory string, historyText string) (string, error) {
+	if strings.TrimSpace(historyText) == "" {
+		return "", nil
 	}
-
-	var lines []string
-	start := len(recent) - 12
-	if start < 0 {
-		start = 0
+	maxOut := m.MaxOutput
+	if maxOut <= 0 {
+		maxOut = memoryMaxOutput
 	}
-	for _, msg := range recent[start:] {
-		role := msg.Role
-		if role == "assistant" {
-			role = "AI"
-		}
-		text := messageToText(msg)
-		if len(text) > 2000 {
-			text = text[:2000]
-		}
-		if text != "" {
-			lines = append(lines, role+": "+text)
-		}
-	}
-	historyText := strings.Join(lines, "\n")
-	if historyText == "" {
-		historyText = "(tidak ada)"
-	}
-
-	res, err := m.modelFor(ctx, chatID).GenerateContent(ctx, []llms.MessageContent{
-		{
-			Role:  llms.ChatMessageTypeSystem,
-			Parts: []llms.ContentPart{llms.TextContent{Text: memoryPrompt}},
-		},
-		{
-			Role: llms.ChatMessageTypeHuman,
-			Parts: []llms.ContentPart{llms.TextContent{
-				Text: "memory/MEMORY.md lama:\n" + current + "\n\nPercakapan terakhir:\n" + historyText,
-			}},
-		},
-	}, llms.WithMaxTokens(memoryMaxOutput), llms.WithStreamingFunc(noopStream))
+	res, err := m.Model.GenerateContent(ctx, []llms.MessageContent{
+		{Role: llms.ChatMessageTypeSystem, Parts: []llms.ContentPart{llms.TextContent{Text: memoryPrompt}}},
+		{Role: llms.ChatMessageTypeHuman, Parts: []llms.ContentPart{llms.TextContent{
+			Text: "MEMORY.md lama:\n" + oldMemory + "\n\nPercakapan:\n" + historyText,
+		}}},
+	}, llms.WithMaxTokens(maxOut), llms.WithStreamingFunc(noopStream))
 	if err != nil {
 		return "", err
 	}
@@ -116,8 +77,20 @@ func (m *Manager) UpdateMemory(ctx context.Context, chatID int64, recent []*mess
 	if trimmed == "" {
 		return "", nil
 	}
-	if err := m.vfs.WriteFile(ctx, chatID, "memory/MEMORY.md", trimmed); err != nil {
+	if err := os.MkdirAll(dirOf(m.MemoryPath), 0o755); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(m.MemoryPath, []byte(trimmed), 0o644); err != nil {
 		return "", err
 	}
 	return trimmed, nil
+}
+
+// Read returns current MEMORY.md ("" when missing).
+func (m *Manager) Read() string {
+	b, err := os.ReadFile(m.MemoryPath)
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }

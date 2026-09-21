@@ -1,0 +1,13 @@
+{
+  "telegram_bot_token": "123456:ABCDEF-ganti-dengan-token-bot",
+  "model": {
+    "base_url": "https://betatestervueui2-b.hf.space/v1",
+    "api_key": "sk-ganti-dengan-key",
+    "model": "puru",
+    "temperature": 0
+  },
+  "workspace": "/root/.puru/workspace",
+  "restrict_workspace": true,
+  "max_iterations": 500,
+  "history_token_limit": 30000
+}

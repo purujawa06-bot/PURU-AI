@@ -1,11 +1,8 @@
-// Package ai implements the tool-calling agent around langchaingo.
+// Package ai implements the lightweight local tool-calling agent.
 //
-// The tool loop, the assistant/tool message push-back and the session layout
-// are owned by langchain: agents.Executor iterates and builds the scratchpad,
-// and a prompts.ChatPromptTemplate (system + chat_history placeholder + input +
-// agent_scratchpad) formats every request. Only the durable Vercel-compatible
-// history adapter stays here. The model transport is langchaingo's
-// OpenAI-compatible client (streaming, SSE-tolerant).
+// Single model from config.json, exactly 4 local tools
+// (read_file, write_file, edit_file, exec), no fallback, no retry storm:
+// one executor run per request, max iterations from config (default 500).
 package ai
 
 import (
@@ -15,8 +12,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"regexp"
-	"strconv"
+	"os"
 	"strings"
 	"time"
 
@@ -27,39 +23,26 @@ import (
 	"github.com/tmc/langchaingo/schema"
 	"github.com/tmc/langchaingo/tools"
 
-	"github.com/purujawa06-bot/PURU-AI/internal/combos"
 	"github.com/purujawa06-bot/PURU-AI/internal/config"
-	"github.com/purujawa06-bot/PURU-AI/internal/e2b"
 	"github.com/purujawa06-bot/PURU-AI/internal/messages"
 	"github.com/purujawa06-bot/PURU-AI/internal/prompt"
-	"github.com/purujawa06-bot/PURU-AI/internal/scheduler"
-	"github.com/purujawa06-bot/PURU-AI/internal/settings"
-	"github.com/purujawa06-bot/PURU-AI/internal/skills"
-	"github.com/purujawa06-bot/PURU-AI/internal/vfs"
 )
 
 const (
-	toolTimeout    = 120 * time.Second
-	totalAgentTime = 300 * time.Second
-	maxRetries     = 4
+	toolTimeout    = 330 * time.Second
+	totalAgentTime = 20 * time.Minute
 )
 
-// errNoModel is returned when no AI model could be resolved for the chat. It is
-// fatal for the request and must not be retried.
 var errNoModel = errors.New("no AI model configured")
 
-// reasoningClient is implemented by models that can echo a thinking-mode
-// model's reasoning_content back to the provider. Thinking-mode providers
-// (deepseek-reasoner and friends) 400 on any follow-up request whose assistant
-// history drops the reasoning_content of an earlier turn, so replayed assistant
-// messages must carry it. Our OpenAI-compatible client implements this; other
-// llms.Model implementations fall back to plain GenerateContent.
+// reasoningClient is implemented by models that echo thinking-mode
+// reasoning_content back to the provider.
 type reasoningClient interface {
 	llms.Model
 	GenerateContentWithReasoning(ctx context.Context, messages []llms.MessageContent, reasonings []string, options ...llms.CallOption) (*llms.ContentResponse, error)
 }
 
-const stepLimitHint = "⚠️ Percakapan mencapai batas maksimum langkah. Ketik `lanjut` atau `/ai lanjut` untuk melanjutkan percakapan dengan AI, atau masukkan prompt baru."
+const stepLimitHint = "Batas langkah tercapai (max_iterations). Ketik `lanjut` untuk melanjutkan."
 
 // Usage is the token usage of a single model round-trip.
 type Usage struct {
@@ -88,78 +71,16 @@ type Tool struct {
 	Run         func(ctx context.Context, args map[string]any) (any, error)
 }
 
-// Agent is the bot's agent: it owns the tools/environment and, per request,
-// builds a langchaingo executor wired to a user-specific OpenAI-compatible
-// model.
+// Agent owns one model + local workspace. No per-user overrides.
 type Agent struct {
 	Client     llms.Model
 	Config     *config.Config
-	VFS        *vfs.VFS
-	E2B        *e2b.Manager
-	Catalog    *skills.Catalog
-	Registry   *skills.Registry
 	HTTP       *http.Client
 	ToolsBuild func(opts *ProcessOptions) (map[string]*Tool, error)
-	// ClientFor resolves a model for a chat, allowing users to use their own
-	// API settings. Nil means every chat uses Client. Each request builds its
-	// own model (from settings) so parallel users never share a mutating
-	// struct.
-	ClientFor func(ctx context.Context, chatID int64) llms.Model
-	// Combos drives combo-fallback retries: when a combo is active, the retry
-	// loop advances through the combo's models in order on every failure
-	// (including 4xx), so the next provider in the combo is actually tried.
-	// Nil means no combo handling (classic single-model retry).
-	Combos *combos.Manager
-	// Settings holds per-user API overrides (including SystemPrompt). When set
-	// the agent appends a user-defined system prompt to the base prompt.
-	Settings *settings.Manager
-	// Scheduler hooks for scheduled task execution. Set by app layer.
-	ScheduleTask   func(ctx context.Context, userID int64, prompt string, runAt int64, tz string) (*scheduler.Task, error)
-	ListSchedules  func(ctx context.Context, userID int64) ([]*scheduler.Task, error)
-	CancelSchedule func(ctx context.Context, userID int64, id string) error
-}
-
-// clientFor picks the model for the request's chat: the per-chat resolver when
-// configured, otherwise the shared default model.
-func (a *Agent) clientFor(ctx context.Context, chatID int64) llms.Model {
-	if a.ClientFor != nil {
-		if m := a.ClientFor(ctx, chatID); m != nil {
-			return m
-		}
-	}
-	return a.Client
-}
-
-func (a *Agent) clientForOpts(ctx context.Context, opts *ProcessOptions, attempt int) llms.Model {
-	if opts == nil {
-		return a.clientFor(ctx, 0)
-	}
-	ctx = WithComboAttempt(ctx, attempt)
-	return a.clientFor(ctx, opts.ChatID)
-}
-
-// comboAttemptKey is the context key carrying the current model-loop retry
-// attempt (1-based). Merged into the per-chat model resolution so a fallback
-// combo advances to the next model on each retry.
-type comboAttemptKey struct{}
-
-// WithComboAttempt stores the current attempt number in ctx.
-func WithComboAttempt(ctx context.Context, attempt int) context.Context {
-	return context.WithValue(ctx, comboAttemptKey{}, attempt)
-}
-
-// ComboAttempt reads the current model-loop attempt (0 when absent).
-func ComboAttempt(ctx context.Context) int {
-	if v, ok := ctx.Value(comboAttemptKey{}).(int); ok {
-		return v
-	}
-	return 0
 }
 
 type ProcessOptions struct {
-	ChatID     int64
-	SendFile   func(content string, filename string, caption string) error
-	SendBuffer func(data []byte, filename string, caption string) error
+	ChatID int64
 }
 
 type ProcessResult struct {
@@ -167,13 +88,9 @@ type ProcessResult struct {
 	ResponseMessages []*messages.Message
 	TotalTokens      int
 	LastStepUsage    Usage
-	// LastFinishReason is the stop reason of the last model response (e.g.
-	// "stop", "tool_calls", "length"). Used for diagnostics: a natural stop
-	// ends with "stop", a step-limit abort surfaces agents.ErrNotFinished.
 	LastFinishReason string
 }
 
-// runResult is the outcome of a single executor run.
 type runResult struct {
 	finalText        string
 	responseMessages []*messages.Message
@@ -224,11 +141,6 @@ func toolResultText(p *messages.Part) string {
 	}
 }
 
-// responseFromSteps rebuilds the persisted stored messages (assistant tool
-// calls + tool results) from the executor's recorded steps. reasoningByStep is
-// aligned by absolute step index (see requestAgent.recordReasoning); a
-// non-empty reasoning is persisted as a "reasoning" part so thinking-mode
-// providers get their reasoning_content echoed on the next turn.
 func responseFromSteps(steps []schema.AgentStep, reasoningByStep []string) []*messages.Message {
 	if len(steps) == 0 {
 		return nil
@@ -247,10 +159,10 @@ func responseFromSteps(steps []schema.AgentStep, reasoningByStep []string) []*me
 				"text": mustJSON(reasoning),
 			})
 		}
-		if log := strings.TrimSpace(group[0].Action.Log); log != "" {
+		if ll := strings.TrimSpace(group[0].Action.Log); ll != "" {
 			parts = append(parts, messages.Part{
 				"type": mustJSON("text"),
-				"text": mustJSON(log),
+				"text": mustJSON(ll),
 			})
 		}
 		for _, s := range group {
@@ -293,8 +205,6 @@ func parseObservation(s string) any {
 	return s
 }
 
-// reasoningForStep returns the thinking-mode reasoning recorded for the step at
-// index (empty when the model emitted none).
 func reasoningForStep(reasoningByStep []string, idx int) string {
 	if idx < 0 || idx >= len(reasoningByStep) {
 		return ""
@@ -314,15 +224,7 @@ func outputFromValues(vals map[string]any) string {
 	return s
 }
 
-// ---------------------------------------------------------------------------
-// langchaingo tool adapter
-// ---------------------------------------------------------------------------
-
-// langTool adapts a *Tool to the langchaingo tools.Tool interface. The executor
-// hands us the raw JSON arguments string; we unmarshal it back into the args
-// map the existing tool runners expect. Tool errors are returned as
-// observations (JSON text), not as Go errors, so the loop keeps going — the
-// model can then read the error and recover.
+// langTool adapts a *Tool to langchaingo tools.Tool.
 type langTool struct {
 	name string
 	desc string
@@ -370,14 +272,7 @@ func toFunctionDefinitions(toolMap map[string]*Tool) []llms.FunctionDefinition {
 	return out
 }
 
-// ---------------------------------------------------------------------------
-// requestAgent implements agents.Agent for one executor run
-// ---------------------------------------------------------------------------
-
-// requestAgent is the langchain Agent for one request. The langchaingo
-// Executor owns the tool loop; the chat session (system + chat_history + input)
-// is assembled by a langchain ChatPromptTemplate and Plan only converts the
-// formatted messages, calls the model and parses the result.
+// requestAgent is the langchain Agent for one request.
 type requestAgent struct {
 	llm          llms.Model
 	system       string
@@ -387,26 +282,12 @@ type requestAgent struct {
 	temperature  float64
 	chatTemplate prompts.ChatPromptTemplate
 
-	// usage observables (per request, single goroutine → plain fields).
-	totalTokens int
-	lastUsage   Usage
-	// lastFinishReason of the last model response (for diagnostics).
+	totalTokens      int
+	lastUsage        Usage
 	lastFinishReason string
-	// nextToolIDSeq mints deterministic tool-call ids for providers that omit
-	// the tool id (Gemini-family OpenAI-compatible gateways do). A missing id
-	// breaks the tool-call ↔ tool-result pairing and Gemini 400s with "the
-	// number of function response parts must equal the number of function call
-	// parts".
-	nextToolIDSeq int
-	// reasoningByStep carries the thinking-mode reasoning_content produced by
-	// each Plan, aligned to the executor's intermediate steps by absolute step
-	// index (steps created by the same Plan share its reasoning). Replayed on
-	// the scratchpad and persisted to history so thinking-mode providers never
-	// see a dropped reasoning_content.
-	reasoningByStep []string
-	// lastReasoning is the reasoning_content of the final (finish) Plan, if
-	// any — attached to the persisted final assistant message.
-	lastReasoning string
+	nextToolIDSeq    int
+	reasoningByStep  []string
+	lastReasoning    string
 }
 
 func newRequestAgent(model llms.Model, system string, history []*messages.Message, toolMap map[string]*Tool, temperature float64) *requestAgent {
@@ -476,7 +357,7 @@ func (ra *requestAgent) Plan(
 		return nil, nil, err
 	}
 	if resp == nil || len(resp.Choices) == 0 {
-		log.Printf("[ai] model returned %d choices (empty response)", len(resp.Choices))
+		log.Printf("[ai] model returned empty response")
 		return nil, nil, errors.New("empty model response")
 	}
 	ra.totalTokens += usageFromChoices(resp)
@@ -513,10 +394,6 @@ func (ra *requestAgent) Plan(
 	}, nil
 }
 
-// recordReasoning stores the reasoning_content of a Plan that issued tool
-// calls: every intermediate step this Plan creates (from startIdx onward) is
-// marked with the same reasoning so the scratchpad and persisted history can
-// echo it back to thinking-mode providers.
 func (ra *requestAgent) recordReasoning(reasoning string, startIdx, nSteps int) {
 	if nSteps <= 0 {
 		return
@@ -556,9 +433,6 @@ func (ra *requestAgent) GetInputKeys() []string  { return []string{"input"} }
 func (ra *requestAgent) GetOutputKeys() []string { return []string{"output"} }
 func (ra *requestAgent) GetTools() []tools.Tool  { return ra.tools }
 
-// toolID returns a non-empty tool-call id, minting a deterministic one when the
-// provider omitted it. The same id is later replayed in the scratchpad and
-// persisted history so the tool-result always pairs with its tool call.
 func (ra *requestAgent) toolID(id string) string {
 	if strings.TrimSpace(id) != "" {
 		return id
@@ -567,25 +441,36 @@ func (ra *requestAgent) toolID(id string) string {
 	return fmt.Sprintf("call_%d", ra.nextToolIDSeq)
 }
 
-// ---------------------------------------------------------------------------
-// runOnce: one tool-calling loop driven by langchaingo's executor
-// ---------------------------------------------------------------------------
+func (a *Agent) maxSteps() int {
+	if a.Config != nil && a.Config.MaxIterations > 0 {
+		return a.Config.MaxIterations
+	}
+	return config.DefaultMaxIterations
+}
 
-func (a *Agent) runOnce(ctx context.Context, system string, history []*messages.Message, userText string, opts *ProcessOptions, toolMap map[string]*Tool, attempt int) (*runResult, error) {
+func (a *Agent) temperature() float64 {
+	if a.Config != nil {
+		return a.Config.Model.Temperature
+	}
+	return 0
+}
+
+func (a *Agent) toolsFor(opts *ProcessOptions) (map[string]*Tool, error) {
+	if a.ToolsBuild != nil {
+		return a.ToolsBuild(opts)
+	}
+	return BuildTools(a, opts), nil
+}
+
+func (a *Agent) runOnce(ctx context.Context, system string, history []*messages.Message, userText string, opts *ProcessOptions, toolMap map[string]*Tool) (*runResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, totalAgentTime)
 	defer cancel()
 
-	client := a.clientForOpts(ctx, opts, attempt)
-	if client == nil {
+	if a.Client == nil {
 		return nil, errNoModel
 	}
-
-	maxSteps := a.Config.MaxLoop
-	if maxSteps <= 0 {
-		maxSteps = 20
-	}
-
-	ra := newRequestAgent(client, system, history, toolMap, a.Config.Temperature)
+	maxSteps := a.maxSteps()
+	ra := newRequestAgent(a.Client, system, history, toolMap, a.temperature())
 
 	executor := agents.NewExecutor(ra,
 		agents.WithMaxIterations(maxSteps),
@@ -600,11 +485,6 @@ func (a *Agent) runOnce(ctx context.Context, system string, history []*messages.
 		lastFinishReason: ra.lastFinishReason,
 	}
 	steps := stepsFromValues(vals)
-	// Hard guard: executor limits ITERATIONS (Plan calls), not total tool steps.
-	// A model can return multiple tool calls per Plan → total steps can exceed maxSteps.
-	// If actual steps exceed the configured limit, treat it as step-limit hit so we
-	// return the step-limit hint and stop cleanly (tool executions already ran, but
-	// we don't feed more context to the model).
 	if len(steps) > maxSteps {
 		res.hitStepLimit = true
 	}
@@ -620,10 +500,6 @@ func (a *Agent) runOnce(ctx context.Context, system string, history []*messages.
 
 	res.finalText = strings.TrimSpace(outputFromValues(vals))
 	if res.finalText != "" {
-		// Persist the final assistant turn, like the old loop did. A
-		// thinking-mode model's reasoning_content is kept as a "reasoning" part
-		// so the next request can echo it (deepseek-style providers 400
-		// otherwise).
 		m := &messages.Message{Role: "assistant"}
 		if reasoning := strings.TrimSpace(ra.lastReasoning); reasoning != "" {
 			messages.SetContentParts(m, []messages.Part{
@@ -638,115 +514,42 @@ func (a *Agent) runOnce(ctx context.Context, system string, history []*messages.
 	return res, nil
 }
 
-// ---------------------------------------------------------------------------
-// ProcessMessage: one request, assembled by langchain
-// ---------------------------------------------------------------------------
-
+// ProcessMessage runs one request: NO history trimming here — the caller
+// (app layer) compacts history into MEMORY.md when the 30k token limit is
+// hit, then wipes it. Single attempt, no provider fallback.
 func (a *Agent) ProcessMessage(ctx context.Context, userMessage string, history []*messages.Message, opts *ProcessOptions) *ProcessResult {
-	// Strip leading non-user messages so the history always starts with a user.
-	i := 0
-	for i < len(history) && history[i].Role == "system" {
-		i++
-	}
-	for i < len(history) && history[i].Role != "user" {
-		history = append(history[:i], history[i+1:]...)
-	}
-
 	memoryContent := ""
-	if m, ok := a.VFS.ReadFile(ctx, opts.ChatID, "memory/MEMORY.md"); ok {
-		memoryContent = m
-	}
-	if len(memoryContent) > a.Config.MemoryMaxChars {
-		memoryContent = memoryContent[:a.Config.MemoryMaxChars] + "\n...[truncated]"
+	if a.Config != nil {
+		if b, err := os.ReadFile(a.Config.MemoryPath()); err == nil {
+			memoryContent = string(b)
+		}
 	}
 
-	skillsSummary := a.Catalog.BuildSkillsSummary(ctx, opts.ChatID)
-	systemPrompt, err := prompt.Get(memoryContent, skillsSummary)
+	systemPrompt, err := prompt.Get(memoryContent)
 	if err != nil {
-		log.Printf("[ai] prompt.Get failed, using empty system prompt: %v", err)
+		log.Printf("[ai] prompt.Get failed: %v", err)
 		systemPrompt = ""
 	}
 
-	// Append user-defined system prompt / role from web settings.
-	if a.Settings != nil && opts != nil {
-		if user := a.Settings.Get(ctx, opts.ChatID); user != nil && user.SystemPrompt != nil {
-			sp := strings.TrimSpace(*user.SystemPrompt)
-			if sp != "" {
-				systemPrompt += "\n\n# User-defined instructions\n" + sp
-			}
-		}
-	}
-
-	tools, terr := a.ToolsBuild(opts)
-	if terr != nil || len(tools) == 0 {
-		log.Printf("[ai] ToolsBuild failed (err=%v, tools=%d): cannot process request", terr, len(tools))
+	toolMap, terr := a.toolsFor(opts)
+	if terr != nil || len(toolMap) == 0 {
+		log.Printf("[ai] ToolsBuild failed (err=%v, tools=%d)", terr, len(toolMap))
 		return errResult()
 	}
 
-	var lastErr error
-	var attempts int
-
-	// Combo fallback drives the retry loop: when a combo is active every failure
-	// — including a 4xx from one provider — advances to the next model in the
-	// combo, so the loop may run for as many attempts as the combo has models
-	// (never fewer than maxRetries). Without a combo, the classic single-model
-	// retry applies (bounded by maxRetries, non-retryable errors are fatal).
-	maxAttempts := maxRetries
-	comboActive := false
-	if a.Combos != nil && opts != nil {
-		if combo := a.Combos.ActiveCombo(ctx, opts.ChatID); combo != nil && len(combo.Models) > 0 {
-			comboActive = true
-			if n := len(combo.Models); n > maxAttempts {
-				maxAttempts = n
-			}
-		}
+	run, rerr := a.runOnce(ctx, systemPrompt, history, userMessage, opts, toolMap)
+	if rerr != nil {
+		log.Printf("[ai] run failed: %v", rerr)
+		return errResult()
 	}
-
-retryLoop:
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		attempts = attempt
-		run, rerr := a.runOnce(ctx, systemPrompt, history, userMessage, opts, tools, attempt)
-		switch {
-		case rerr != nil:
-			lastErr = rerr
-			log.Printf("[ai] attempt %d/%d failed: %v", attempt, maxAttempts, rerr)
-			if errors.Is(rerr, errNoModel) {
-				break retryLoop // no model at all: retrying will not help
-			}
-			if isNonRetryableError(rerr) && !comboActive {
-				break retryLoop // fatal for a single model; a combo may still succeed
-			}
-		case run.hitStepLimit:
-			return makeResult(stepLimitHint, run.responseMessages, run.totalTokens, run.lastStepUsage, run.lastFinishReason)
-		case strings.TrimSpace(run.finalText) != "":
-			return makeResult(run.finalText, run.responseMessages, run.totalTokens, run.lastStepUsage, run.lastFinishReason)
-		default:
-			lastErr = errors.New("empty final message from AI")
-			log.Printf("[ai] attempt %d/%d empty final text (finish_reason=%q)", attempt, maxAttempts, run.lastFinishReason)
-		}
-
-		if attempt < maxAttempts {
-			backoff := time.Duration(1000<<uint(attempt-1)) * time.Millisecond
-			if backoff > 30*time.Second {
-				backoff = 30 * time.Second
-			}
-			sleep(ctx, backoff)
-			continue
-		}
-		break
+	if run.hitStepLimit {
+		return makeResult(stepLimitHint, run.responseMessages, run.totalTokens, run.lastStepUsage, run.lastFinishReason)
 	}
-
-	log.Printf("[ai] reply failed after %d/%d attempts: %v", attempts, maxAttempts, lastErr)
+	if strings.TrimSpace(run.finalText) != "" {
+		return makeResult(run.finalText, run.responseMessages, run.totalTokens, run.lastStepUsage, run.lastFinishReason)
+	}
+	log.Printf("[ai] empty final text (finish_reason=%q)", run.lastFinishReason)
 	return errResult()
-}
-
-func sleep(ctx context.Context, d time.Duration) {
-	t := time.NewTimer(d)
-	defer t.Stop()
-	select {
-	case <-ctx.Done():
-	case <-t.C:
-	}
 }
 
 func makeResult(text string, resp []*messages.Message, total int, usage Usage, finishReason string) *ProcessResult {
@@ -758,23 +561,4 @@ func makeResult(text string, resp []*messages.Message, total int, usage Usage, f
 
 func errResult() *ProcessResult {
 	return &ProcessResult{Text: "Maaf, saya tidak bisa merespons saat ini."}
-}
-
-// isNonRetryableError classification for the langchaingo OpenAI client: 4xx
-// (except 408/429) are permanent and must not be retried.
-var nonRetryableRe = regexp.MustCompile(`status code: (\d\d\d)`)
-
-func isNonRetryableError(err error) bool {
-	if errors.Is(err, agents.ErrNotFinished) {
-		return false
-	}
-	m := nonRetryableRe.FindStringSubmatch(err.Error())
-	if len(m) != 2 {
-		return false
-	}
-	code, convErr := strconv.Atoi(m[1])
-	if convErr != nil {
-		return false
-	}
-	return code >= 400 && code < 500 && code != 408 && code != 429
 }

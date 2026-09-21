@@ -1,48 +1,54 @@
 package config
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
-var platformEnvKeys = []string{
-	"RENDER_EXTERNAL_URL",
-	"KOYEB_PUBLIC_DOMAIN",
-	"KOYEB_SERVICE_DOMAIN",
-	"KOYEB_APP_DOMAIN",
-	"RAILWAY_PUBLIC_DOMAIN",
-	"FLY_APP_NAME",
-	"HEROKU_APP_NAME",
+func writeCfg(t *testing.T, content string) string {
+	t.Helper()
+	dir := t.TempDir()
+	p := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return p
 }
 
-func TestPublicBaseURL(t *testing.T) {
-	cases := []struct {
-		name     string
-		cfg      Config
-		setenv   map[string]string
-		expected string
-	}{
-		{"explicit beats everything", Config{PublicBaseURL: "https://bot.example.com/", Hostname: "0.0.0.0", Port: 3000}, map[string]string{"RENDER_EXTERNAL_URL": "https://puru.onrender.com"}, "https://bot.example.com"},
-		{"platform env ignored, render", Config{Hostname: "0.0.0.0", Port: 3000}, map[string]string{"RENDER_EXTERNAL_URL": "https://puru.onrender.com"}, "http://localhost:3000"},
-		{"platform env ignored, koyeb public domain", Config{Hostname: "0.0.0.0", Port: 3000}, map[string]string{"KOYEB_PUBLIC_DOMAIN": "puru.koyeb.app"}, "http://localhost:3000"},
-		{"platform env ignored, koyeb service domain", Config{Hostname: "0.0.0.0", Port: 3000}, map[string]string{"KOYEB_SERVICE_DOMAIN": "puru-svc.koyeb.app"}, "http://localhost:3000"},
-		{"platform env ignored, railway", Config{Hostname: "0.0.0.0", Port: 3000}, map[string]string{"RAILWAY_PUBLIC_DOMAIN": "puru.up.railway.app"}, "http://localhost:3000"},
-		{"platform env ignored, fly", Config{Hostname: "0.0.0.0", Port: 3000}, map[string]string{"FLY_APP_NAME": "puru"}, "http://localhost:3000"},
-		{"platform env ignored, heroku", Config{Hostname: "0.0.0.0", Port: 3000}, map[string]string{"HEROKU_APP_NAME": "puru"}, "http://localhost:3000"},
-		{"bind-all host defaults to localhost", Config{Hostname: "0.0.0.0", Port: 3000}, nil, "http://localhost:3000"},
-		{"ipv6 bind-all host defaults to localhost", Config{Hostname: "::", Port: 3000}, nil, "http://localhost:3000"},
-		{"empty host defaults to localhost", Config{Hostname: "", Port: 3000}, nil, "http://localhost:3000"},
-		{"localhost host", Config{Hostname: "localhost", Port: 3000}, nil, "http://localhost:3000"},
-		{"real host ignored, defaults to localhost", Config{Hostname: "puru.local", Port: 8080}, nil, "http://localhost:8080"},
+func TestLoadDefaults(t *testing.T) {
+	p := writeCfg(t, `{"telegram_bot_token":"x","model":{"base_url":"http://m/v1","model":"puru"}}`)
+	c, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			for _, k := range platformEnvKeys {
-				t.Setenv(k, "")
-			}
-			for k, v := range tc.setenv {
-				t.Setenv(k, v)
-			}
-			if got := tc.cfg.ResolvePublicBaseURL(); got != tc.expected {
-				t.Errorf("ResolvePublicBaseURL() = %q, want %q", got, tc.expected)
-			}
-		})
+	if c.MaxIterations != DefaultMaxIterations {
+		t.Errorf("MaxIterations = %d, want %d", c.MaxIterations, DefaultMaxIterations)
+	}
+	if c.HistoryTokenLimit != DefaultHistoryTokLimit {
+		t.Errorf("HistoryTokenLimit = %d, want %d", c.HistoryTokenLimit, DefaultHistoryTokLimit)
+	}
+	if !c.RestrictWorkspace && c.Workspace == "" {
+		t.Errorf("workspace default tidak diterapkan")
+	}
+	if c.MemoryPath() == "" || c.HistoryDir() == "" {
+		t.Errorf("MemoryPath/HistoryDir kosong")
+	}
+}
+
+func TestLoadRejectsEmptyToken(t *testing.T) {
+	p := writeCfg(t, `{"model":{"base_url":"http://m/v1","model":"puru"}}`)
+	if _, err := Load(p); err == nil {
+		t.Errorf("expected error untuk token kosong")
+	}
+}
+
+func TestResolvePathPrecedence(t *testing.T) {
+	t.Setenv("PURU_CONFIG", "/tmp/env.json")
+	if got := ResolvePath("/tmp/flag.json"); got != "/tmp/flag.json" {
+		t.Errorf("flag harus menang, got %s", got)
+	}
+	if got := ResolvePath(""); got != "/tmp/env.json" {
+		t.Errorf("env harus dipakai, got %s", got)
 	}
 }

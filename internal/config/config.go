@@ -1,184 +1,118 @@
+// Package config loads PURU-AI settings from a single JSON file.
+//
+// Default location: $HOME/.puru/config.json (for root: /root/.puru/config.json).
+// Override with --config flag or PURU_CONFIG env. No .env, no web UI.
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
-	"strconv"
-	"strings"
+	"path/filepath"
 )
 
-type AIConfig struct {
-	BaseURL string
-	APIKey  string
-	Model   string
-	// ProxyURL, when non-empty, routes every OpenAI-compatible request through a
-	// 9router-style edge relay (e.g. a Vercel function that forwards to a target
-	// via the x-relay-target / x-relay-path headers). Empty = direct connection.
-	ProxyURL string
-	// Headers are extra HTTP headers sent on every request to the model
-	// endpoint (provider-specific, e.g. the x-opencode-* family). Values
-	// "@session" / "@request" are replaced per chat/per request when the model
-	// client is built.
-	Headers map[string]string
+const (
+	DefaultMaxIterations   = 500
+	DefaultHistoryTokLimit = 30000
+	DefaultExecTimeoutSec  = 60
+	MaxExecTimeoutSec      = 300
+)
+
+// ModelConfig is the single OpenAI-compatible endpoint. No fallback,
+// no per-user override, no relay.
+type ModelConfig struct {
+	BaseURL     string  `json:"base_url"`
+	APIKey      string  `json:"api_key"`
+	Model       string  `json:"model"`
+	Temperature float64 `json:"temperature"`
 }
 
 type Config struct {
-	TelegramBotToken    string
-	Hostname            string
-	Port                int
-	PublicBaseURL       string
-	PublicRTDB          string
-	AI                  AIConfig
-	E2BApiKey           string
-	E2BDomain           string
-	E2BApiURL           string
-	Temperature         float64
-	MaxLoop             int
-	HistoryCacheMax     int
-	HistoryCacheTTL     int64
-	MemoryUpdateEvery   int
-	MemoryMaxChars      int
-	GitHubToken         string
-	ClawHubToken        string
-	SchedulePollSeconds int
-	VisionModelURL      string
+	TelegramBotToken string      `json:"telegram_bot_token"`
+	Model            ModelConfig `json:"model"`
+	Workspace        string      `json:"workspace"`
+	// RestrictWorkspace jails the agent inside Workspace: file tools reject
+	// absolute paths / ../ escapes outside it, and exec runs with Dir forced
+	// inside it.
+	RestrictWorkspace bool   `json:"restrict_workspace"`
+	MaxIterations     int    `json:"max_iterations"`
+	HistoryTokenLimit int    `json:"history_token_limit"`
+	ConfigDir         string `json:"-"`
 }
 
-func Load() (*Config, error) {
-	required := []struct{ name, val string }{
-		{"PUBLIC_RTDB", os.Getenv("PUBLIC_RTDB")},
-		{"BOT_TOKEN", os.Getenv("BOT_TOKEN")},
-		{"E2B_APIKEY", os.Getenv("E2B_APIKEY")},
+// DefaultDir returns $HOME/.puru (/root/.puru for root).
+func DefaultDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		home = "/root"
 	}
-	var missing []string
-	for _, r := range required {
-		if r.val == "" {
-			missing = append(missing, r.name)
-		}
-	}
-	if len(missing) > 0 {
-		return nil, fmt.Errorf("missing required environment variables:\n  - %s", strings.Join(missing, "\n  - "))
-	}
-
-	// Default AI config: HF Space endpoint with puru model.
-	const defaultBaseURL = "https://betatestervueui2-b.hf.space/v1"
-	const defaultAPIKey = "sk-843e3f05f05eacfe-55n2je-f2c2b844"
-	const defaultModel = "puru"
-	// Default vision model: Gemini-style endpoint used to summarise user image
-	// uploads (see internal/ai.DescribeImage).
-	const defaultVisionModelURL = "https://puruboy-api.vercel.app/api/ai/gemini-v3"
-	// Built-in Vercel relay (9router-style edge). Requests are routed through it
-	// by default; the web dashboard exposes a simple Proxy ON/OFF toggle and the
-	// per-user settings.proxyUrl can override/disable it. Change via
-	// PROXY_RELAY_URL to use a different edge.
-	const defaultRelayURL = "https://vercel-relay-ijhklxg99-rikipurpur98-dotcoms-projects.vercel.app/"
-
-	port, err := envInt("PORT", 3000)
-	if err != nil {
-		return nil, err
-	}
-	if port <= 0 || port > 65535 {
-		return nil, fmt.Errorf("PORT must be a valid port number (1-65535), got: %q", os.Getenv("PORT"))
-	}
-
-	temperature, err := envFloat("TEMPERATURE", 0)
-	if err != nil {
-		return nil, err
-	}
-	maxLoop, err := envInt("MAX_LOOP", 20)
-	if err != nil {
-		return nil, err
-	}
-	historyCacheMax, err := envInt("HISTORY_CACHE_MAX", 500)
-	if err != nil {
-		return nil, err
-	}
-	historyCacheTTL, err := envInt("HISTORY_CACHE_TTL", 600_000)
-	if err != nil {
-		return nil, err
-	}
-	memoryUpdateEvery, err := envInt("MEMORY_UPDATE_EVERY", 3)
-	if err != nil {
-		return nil, err
-	}
-	memoryMaxChars, err := envInt("MEMORY_MAX_CHARS", 8000)
-	if err != nil {
-		return nil, err
-	}
-	schedulePollSeconds, err := envInt("SCHEDULE_POLL_INTERVAL", 15)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Config{
-		TelegramBotToken: os.Getenv("BOT_TOKEN"),
-		Hostname:         envString("HOSTNAME", "localhost"),
-		Port:             port,
-		PublicBaseURL:    envString("PUBLIC_BASE_URL", ""),
-		PublicRTDB:       os.Getenv("PUBLIC_RTDB"),
-		AI: AIConfig{
-			BaseURL:  envString("OPENAI_BASEURL", defaultBaseURL),
-			APIKey:   envString("OPENAI_APIKEY", defaultAPIKey),
-			Model:    envString("OPENAI_MODEL", defaultModel),
-			ProxyURL: envString("PROXY_RELAY_URL", defaultRelayURL),
-		},
-		E2BApiKey:           os.Getenv("E2B_APIKEY"),
-		E2BDomain:           os.Getenv("E2B_DOMAIN"),
-		E2BApiURL:           os.Getenv("E2B_API_URL"),
-		Temperature:         temperature,
-		MaxLoop:             maxLoop,
-		HistoryCacheMax:     historyCacheMax,
-		HistoryCacheTTL:     int64(historyCacheTTL),
-		MemoryUpdateEvery:   memoryUpdateEvery,
-		MemoryMaxChars:      memoryMaxChars,
-		GitHubToken:         os.Getenv("GITHUB_TOKEN"),
-		ClawHubToken:        os.Getenv("CLAWHUB_APIKEY"),
-		SchedulePollSeconds: schedulePollSeconds,
-		VisionModelURL:      envString("VISION_MODEL_URL", defaultVisionModelURL),
-	}, nil
+	return filepath.Join(home, ".puru")
 }
 
-// PublicBaseURL resolves the externally reachable base URL used to build
-// /login links. Resolution order:
-//
-//  1. Explicit PUBLIC_BASE_URL.
-//  2. http://localhost:{PORT} as the default when PUBLIC_BASE_URL is empty.
-//
-// Never returns "".
-func (c *Config) ResolvePublicBaseURL() string {
-	if c.PublicBaseURL != "" {
-		return strings.TrimRight(c.PublicBaseURL, "/")
-	}
-	return fmt.Sprintf("http://localhost:%d", c.Port)
-}
+// DefaultPath returns the default config.json path.
+func DefaultPath() string { return filepath.Join(DefaultDir(), "config.json") }
 
-func envString(key, def string) string {
-	if v := os.Getenv(key); v != "" {
+// ResolvePath applies flag > env > default precedence.
+func ResolvePath(flagPath string) string {
+	if flagPath != "" {
+		return flagPath
+	}
+	if v := os.Getenv("PURU_CONFIG"); v != "" {
 		return v
 	}
-	return def
+	return DefaultPath()
 }
 
-func envInt(key string, def int) (int, error) {
-	raw := os.Getenv(key)
-	if raw == "" {
-		return def, nil
+// Load reads path (or the default when empty), applies defaults, validates,
+// and ensures workspace + history dirs exist. Fast: single small JSON read.
+func Load(path string) (*Config, error) {
+	if path == "" {
+		path = DefaultPath()
 	}
-	v, err := strconv.Atoi(raw)
+	raw, err := os.ReadFile(path)
 	if err != nil {
-		return 0, fmt.Errorf("%s must be a valid number, got: %q", key, raw)
+		return nil, fmt.Errorf("baca config %s: %w (salin dari example.config.json)", path, err)
 	}
-	return v, nil
+	var c Config
+	if err := json.Unmarshal(raw, &c); err != nil {
+		return nil, fmt.Errorf("config %s bukan JSON valid: %w", path, err)
+	}
+	c.ConfigDir = filepath.Dir(path)
+
+	if c.TelegramBotToken == "" {
+		return nil, fmt.Errorf("config %s: telegram_bot_token wajib diisi", path)
+	}
+	if c.Model.BaseURL == "" {
+		return nil, fmt.Errorf("config %s: model.base_url wajib diisi", path)
+	}
+	if c.Model.Model == "" {
+		return nil, fmt.Errorf("config %s: model.model wajib diisi", path)
+	}
+	if c.MaxIterations <= 0 {
+		c.MaxIterations = DefaultMaxIterations
+	}
+	if c.HistoryTokenLimit <= 0 {
+		c.HistoryTokenLimit = DefaultHistoryTokLimit
+	}
+	if c.Workspace == "" {
+		c.Workspace = filepath.Join(DefaultDir(), "workspace")
+	}
+	abs, err := filepath.Abs(c.Workspace)
+	if err != nil {
+		return nil, fmt.Errorf("workspace tidak valid: %w", err)
+	}
+	c.Workspace = abs
+	if err := os.MkdirAll(c.Workspace, 0o755); err != nil {
+		return nil, fmt.Errorf("buat workspace %s: %w", c.Workspace, err)
+	}
+	if err := os.MkdirAll(filepath.Join(DefaultDir(), "history"), 0o755); err != nil {
+		return nil, fmt.Errorf("buat history dir: %w", err)
+	}
+	return &c, nil
 }
 
-func envFloat(key string, def float64) (float64, error) {
-	raw := os.Getenv(key)
-	if raw == "" {
-		return def, nil
-	}
-	v, err := strconv.ParseFloat(raw, 64)
-	if err != nil {
-		return 0, fmt.Errorf("%s must be a valid number, got: %q", key, raw)
-	}
-	return v, nil
-}
+// MemoryPath is <workspace>/MEMORY.md — single memory file, local.
+func (c *Config) MemoryPath() string { return filepath.Join(c.Workspace, "MEMORY.md") }
+
+// HistoryDir is ~/.puru/history (per-chat JSON files).
+func (c *Config) HistoryDir() string { return filepath.Join(DefaultDir(), "history") }

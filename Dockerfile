@@ -1,14 +1,4 @@
-# Frontend build stage (Vite + React for the /login settings page).
-# The bundle is written to ../internal/web/dist and embedded into the Go binary.
-FROM node:22-alpine AS web-build
-
-WORKDIR /web
-COPY web/package.json web/package-lock.json ./
-RUN npm ci
-COPY web/ .
-RUN npm run build
-
-# Go build stage
+# PURU-AI lightweight — single Go stage, no frontend, no Node.
 FROM golang:1.26-alpine AS build
 
 WORKDIR /app
@@ -17,11 +7,6 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-# Use the freshly built frontend bundle from the web stage (keeps the image
-# self-contained even when internal/web/dist is not committed). vite.config.js
-# sets outDir='../internal/web/dist' which, relative to WORKDIR /web, lands on
-# /internal/web/dist inside the web-build stage.
-COPY --from=web-build /internal/web/dist ./internal/web/dist
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /app/puru-ai .
 
 # Runtime stage
@@ -31,10 +16,11 @@ RUN apk add --no-cache ca-certificates tzdata
 
 WORKDIR /app
 COPY --from=build /app/puru-ai .
+COPY --from=build /app/example.config.json ./example.config.json
 
-# Bind-all is fine for the web server; the /login link never uses this value
-# as a public host (config.ResolvePublicBaseURL skips 0.0.0.0/::/empty).
-ENV HOSTNAME=0.0.0.0
-EXPOSE 3000
+# Lightweight profile: heap cap 50MB (main.go also sets it via debug.SetMemoryLimit).
+ENV GOMEMLIMIT=50MiB
+# Config + workspace live here; mount a volume to persist.
+VOLUME ["/root/.puru"]
 
-CMD ["/app/puru-ai"]
+CMD ["/app/puru-ai", "--config", "/root/.puru/config.json"]
