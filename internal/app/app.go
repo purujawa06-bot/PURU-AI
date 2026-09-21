@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -16,6 +17,7 @@ import (
 	"github.com/purujawa06-bot/PURU-AI/internal/history"
 	"github.com/purujawa06-bot/PURU-AI/internal/memory"
 	"github.com/purujawa06-bot/PURU-AI/internal/messages"
+	"github.com/purujawa06-bot/PURU-AI/internal/prompt"
 	"github.com/purujawa06-bot/PURU-AI/internal/telegram"
 )
 
@@ -82,7 +84,7 @@ func (a *App) handleCommand(ctx context.Context, msg *telegram.Message) error {
 	t := strings.TrimSpace(msg.Text)
 	switch {
 	case strings.HasPrefix(t, "/token"):
-		return a.safeReply(ctx, msg, tokenInfo(history.TokenCount(a.hist.Get(msg.From.ID)), a.cfg.HistoryTokenLimit), true)
+		return a.safeReply(ctx, msg, tokenInfo(history.TokenCountFull(a.renderedSystem(), a.hist.Get(msg.From.ID)), a.cfg.HistoryTokenLimit), true)
 	case strings.HasPrefix(t, "/help"):
 		return a.safeReply(ctx, msg, "PURU-AI lightweight — kirim pesan apa saja.\n/clear = hapus history.\n/token = info pemakaian token memory.", true)
 	default: // /clear
@@ -135,6 +137,22 @@ func fmtPct(p float64) string {
 	return strings.Replace(s, ".", ",", 1) + "%"
 }
 
+// renderedSystem renders the same system prompt the agent sends on every
+// request (template + MEMORY.md) so token counting matches reality.
+func (a *App) renderedSystem() string {
+	mem := ""
+	if a.cfg != nil {
+		if b, err := os.ReadFile(a.cfg.MemoryPath()); err == nil {
+			mem = string(b)
+		}
+	}
+	s, err := prompt.Get(mem)
+	if err != nil {
+		return ""
+	}
+	return s
+}
+
 // maybeCompact checks the token trigger BEFORE the new prompt: when hit,
 // summarize full history into context/YYYY-MM-DD_title.md, wipe history, and
 // inject back ONLY the summary path as a system note (content is never
@@ -144,7 +162,7 @@ func (a *App) maybeCompact(ctx context.Context, userID int64, stored []*messages
 	if limit <= 0 || a.mem == nil || len(stored) == 0 {
 		return stored
 	}
-	if history.TokenCount(stored) < limit {
+	if history.TokenCountFull(a.renderedSystem(), stored) < limit {
 		return stored
 	}
 	cctx, cancel := context.WithTimeout(ctx, 90*time.Second)

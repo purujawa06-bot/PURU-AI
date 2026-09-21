@@ -115,40 +115,10 @@ func mustJSON(v any) []byte {
 	return b
 }
 
+// toolResultText delegates to messages so the token counter and the request
+// builder always interpret tool-result parts identically.
 func toolResultText(p *messages.Part) string {
-	raw, ok := (*p)["output"]
-	if !ok {
-		return ""
-	}
-	var out struct {
-		Type  string          `json:"type"`
-		Value json.RawMessage `json:"value"`
-	}
-	if err := json.Unmarshal(raw, &out); err != nil {
-		return ""
-	}
-	switch out.Type {
-	case "text", "error-text":
-		var s string
-		if json.Unmarshal(out.Value, &s) != nil {
-			return strings.TrimSpace(string(out.Value))
-		}
-		return s
-	case "json", "error-json":
-		var v any
-		if err := json.Unmarshal(out.Value, &v); err == nil {
-			if b, err := json.Marshal(v); err == nil {
-				return string(b)
-			}
-		}
-		return strings.TrimSpace(string(out.Value))
-	default:
-		var s string
-		if json.Unmarshal(out.Value, &s) == nil {
-			return s
-		}
-		return strings.TrimSpace(string(out.Value))
-	}
+	return p.ResultText()
 }
 
 func responseFromSteps(steps []schema.AgentStep, reasoningByStep []string) []*messages.Message {

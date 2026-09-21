@@ -19,6 +19,7 @@ import (
 	"github.com/purujawa06-bot/PURU-AI/internal/history"
 	"github.com/purujawa06-bot/PURU-AI/internal/memory"
 	"github.com/purujawa06-bot/PURU-AI/internal/messages"
+	"github.com/purujawa06-bot/PURU-AI/internal/prompt"
 )
 
 func main() {
@@ -77,7 +78,7 @@ func main() {
 
 func process(ctx context.Context, agent *ai.Agent, hist *history.Store, mem *memory.Manager, cfg *config.Config, chatID int64, prompt string) string {
 	stored := hist.Get(chatID)
-	if history.TokenCount(stored) >= cfg.HistoryTokenLimit && len(stored) > 0 {
+	if history.TokenCountFull(renderedSystemPrompt(cfg), stored) >= cfg.HistoryTokenLimit && len(stored) > 0 {
 		var sb strings.Builder
 		for _, m := range stored {
 			if m == nil {
@@ -110,6 +111,20 @@ func process(ctx context.Context, agent *ai.Agent, hist *history.Store, mem *mem
 	saved = append(saved, messages.SanitizeHistoryMessages(res.ResponseMessages)...)
 	_ = hist.Set(chatID, saved)
 	return res.Text
+}
+
+// renderedSystemPrompt renders the same system prompt the agent sends so
+// token counting matches the real request context.
+func renderedSystemPrompt(cfg *config.Config) string {
+	mem := ""
+	if b, err := os.ReadFile(cfg.MemoryPath()); err == nil {
+		mem = string(b)
+	}
+	s, err := prompt.Get(mem)
+	if err != nil {
+		return ""
+	}
+	return s
 }
 
 func userMsg(s string) []*messages.Message {

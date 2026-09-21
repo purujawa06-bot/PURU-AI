@@ -2,8 +2,8 @@
 //
 // Files: ~/.puru/history/{chatID}.json (JSON array of messages).
 // No Firebase, no cache TTL complexity — small in-memory map + disk.
-// History is NEVER trimmed here; the app layer compacts it into MEMORY.md
-// when the 30k token limit is hit, then wipes it clean.
+// History is NEVER trimmed here; the app layer compacts it into a
+// context/*.md summary file when the token limit is hit, then wipes it clean.
 package history
 
 import (
@@ -77,7 +77,14 @@ func (s *Store) Clear(chatID int64) error {
 	return nil
 }
 
-// TokenCount estimates history size for the 30k compaction trigger.
+// TokenCount estimates stored history size (all roles and tool payloads).
 func TokenCount(msgs []*messages.Message) int {
-	return tokens.CountConvTokens(msgs)
+	return tokens.CountConversation(msgs)
+}
+
+// TokenCountFull estimates the full request context: rendered system prompt
+// + stored history. Used by the compaction trigger and /token so the number
+// matches what the model actually receives.
+func TokenCountFull(system string, msgs []*messages.Message) int {
+	return tokens.CountRequest(system, msgs, "")
 }

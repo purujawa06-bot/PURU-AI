@@ -52,7 +52,7 @@ go run ./cmd/cli "halo"                 # debug CLI (REPL bila tanpa argumen)
 go run ./cmd/cli --reset                # hapus history chat debug
 ```
 
-Perintah Telegram (terdaftar di menu bot): `/help` = bantuan, `/clear` = hapus history, `/token` = info pemakaian token (berapa % menuju summarize otomatis). Kirim teks apa saja untuk chat.
+Perintah Telegram (terdaftar di menu bot): `/help` = bantuan, `/clear` = hapus history, `/token` = info pemakaian token konteks penuh (system prompt + history termasuk output tool) menuju summarize otomatis. Kirim teks apa saja untuk chat.
 
 ## Docker
 

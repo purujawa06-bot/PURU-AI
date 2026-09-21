@@ -49,6 +49,61 @@ func (p *Part) Set(key string, v any) {
 	(*p)[key] = b
 }
 
+// ToolCallText returns the text the provider receives for a tool-call part:
+// the tool name plus its (canonical) JSON input arguments.
+func (p *Part) ToolCallText() string {
+	if p == nil || p.Type() != "tool-call" {
+		return ""
+	}
+	name := p.Str("toolName")
+	raw, ok := (*p)["input"]
+	if !ok || len(raw) == 0 {
+		return name
+	}
+	var v any
+	if json.Unmarshal(raw, &v) != nil {
+		return name
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return name
+	}
+	if name == "" {
+		return string(b)
+	}
+	return name + " " + string(b)
+}
+
+// ResultText returns the text the provider receives for a tool-result part:
+// the string value for text outputs, canonical JSON for json outputs.
+func (p *Part) ResultText() string {
+	if p == nil || p.Type() != "tool-result" {
+		return ""
+	}
+	raw, ok := (*p)["output"]
+	if !ok {
+		return ""
+	}
+	var out struct {
+		Type  string          `json:"type"`
+		Value json.RawMessage `json:"value"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return ""
+	}
+	var s string
+	if json.Unmarshal(out.Value, &s) == nil {
+		return s
+	}
+	var v any
+	if err := json.Unmarshal(out.Value, &v); err == nil {
+		if b, err := json.Marshal(v); err == nil {
+			return string(b)
+		}
+	}
+	return strings.TrimSpace(string(out.Value))
+}
+
 // Message is a canonical model message. Unrecognized top-level JSON fields are
 // kept in extras and re-emitted on marshal.
 type Message struct {
