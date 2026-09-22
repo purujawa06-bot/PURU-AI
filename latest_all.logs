@@ -1,8 +1,15 @@
 === RUNNING VERIFICATION ===
 --- GO VET ---
+# github.com/purujawa06-bot/PURU-AI/internal/telegram
+internal/telegram/telegram.go:13:2: "time" imported and not used
+# github.com/purujawa06-bot/PURU-AI/internal/telegram
+# [github.com/purujawa06-bot/PURU-AI/internal/telegram]
+vet: internal/telegram/telegram.go:13:2: "time" imported and not used
 
 --- GO TEST ---
-?   	github.com/purujawa06-bot/PURU-AI	[no test files]
+# github.com/purujawa06-bot/PURU-AI/internal/telegram
+internal/telegram/telegram.go:13:2: "time" imported and not used
+FAIL	github.com/purujawa06-bot/PURU-AI [build failed]
 ?   	github.com/purujawa06-bot/PURU-AI/cmd/cli	[no test files]
 === RUN   TestRunExecParentCancelStopsBlocking
 --- PASS: TestRunExecParentCancelStopsBlocking (0.50s)
@@ -19,14 +26,14 @@
 === RUN   TestKillExecMarksFinishedImmediately
 --- PASS: TestKillExecMarksFinishedImmediately (0.00s)
 === RUN   TestRetrySucceedsAfterFlakes
-2026/09/22 15:02:07 [ai] API error (Call 1/5): API returned unexpected status code: 503 — coba lagi 2s
-2026/09/22 15:02:09 [ai] API error (Call 2/5): API returned unexpected status code: 503 — coba lagi 2s
+2026/09/22 15:02:48 [ai] API error (Call 1/5): API returned unexpected status code: 503 — coba lagi 2s
+2026/09/22 15:02:50 [ai] API error (Call 2/5): API returned unexpected status code: 503 — coba lagi 2s
 --- PASS: TestRetrySucceedsAfterFlakes (4.00s)
 === RUN   TestRetryGivesUpAfterFive
-2026/09/22 15:02:11 [ai] API error (Call 1/5): API returned unexpected status code: 503 — coba lagi 2s
-2026/09/22 15:02:13 [ai] API error (Call 2/5): API returned unexpected status code: 503 — coba lagi 2s
-2026/09/22 15:02:15 [ai] API error (Call 3/5): API returned unexpected status code: 503 — coba lagi 2s
-2026/09/22 15:02:17 [ai] API error (Call 4/5): API returned unexpected status code: 503 — coba lagi 2s
+2026/09/22 15:02:52 [ai] API error (Call 1/5): API returned unexpected status code: 503 — coba lagi 2s
+2026/09/22 15:02:54 [ai] API error (Call 2/5): API returned unexpected status code: 503 — coba lagi 2s
+2026/09/22 15:02:56 [ai] API error (Call 3/5): API returned unexpected status code: 503 — coba lagi 2s
+2026/09/22 15:02:58 [ai] API error (Call 4/5): API returned unexpected status code: 503 — coba lagi 2s
 --- PASS: TestRetryGivesUpAfterFive (8.00s)
 === RUN   TestRetryCancelledContext
 --- PASS: TestRetryCancelledContext (0.00s)
@@ -124,35 +131,7 @@ ok  	github.com/purujawa06-bot/PURU-AI/internal/ai	13.733s
 --- PASS: TestRelayProxyIgnoresOrigin (0.00s)
 PASS
 ok  	github.com/purujawa06-bot/PURU-AI/internal/ai/openai	(cached)
-=== RUN   TestIsCommandMenu
---- PASS: TestIsCommandMenu (0.00s)
-=== RUN   TestTokenInfoPercent
---- PASS: TestTokenInfoPercent (0.00s)
-=== RUN   TestFmtInt
---- PASS: TestFmtInt (0.00s)
-=== RUN   TestMaybeCompactSummarizesWipesInjects
-2026/09/22 15:02:07 [memory] compacted -> context/2026-09-22_15-02-07.md for user 42
---- PASS: TestMaybeCompactSummarizesWipesInjects (0.02s)
-=== RUN   TestMaybeCompactFailsClosed
-2026/09/22 15:02:07 [memory] compact failed: boom
---- PASS: TestMaybeCompactFailsClosed (0.00s)
-=== RUN   TestMaybeCompactBelowLimit
---- PASS: TestMaybeCompactBelowLimit (0.00s)
-=== RUN   TestHandleBlocksUnauthorized
-2026/09/22 15:02:07 [app] blocked unauthorized user 999
---- PASS: TestHandleBlocksUnauthorized (0.00s)
-=== RUN   TestStopUserIdle
---- PASS: TestStopUserIdle (0.00s)
-=== RUN   TestStopUserCancelsAndReleases
---- PASS: TestStopUserCancelsAndReleases (0.00s)
-=== RUN   TestIsCommandIgnoresAI
---- PASS: TestIsCommandIgnoresAI (0.00s)
-=== RUN   TestIsGroupChat
---- PASS: TestIsGroupChat (0.00s)
-=== RUN   TestParseAICommand
---- PASS: TestParseAICommand (0.00s)
-PASS
-ok  	github.com/purujawa06-bot/PURU-AI/internal/app	0.028s
+FAIL	github.com/purujawa06-bot/PURU-AI/internal/app [build failed]
 === RUN   TestLoadDefaults
 --- PASS: TestLoadDefaults (0.00s)
 === RUN   TestToolsPreviewExplicit
@@ -213,28 +192,7 @@ ok  	github.com/purujawa06-bot/PURU-AI/internal/messages	(cached)
 --- PASS: TestGetRendersMemory (0.00s)
 PASS
 ok  	github.com/purujawa06-bot/PURU-AI/internal/prompt	(cached)
-=== RUN   TestSanitizeText
---- PASS: TestSanitizeText (0.00s)
-=== RUN   TestSanitizeTextKeepsValidUTF8
---- PASS: TestSanitizeTextKeepsValidUTF8 (0.00s)
-=== RUN   TestGetMe
---- PASS: TestGetMe (0.00s)
-=== RUN   TestSendMessageReturnsID
---- PASS: TestSendMessageReturnsID (0.01s)
-=== RUN   TestGetUpdatesMapsTypes
---- PASS: TestGetUpdatesMapsTypes (0.00s)
-=== RUN   TestGetTelegramUser
---- PASS: TestGetTelegramUser (0.00s)
-=== RUN   TestEditMessage
---- PASS: TestEditMessage (0.00s)
-=== RUN   TestSetCommands
---- PASS: TestSetCommands (0.00s)
-=== RUN   TestConflictWrapped
---- PASS: TestConflictWrapped (0.00s)
-=== RUN   TestParseEntitiesWrapped
---- PASS: TestParseEntitiesWrapped (0.00s)
-PASS
-ok  	github.com/purujawa06-bot/PURU-AI/internal/telegram	(cached)
+FAIL	github.com/purujawa06-bot/PURU-AI/internal/telegram [build failed]
 === RUN   TestCountMessageToolResult
 --- PASS: TestCountMessageToolResult (0.01s)
 === RUN   TestCountMessageToolCall
@@ -245,7 +203,10 @@ ok  	github.com/purujawa06-bot/PURU-AI/internal/telegram	(cached)
 --- PASS: TestCountConversationText (0.00s)
 PASS
 ok  	github.com/purujawa06-bot/PURU-AI/internal/tokens	(cached)
+FAIL
 
 --- GO BUILD ---
+github.com/purujawa06-bot/PURU-AI/internal/telegram
 github.com/purujawa06-bot/PURU-AI/cmd/cli
-github.com/purujawa06-bot/PURU-AI
+# github.com/purujawa06-bot/PURU-AI/internal/telegram
+internal/telegram/telegram.go:13:2: "time" imported and not used
