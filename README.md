@@ -1,5 +1,7 @@
 # PURU-AI
 
+[![Docker Pulls](https://img.shields.io/docker/pulls/purujawa06-bot/puru-ai?logo=docker)](https://hub.docker.com/r/purujawa06-bot/puru-ai)
+
 A lightweight, self-hosted AI assistant for Telegram, built with Go.
 
 PURU-AI combines an OpenAI-compatible model with a local tool-calling agent, persistent memory, controlled command execution, and workspace-aware file operations. It is designed to stay simple, fast, and practical to run on a small server or local machine.
