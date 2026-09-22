@@ -9,10 +9,10 @@
 === RUN   TestRunExecBackgroundSurvivesParentCancel
 --- PASS: TestRunExecBackgroundSurvivesParentCancel (0.00s)
 === RUN   TestParseProcStat
-    exec_mem_linux_test.go:16: pgrp salah: 0 false
+    exec_mem_linux_test.go:20: rss harus positif: 0
 --- FAIL: TestParseProcStat (0.00s)
 === RUN   TestMemBudgetKillsHog
---- PASS: TestMemBudgetKillsHog (0.21s)
+--- PASS: TestMemBudgetKillsHog (0.20s)
 === RUN   TestPruneSessionsCapsFinished
 --- PASS: TestPruneSessionsCapsFinished (0.00s)
 === RUN   TestReadExecCarriesStatusFlags
@@ -20,14 +20,14 @@
 === RUN   TestKillExecMarksFinishedImmediately
 --- PASS: TestKillExecMarksFinishedImmediately (0.00s)
 === RUN   TestRetrySucceedsAfterFlakes
-2026/09/22 12:29:46 [ai] API error (Call 1/5): API returned unexpected status code: 503 — coba lagi 2s
-2026/09/22 12:29:48 [ai] API error (Call 2/5): API returned unexpected status code: 503 — coba lagi 2s
+2026/09/22 14:34:41 [ai] API error (Call 1/5): API returned unexpected status code: 503 — coba lagi 2s
+2026/09/22 14:34:43 [ai] API error (Call 2/5): API returned unexpected status code: 503 — coba lagi 2s
 --- PASS: TestRetrySucceedsAfterFlakes (4.00s)
 === RUN   TestRetryGivesUpAfterFive
-2026/09/22 12:29:50 [ai] API error (Call 1/5): API returned unexpected status code: 503 — coba lagi 2s
-2026/09/22 12:29:52 [ai] API error (Call 2/5): API returned unexpected status code: 503 — coba lagi 2s
-2026/09/22 12:29:54 [ai] API error (Call 3/5): API returned unexpected status code: 503 — coba lagi 2s
-2026/09/22 12:29:56 [ai] API error (Call 4/5): API returned unexpected status code: 503 — coba lagi 2s
+2026/09/22 14:34:45 [ai] API error (Call 1/5): API returned unexpected status code: 503 — coba lagi 2s
+2026/09/22 14:34:47 [ai] API error (Call 2/5): API returned unexpected status code: 503 — coba lagi 2s
+2026/09/22 14:34:49 [ai] API error (Call 3/5): API returned unexpected status code: 503 — coba lagi 2s
+2026/09/22 14:34:51 [ai] API error (Call 4/5): API returned unexpected status code: 503 — coba lagi 2s
 --- PASS: TestRetryGivesUpAfterFive (8.00s)
 === RUN   TestRetryCancelledContext
 --- PASS: TestRetryCancelledContext (0.00s)
@@ -46,8 +46,7 @@
 === RUN   TestPicoclawParamDeclarations
 --- PASS: TestPicoclawParamDeclarations (0.00s)
 === RUN   TestWorkspaceJail
-    tools_new_test.go:116: fuzzy edit failed: map[error:old_text tidak ditemukan di fuzzy.txt. Pastikan teks benar-benar ada (termasuk indentasi dan spasi) success:false]
---- FAIL: TestWorkspaceJail (0.00s)
+--- PASS: TestWorkspaceJail (0.02s)
 === RUN   TestClampTimeout
 --- PASS: TestClampTimeout (0.00s)
 === RUN   TestExecSuccess
@@ -96,7 +95,7 @@
 === RUN   TestResolveWorkdirValidatesDir
 --- PASS: TestResolveWorkdirValidatesDir (0.00s)
 FAIL
-FAIL	github.com/purujawa06-bot/PURU-AI/internal/ai	13.731s
+FAIL	github.com/purujawa06-bot/PURU-AI/internal/ai	13.740s
 === RUN   TestToolCallAssemblyHF
 --- PASS: TestToolCallAssemblyHF (0.00s)
 === RUN   TestToolCallAssemblyOpenAI
@@ -134,15 +133,15 @@ ok  	github.com/purujawa06-bot/PURU-AI/internal/ai/openai	(cached)
 === RUN   TestFmtInt
 --- PASS: TestFmtInt (0.00s)
 === RUN   TestMaybeCompactSummarizesWipesInjects
-2026/09/22 12:28:00 [memory] compacted -> context/2026-09-22_12-28-00.md for user 42
---- PASS: TestMaybeCompactSummarizesWipesInjects (0.02s)
+2026/09/22 14:34:41 [memory] compacted -> context/2026-09-22_14-34-41.md for user 42
+--- PASS: TestMaybeCompactSummarizesWipesInjects (0.01s)
 === RUN   TestMaybeCompactFailsClosed
-2026/09/22 12:28:00 [memory] compact failed: boom
+2026/09/22 14:34:41 [memory] compact failed: boom
 --- PASS: TestMaybeCompactFailsClosed (0.00s)
 === RUN   TestMaybeCompactBelowLimit
 --- PASS: TestMaybeCompactBelowLimit (0.00s)
 === RUN   TestHandleBlocksUnauthorized
-2026/09/22 12:28:00 [app] blocked unauthorized user 999
+2026/09/22 14:34:41 [app] blocked unauthorized user 999
 --- PASS: TestHandleBlocksUnauthorized (0.00s)
 === RUN   TestStopUserIdle
 --- PASS: TestStopUserIdle (0.00s)
@@ -155,7 +154,7 @@ ok  	github.com/purujawa06-bot/PURU-AI/internal/ai/openai	(cached)
 === RUN   TestParseAICommand
 --- PASS: TestParseAICommand (0.00s)
 PASS
-ok  	github.com/purujawa06-bot/PURU-AI/internal/app	(cached)
+ok  	github.com/purujawa06-bot/PURU-AI/internal/app	0.020s
 === RUN   TestLoadDefaults
 --- PASS: TestLoadDefaults (0.00s)
 === RUN   TestToolsPreviewExplicit
