@@ -1,0 +1,141 @@
+name: Release (manual)
+
+# Satu-satunya workflow: hanya jalan via Run workflow manual.
+# Pilih bump (major/minor/patch) → verify → buat tag → publish Docker → buat GitHub Release.
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump dari tag v* terakhir'
+        required: true
+        default: 'minor'
+        type: choice
+        options: [major, minor, patch]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
+      - name: Verify (vet → test → build, gagal = stop)
+        run: |
+          set -o pipefail
+          mkdir -p logs
+          go vet ./... 2>&1 | tee logs/vet.logs
+          go test ./... 2>&1 | tee logs/test.logs
+          go build -v -o /dev/null ./... 2>&1 | tee logs/build.logs
+          cat logs/*.logs > logs/latest_all.logs
+          grep -E "^--- FAIL|^FAIL|exit status [1-9]|: error:|: fatal:" logs/latest_all.logs > logs/latest_error.logs || true
+          [ -s logs/latest_error.logs ] || echo "(no logs)" > logs/latest_error.logs
+          grep -i "warn" logs/latest_all.logs | grep -v "PASS" > logs/latest_warn.logs || true
+          [ -s logs/latest_warn.logs ] || echo "(no logs)" > logs/latest_warn.logs
+
+      - name: Push logs to info branch
+        if: always()
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          mkdir ../temp_logs
+          cp logs/*.logs ../temp_logs/
+          git fetch origin info || true
+          if git rev-parse --verify origin/info >/dev/null 2>&1; then
+            git checkout info
+            git reset --hard origin/info
+          else
+            git checkout --orphan info
+            git rm -rf .
+          fi
+          mv ../temp_logs/*.logs .
+          git add *.logs
+          git commit -m "Update logs: ${GITHUB_SHA:0:7}" || exit 0
+          git push origin info --force
+
+  tag:
+    needs: verify
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.bump.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Bump version & push tag
+        id: bump
+        run: |
+          git fetch --tags origin
+          latest=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)
+          [ -z "$latest" ] && latest=v0.0.0
+          echo "Tag terakhir: $latest (bump: ${{ inputs.bump }})"
+          ver=${latest#v}
+          IFS=. read -r major minor patch <<< "$ver"
+          case "${{ inputs.bump }}" in
+            major) major=$((major+1)); minor=0; patch=0 ;;
+            minor) minor=$((minor+1)); patch=0 ;;
+            patch) patch=$((patch+1)) ;;
+          esac
+          TAG="v$major.$minor.$patch"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG sudah ada, batal."
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG"
+          git push origin "$TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Tag baru: $TAG"
+
+  docker:
+    needs: tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.tag.outputs.tag }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/puru-ai:latest
+            ghcr.io/${{ github.repository_owner }}/puru-ai:${{ needs.tag.outputs.tag }}
+          labels: org.opencontainers.image.version=${{ needs.tag.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  github-release:
+    needs: [tag, docker]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "${{ needs.tag.outputs.tag }}" --title "${{ needs.tag.outputs.tag }}" --generate-notes
