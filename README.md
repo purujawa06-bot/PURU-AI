@@ -1,7 +1,7 @@
 # PURU-AI
 
 [![GHCR Package](https://img.shields.io/badge/GHCR-puru--ai-blue?logo=github)](https://github.com/purujawa06-bot/PURU-AI/pkgs/container/puru-ai)
-[![GHCR Pulls](https://img.shields.io/endpoint?url=https://ghcr-badge.egpl.dev/purujawa06-bot/puru-ai/latest_tag.json)](https://github.com/purujawa06-bot/PURU-AI/pkgs/container/puru-ai)
+[![GHCR Pulls](https://img.shields.io/endpoint?url=https://ghcr-badge.elias.eu.org/shield/purujawa06-bot/PURU-AI/puru-ai)](https://github.com/purujawa06-bot/PURU-AI/pkgs/container/puru-ai)
 
 
 A lightweight, self-hosted AI assistant for Telegram, built with Go.
