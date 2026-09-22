@@ -35,7 +35,7 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 
-	hc := &http.Client{Timeout: 60 * time.Second}
+	hc := &http.Client{} // No timeout, let the API decide
 
 	llm, err := ai.NewModel(cfg, hc)
 	if err != nil {
