@@ -118,14 +118,70 @@ func editLocalFile(workspace string, restrict bool, p, oldStr, newStr string) er
 		return fmt.Errorf("read %s: %w", p, err)
 	}
 	s := string(b)
-	n := strings.Count(s, oldStr)
-	if oldStr == "" || n == 0 {
-		return fmt.Errorf("old_text tidak ditemukan di %s. Pastikan teks sama persis (termasuk spasi/newline). Tips: baca file lagi untuk memastikan konten terbaru", p)
+
+	// 1. Exact match (fast path)
+	if n := strings.Count(s, oldStr); n == 1 {
+		return os.WriteFile(abs, []byte(strings.Replace(s, oldStr, newStr, 1)), 0o644)
+	} else if n > 1 {
+		return fmt.Errorf("old_text found %d times; provide more context to make it unique", n)
 	}
-	if n > 1 {
-		return fmt.Errorf("old_text appears %d times. Please provide more context to make it unique", n)
+
+	// 2. Line-based fuzzy match (ignores trailing whitespace and line endings)
+	contentLines := strings.Split(s, "\n")
+	searchLines := strings.Split(strings.TrimRight(oldStr, "\n"), "\n")
+
+	if len(searchLines) == 0 || (len(searchLines) == 1 && searchLines[0] == "") {
+		return fmt.Errorf("old_text is empty")
 	}
-	return os.WriteFile(abs, []byte(strings.Replace(s, oldStr, newStr, 1)), 0o644)
+
+	var matchIdx = -1
+	var matchesFound = 0
+
+	for i := 0; i <= len(contentLines)-len(searchLines); i++ {
+		match := true
+		for j := 0; j < len(searchLines); j++ {
+			cLine := strings.TrimRight(contentLines[i+j], "\r \t")
+			sLine := strings.TrimRight(searchLines[j], "\r \t")
+			if cLine != sLine {
+				match = false
+				break
+			}
+		}
+		if match {
+			matchesFound++
+			matchIdx = i
+		}
+	}
+
+	if matchesFound == 1 {
+		preLines := contentLines[:matchIdx]
+		postLines := contentLines[matchIdx+len(searchLines):]
+
+		var result strings.Builder
+		for _, l := range preLines {
+			result.WriteString(l)
+			result.WriteByte('\n')
+		}
+		result.WriteString(newStr)
+		if len(postLines) > 0 {
+			if !strings.HasSuffix(newStr, "\n") {
+				result.WriteByte('\n')
+			}
+			for i, l := range postLines {
+				result.WriteString(l)
+				if i < len(postLines)-1 {
+					result.WriteByte('\n')
+				}
+			}
+		}
+		return os.WriteFile(abs, []byte(result.String()), 0o644)
+	}
+
+	if matchesFound > 1 {
+		return fmt.Errorf("fuzzy match found %d times; provide more context to make it unique", matchesFound)
+	}
+
+	return fmt.Errorf("old_text tidak ditemukan di %s. Pastikan teks benar-benar ada (termasuk indentasi dan spasi)", p)
 }
 
 // readLocalFile reads path with byte pagination (picoclaw read_file parity).

@@ -107,10 +107,10 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				}
 				return text, nil
 			}),
-		"edit_file": mk("edit_file", "Edit a file by replacing old_text with new_text. The old_text must exist exactly in the file.",
+		"edit_file": mk("edit_file", "Edit a file by replacing old_text with new_text. Supports exact match and fuzzy line-based matching.",
 			objSchema([]string{"path", "old_text", "new_text"}, map[string]any{
 				"path":     strProp("The file path to edit"),
-				"old_text": strProp("The exact text to find and replace."),
+				"old_text": strProp("The text to find and replace (exact or line-by-line)."),
 				"new_text": strProp("The text to replace with."),
 			}),
 			func(ctx context.Context, args map[string]any) (any, error) {

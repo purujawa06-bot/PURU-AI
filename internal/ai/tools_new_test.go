@@ -101,6 +101,24 @@ func TestWorkspaceJail(t *testing.T) {
 	if b, _ := os.ReadFile(filepath.Join(ws, "sub", "a.txt")); string(b) != "hai" {
 		t.Fatalf("edit mismatch: %q", b)
 	}
+
+	// fuzzy/line-based match test
+	if err := os.WriteFile(filepath.Join(ws, "fuzzy.txt"), []byte("line1\n  line2  \nline3"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Try editing with different spacing/newline
+	er, _ = tools["edit_file"].Run(ctx, map[string]any{
+		"path":     "fuzzy.txt",
+		"old_text": "line1\nline2", // missing spaces and different newline handling
+		"new_text": "replaced",
+	})
+	if s, _ := er.(string); s != "File edited: fuzzy.txt" {
+		t.Fatalf("fuzzy edit failed: %v", er)
+	}
+	if b, _ := os.ReadFile(filepath.Join(ws, "fuzzy.txt")); !strings.HasPrefix(string(b), "replaced\nline3") {
+		t.Fatalf("fuzzy result mismatch: %q", b)
+	}
+
 	// edit outside must fail
 	wo, _ := tools["edit_file"].Run(ctx, map[string]any{"path": "../out.txt", "old_text": "x", "new_text": "y"})
 	if m, _ := wo.(map[string]any); m["success"] != false {
