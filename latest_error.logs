@@ -1,18 +1,16 @@
-go: downloading github.com/goph/emperror v0.17.2
-go: downloading github.com/pkg/errors v0.9.1
 --- FAIL: TestParseProcStat (0.00s)
-2026/09/22 12:28:01 [ai] API error (Call 1/5): API returned unexpected status code: 503 — coba lagi 2s
-2026/09/22 12:28:03 [ai] API error (Call 2/5): API returned unexpected status code: 503 — coba lagi 2s
-2026/09/22 12:28:05 [ai] API error (Call 1/5): API returned unexpected status code: 503 — coba lagi 2s
-2026/09/22 12:28:07 [ai] API error (Call 2/5): API returned unexpected status code: 503 — coba lagi 2s
-2026/09/22 12:28:09 [ai] API error (Call 3/5): API returned unexpected status code: 503 — coba lagi 2s
-2026/09/22 12:28:11 [ai] API error (Call 4/5): API returned unexpected status code: 503 — coba lagi 2s
+2026/09/22 12:29:46 [ai] API error (Call 1/5): API returned unexpected status code: 503 — coba lagi 2s
+2026/09/22 12:29:48 [ai] API error (Call 2/5): API returned unexpected status code: 503 — coba lagi 2s
+2026/09/22 12:29:50 [ai] API error (Call 1/5): API returned unexpected status code: 503 — coba lagi 2s
+2026/09/22 12:29:52 [ai] API error (Call 2/5): API returned unexpected status code: 503 — coba lagi 2s
+2026/09/22 12:29:54 [ai] API error (Call 3/5): API returned unexpected status code: 503 — coba lagi 2s
+2026/09/22 12:29:56 [ai] API error (Call 4/5): API returned unexpected status code: 503 — coba lagi 2s
     tools_new_test.go:116: fuzzy edit failed: map[error:old_text tidak ditemukan di fuzzy.txt. Pastikan teks benar-benar ada (termasuk indentasi dan spasi) success:false]
 --- FAIL: TestWorkspaceJail (0.00s)
     tools_new_test.go:226: poll unknown session must error: <nil>
 --- FAIL: TestExecBackgroundSessions (0.00s)
 FAIL
-FAIL	github.com/purujawa06-bot/PURU-AI/internal/ai	13.738s
+FAIL	github.com/purujawa06-bot/PURU-AI/internal/ai	13.731s
 === RUN   TestMaybeCompactFailsClosed
 2026/09/22 12:28:00 [memory] compact failed: boom
 --- PASS: TestMaybeCompactFailsClosed (0.00s)
