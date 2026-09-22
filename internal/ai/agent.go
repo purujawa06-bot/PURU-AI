@@ -240,16 +240,32 @@ func wrapTools(toolMap map[string]*Tool) []tools.Tool {
 	return out
 }
 
+// toFunctionDefinitions converts tools to OpenAI function definitions, ensuring
+// every Parameters schema is a valid JSON object (strict OpenAI-compatible
+// providers reject a null properties / parameters).
 func toFunctionDefinitions(toolMap map[string]*Tool) []llms.FunctionDefinition {
 	out := make([]llms.FunctionDefinition, 0, len(toolMap))
 	for _, t := range toolMap {
 		out = append(out, llms.FunctionDefinition{
 			Name:        t.Name,
 			Description: t.Description,
-			Parameters:  t.Parameters,
+			Parameters:  sanitizeParams(t.Parameters),
 		})
 	}
 	return out
+}
+
+func sanitizeParams(p map[string]any) map[string]any {
+	if p == nil {
+		p = map[string]any{}
+	}
+	props, _ := p["properties"].(map[string]any)
+	if props == nil {
+		props = map[string]any{}
+		p["properties"] = props
+	}
+	p["type"] = "object"
+	return p
 }
 
 // requestAgent is the langchain Agent for one request.

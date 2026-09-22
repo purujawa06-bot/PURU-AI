@@ -15,6 +15,37 @@ func testAgent(ws string) *Agent {
 	return &Agent{Config: &config.Config{Workspace: ws, RestrictWorkspace: true}}
 }
 
+// Setiap tool harus punya schema parameters yang valid JSON object (provider
+// OpenAI-compatible strict menolak properties:null / parameters null).
+func TestToolSchemasValid(t *testing.T) {
+	tools := BuildTools(testAgent(t.TempDir()), nil)
+	for name, tool := range tools {
+		if tool == nil {
+			t.Fatalf("tool %s nil", name)
+		}
+		if tool.Parameters == nil {
+			t.Errorf("%s: parameters nil", name)
+			continue
+		}
+		if typ, _ := tool.Parameters["type"].(string); typ != "object" {
+			t.Errorf("%s: type = %v, want object", name, tool.Parameters["type"])
+		}
+		if props, _ := tool.Parameters["properties"].(map[string]any); props == nil {
+			t.Errorf("%s: properties nil (schema: %v)", name, tool.Parameters)
+		}
+	}
+	for _, fn := range toFunctionDefinitions(tools) {
+		params, ok := fn.Parameters.(map[string]any)
+		if !ok || params == nil {
+			t.Errorf("function %s: parameters = %v, want object", fn.Name, fn.Parameters)
+			continue
+		}
+		if props, _ := params["properties"].(map[string]any); props == nil {
+			t.Errorf("function %s: properties nil", fn.Name)
+		}
+	}
+}
+
 func TestToolCount(t *testing.T) {
 	tools := BuildTools(testAgent(t.TempDir()), nil)
 	if len(tools) != 11 {

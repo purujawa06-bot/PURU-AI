@@ -350,6 +350,9 @@ func argStr(a map[string]any, k string) string {
 }
 
 func objSchema(required []string, props map[string]any) map[string]any {
+	if props == nil {
+		props = map[string]any{}
+	}
 	s := map[string]any{"type": "object", "properties": props}
 	if len(required) > 0 {
 		s["required"] = required
