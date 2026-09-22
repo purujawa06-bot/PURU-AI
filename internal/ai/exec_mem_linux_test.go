@@ -11,7 +11,8 @@ import (
 func TestParseProcStat(t *testing.T) {
 	// comm dengan spasi + kurung harus tetap ke-parse.
 	// RSS adalah field ke-24 (index 21 setelah comm).
-	raw := "12345 (my prog (x)) S 1 777 777 0 -1 0 0 0 0 0 0 0 0 20 0 1 0 12345 1000 50 0 0 0"
+	// Kita taruh 1000 di index 21 (posisi RSS).
+	raw := "12345 (my prog (x)) S 1 777 777 0 -1 0 0 0 0 0 0 0 0 20 0 1 0 12345 1000 50 1000 0 0"
 	g, rss, ok := parseProcStat([]byte(raw))
 	if !ok || g != 777 {
 		t.Fatalf("pgrp salah: %d %v", g, ok)
