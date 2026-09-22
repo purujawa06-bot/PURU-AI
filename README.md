@@ -83,11 +83,6 @@ GitHub Actions build & push ke **GHCR (`ghcr.io`)** — tanpa secrets tambahan (
 | `go test ./...` | Unit test (ai, config, history, prompt, messages, telegram, openai) |
 | `go vet ./...` | Static analysis |
 | `gofmt -l .` | Cek format |
-
-## Bootstrap (opencode skills)
-
-Skill opencode untuk self-improve Puru (bukan fitur runtime bot): `.opencode/skills/puru-bootstrap/SKILL.md` (jalankan 1 ronde: Puru baca codebase-nya sendiri via CLI lalu implementasikan 1 peningkatan aman) + `.opencode/skills/puru-verify/SKILL.md` (review `git diff` + `gofmt`/`vet`/`test`, perbaiki bila Puru merusak build).
-
 ## Lisensi
 
 MIT
