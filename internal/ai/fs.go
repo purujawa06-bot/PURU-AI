@@ -126,9 +126,9 @@ func editLocalFile(workspace string, restrict bool, p, oldStr, newStr string) er
 		return fmt.Errorf("old_text found %d times; provide more context to make it unique", n)
 	}
 
-	// 2. Line-based fuzzy match (ignores trailing whitespace and line endings)
+	// 2. Line-based fuzzy match (ignores leading/trailing whitespace and line endings)
 	contentLines := strings.Split(s, "\n")
-	searchLines := strings.Split(strings.TrimRight(oldStr, "\n"), "\n")
+	searchLines := strings.Split(strings.TrimSpace(oldStr), "\n")
 
 	if len(searchLines) == 0 || (len(searchLines) == 1 && searchLines[0] == "") {
 		return fmt.Errorf("old_text is empty")
@@ -140,8 +140,8 @@ func editLocalFile(workspace string, restrict bool, p, oldStr, newStr string) er
 	for i := 0; i <= len(contentLines)-len(searchLines); i++ {
 		match := true
 		for j := 0; j < len(searchLines); j++ {
-			cLine := strings.TrimRight(contentLines[i+j], "\r \t")
-			sLine := strings.TrimRight(searchLines[j], "\r \t")
+			cLine := strings.TrimSpace(contentLines[i+j])
+			sLine := strings.TrimSpace(searchLines[j])
 			if cLine != sLine {
 				match = false
 				break
