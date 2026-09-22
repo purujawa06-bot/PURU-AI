@@ -221,9 +221,7 @@ func (t *langTool) Call(ctx context.Context, input string) (string, error) {
 	if err := json.Unmarshal([]byte(input), &args); err != nil {
 		args["input"] = strings.TrimSpace(input)
 	}
-	cctx, cancel := context.WithTimeout(ctx, toolTimeout)
-	defer cancel()
-	val, runErr := t.run(cctx, args)
+	val, runErr := t.run(ctx, args)
 	if runErr != nil {
 		val = map[string]any{"error": runErr.Error()}
 	}
@@ -473,9 +471,6 @@ func (a *Agent) toolsFor(opts *ProcessOptions) (map[string]*Tool, error) {
 }
 
 func (a *Agent) runOnce(ctx context.Context, system string, history []*messages.Message, userText string, opts *ProcessOptions, toolMap map[string]*Tool) (*runResult, error) {
-	ctx, cancel := context.WithTimeout(ctx, totalAgentTime)
-	defer cancel()
-
 	if a.Client == nil {
 		return nil, errNoModel
 	}

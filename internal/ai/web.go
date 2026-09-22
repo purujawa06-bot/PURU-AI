@@ -216,8 +216,6 @@ func parseSearchHTML(h string, max int) []webResult {
 }
 
 func fetchSearchHTML(ctx context.Context, fullURL string) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, webSearchTimeout)
-	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, "GET", fullURL, nil)
 	if err != nil {
 		return "", err
@@ -286,8 +284,6 @@ func fetchURLText(ctx context.Context, rawURL string, maxChars int) (string, err
 	if maxChars <= 0 {
 		maxChars = defaultFetchChars
 	}
-	ctx, cancel := context.WithTimeout(ctx, webFetchTimeout)
-	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, "GET", clean, nil)
 	if err != nil {
 		return "", err

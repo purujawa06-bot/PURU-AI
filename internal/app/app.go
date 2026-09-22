@@ -290,9 +290,7 @@ func (a *App) maybeCompact(ctx context.Context, userID int64, stored []*messages
 	if a.mem.Model == nil && a.agent != nil {
 		a.mem.Model = a.agent.Client
 	}
-	cctx, cancel := context.WithTimeout(ctx, 90*time.Second)
-	defer cancel()
-	rel, err := a.mem.Compact(cctx, stored)
+	rel, err := a.mem.Compact(ctx, stored)
 	if err != nil {
 		log.Printf("[memory] compact failed: %v", err)
 		return stored
