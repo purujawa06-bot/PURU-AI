@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
+	"strings"
 )
 
 // TelegramUser is the chat user asking (Telegram only; nil in CLI).
@@ -36,11 +38,12 @@ type TelegramClient interface {
 // maxSendFileBytes caps telegram_sendfile uploads (Telegram bots allow 50MB).
 const maxSendFileBytes = 20 << 20
 
-// BuildTools returns 8 tools: 6 local workspace tools with picoclaw-mirrored
+// BuildTools returns 11 tools: 6 local workspace tools with picoclaw-mirrored
 // declarations (read_file, write_file, list_dir, edit_file, append_file, exec)
 // + 2 Telegram tools (telegram_sendfile, telegram_getuser, only usable with
-// a Telegram context). opts carries workspace config, current chat/user, and
-// the OnTool preview hook.
+// a Telegram context) + get_env (environment info) + 2 web tools
+// (web_search via Yahoo HTML + Bing fallback, web_fetch URL to text).
+// opts carries workspace config, current chat/user, and the OnTool preview hook.
 func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 	ws := ""
 	restrict := true
@@ -139,47 +142,56 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				}
 				return fmt.Sprintf("Appended to %s", argStr(args, "path")), nil
 			}),
-		"exec": mk("exec", "Execute shell commands. Action must be \"run\". Strictly capped: timeout 60s default (max 300s), RAM capped by exec_memory_mb (group killed when over), files capped 100MB, output truncated 20k chars.",
+		"exec": mk("exec", "Execute shell commands. Actions: run (block/background), list (sessions), poll (status), read (output), kill. Capped: 300s, 64MB RAM, 20k chars.",
 			objSchema([]string{"action"}, map[string]any{
-				"action":     enumProp("Action: run (execute command), list (show sessions), poll (check status), read (get output), write (send input), kill (terminate), send-keys (send keys to PTY)", []string{"run", "list", "poll", "read", "write", "kill", "send-keys"}),
-				"command":    strProp("Shell command to execute (required for run)"),
-				"sessionId":  strProp("Session ID (required for poll/read/write/kill/send-keys)"),
-				"keys":       strProp("Key names for send-keys: up, down, left, right, enter, tab, escape, backspace, ctrl-c, ctrl-d, home, end, pageup, pagedown, f1-f12"),
-				"data":       strProp("Data to write to stdin (required for write)"),
-				"background": strProp("Run in background immediately"),
-				"pty":        strProp("Run in a pseudo-terminal (PTY) when available"),
-				"cwd":        strProp("Working directory inside workspace (default: workspace root)."),
+				"action":     enumProp("Action: run (execute), list (show sessions), poll (check status), read (get output), kill (terminate)", []string{"run", "list", "poll", "read", "kill"}),
+				"command":    strProp("Shell command (required for run)"),
+				"sessionId":  strProp("Session ID (required for poll/read/kill)"),
+				"background": boolProp("Run in background immediately (returns sessionId)", false),
+				"cwd":        strProp("Working directory inside workspace."),
 				"timeout":    intProp("Timeout in seconds (default 60, max 300).", defaultExecTimeoutSec),
 			}),
 			func(ctx context.Context, args map[string]any) (any, error) {
 				action := argStr(args, "action")
-				if action == "" {
-					return errVal(fmt.Errorf("action is required"))
+				switch action {
+				case "list":
+					return listSessions(), nil
+				case "poll":
+					sid := argStr(args, "sessionId")
+					if sid == "" {
+						return errVal(fmt.Errorf("sessionId is required for poll"))
+					}
+					return pollExec(sid)
+				case "read":
+					sid := argStr(args, "sessionId")
+					if sid == "" {
+						return errVal(fmt.Errorf("sessionId is required for read"))
+					}
+					return readExec(sid)
+				case "kill":
+					sid := argStr(args, "sessionId")
+					if sid == "" {
+						return errVal(fmt.Errorf("sessionId is required for kill"))
+					}
+					return killExec(sid)
+				case "run":
+					command := argStr(args, "command")
+					if command == "" {
+						return errVal(fmt.Errorf("command is required for action \"run\""))
+					}
+					dir, err := resolveWorkdir(ws, restrict, argStr(args, "cwd"))
+					if err != nil {
+						return errVal(err)
+					}
+					timeout := int(argInt(args, "timeout"))
+					memMB := defaultExecMemMB
+					if a != nil && a.Config != nil {
+						memMB = clampMemMB(a.Config.ExecMemoryMB)
+					}
+					return runExec(dir, command, clampTimeout(timeout), memMB, argBool(args, "background"))
+				default:
+					return errVal(fmt.Errorf("unsupported action: %s", action))
 				}
-				if action != "run" {
-					return errVal(fmt.Errorf("unknown action: %s (only \"run\" is supported)", action))
-				}
-				dir, err := resolveWorkdir(ws, restrict, argStr(args, "cwd"))
-				if err != nil {
-					return errVal(err)
-				}
-				timeout := defaultExecTimeoutSec
-				if _, ok := args["timeout"]; ok {
-					timeout = int(argInt(args, "timeout"))
-				}
-				memMB := defaultExecMemMB
-				if a != nil && a.Config != nil {
-					memMB = clampMemMB(a.Config.ExecMemoryMB)
-				}
-				res := runExec(dir, argStr(args, "command"), clampTimeout(timeout), memMB)
-				out := map[string]any{"success": res.Success, "exit_code": res.ExitCode, "output": res.Output}
-				if res.TimedOut {
-					out["timed_out"] = true
-				}
-				if res.MemoryLimited {
-					out["memory_limited"] = true
-				}
-				return out, nil
 			}),
 		"telegram_sendfile": mk("telegram_sendfile", "Send a local file (image, document, etc.) to the user on the current chat channel. Only works in Telegram chat.",
 			objSchema([]string{"path"}, map[string]any{
@@ -195,12 +207,19 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				if err != nil {
 					return map[string]any{"error": err.Error()}, nil
 				}
-				b, err := os.ReadFile(abs)
+				stat, err := os.Stat(abs)
 				if err != nil {
 					return map[string]any{"error": err.Error()}, nil
 				}
-				if len(b) > maxSendFileBytes {
-					return map[string]any{"error": "file terlalu besar (maks 20MB)"}, nil
+				if stat.IsDir() {
+					return map[string]any{"error": "path adalah direktori, bukan file"}, nil
+				}
+				if stat.Size() > maxSendFileBytes {
+					return map[string]any{"error": fmt.Sprintf("file terlalu besar: %s (maks 20MB)", formatSize(stat.Size()))}, nil
+				}
+				b, err := os.ReadFile(abs)
+				if err != nil {
+					return map[string]any{"error": err.Error()}, nil
 				}
 				name := argStr(args, "filename")
 				if name == "" {
@@ -231,6 +250,49 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				}
 				u := opts.User
 				return userInfoMap(&TelegramUserInfo{ID: u.ID, Username: u.Username, FirstName: u.FirstName, LastName: u.LastName}), nil
+			}),
+		"get_env": mk("get_env", "Get assistant environment info (OS, Arch, Go version, Workspace status, Memory).",
+			objSchema(nil, nil),
+			func(ctx context.Context, args map[string]any) (any, error) {
+				var m runtime.MemStats
+				runtime.ReadMemStats(&m)
+				return map[string]any{
+					"os":         runtime.GOOS,
+					"arch":       runtime.GOARCH,
+					"go_ver":     runtime.Version(),
+					"workspace":  ws,
+					"restricted": restrict,
+					"memory_mb":  m.Alloc / 1024 / 1024,
+				}, nil
+			}),
+		"web_search": mk("web_search", "Search the web (Yahoo HTML with Bing fallback). Returns title + URL + snippet per result. Use when you need current/external info beyond the workspace.",
+			objSchema([]string{"query"}, map[string]any{
+				"query": strProp("Search query (required, non-empty)."),
+				"count": intProp("Number of results (default 5, max 10).", defaultSearchN),
+			}),
+			func(ctx context.Context, args map[string]any) (any, error) {
+				q := argStr(args, "query")
+				if err := validateSearchQuery(q); err != nil {
+					return errVal(err)
+				}
+				n := clampSearchCount(argInt(args, "count"))
+				text, err := runWebSearch(ctx, q, n)
+				if err != nil {
+					return errVal(err)
+				}
+				return text, nil
+			}),
+		"web_fetch": mk("web_fetch", "Fetch a public http/https URL and return its text content (HTML stripped, truncated). Use to read a page found via web_search or a user-provided link. Local/private hosts are rejected.",
+			objSchema([]string{"url"}, map[string]any{
+				"url":       strProp("Public http/https URL to fetch (required)."),
+				"max_chars": intProp("Max output chars (default 8000, max 20000).", defaultFetchChars),
+			}),
+			func(ctx context.Context, args map[string]any) (any, error) {
+				text, err := fetchURLText(ctx, argStr(args, "url"), clampFetchChars(argInt(args, "max_chars")))
+				if err != nil {
+					return errVal(err)
+				}
+				return text, nil
 			}),
 	}
 }
@@ -272,7 +334,7 @@ func argBool(a map[string]any, k string) bool {
 
 func argStr(a map[string]any, k string) string {
 	s, _ := a[k].(string)
-	return s
+	return strings.TrimSpace(s)
 }
 
 func objSchema(required []string, props map[string]any) map[string]any {

@@ -15,12 +15,12 @@ func testAgent(ws string) *Agent {
 	return &Agent{Config: &config.Config{Workspace: ws, RestrictWorkspace: true}}
 }
 
-func TestEightTools(t *testing.T) {
+func TestToolCount(t *testing.T) {
 	tools := BuildTools(testAgent(t.TempDir()), nil)
-	if len(tools) != 8 {
-		t.Fatalf("tools = %d, want exactly 8", len(tools))
+	if len(tools) != 11 {
+		t.Fatalf("tools = %d, want exactly 11", len(tools))
 	}
-	for _, n := range []string{"read_file", "write_file", "list_dir", "edit_file", "append_file", "exec", "telegram_sendfile", "telegram_getuser"} {
+	for _, n := range []string{"read_file", "write_file", "list_dir", "edit_file", "append_file", "exec", "telegram_sendfile", "telegram_getuser", "get_env", "web_search", "web_fetch"} {
 		if tools[n] == nil {
 			t.Fatalf("tool %s missing", n)
 		}
@@ -39,7 +39,7 @@ func TestPicoclawParamDeclarations(t *testing.T) {
 		"list_dir":    {"path"},
 		"edit_file":   {"path", "old_text", "new_text"},
 		"append_file": {"path", "content"},
-		"exec":        {"action", "command", "sessionId", "keys", "data", "background", "pty", "cwd", "timeout"},
+		"exec":        {"action", "command", "sessionId", "background", "cwd", "timeout"},
 	}
 	wantRequired := map[string][]string{
 		"read_file":   {"path"},
@@ -132,8 +132,9 @@ func TestClampTimeout(t *testing.T) {
 }
 
 func TestExecSuccess(t *testing.T) {
-	res := runExec(t.TempDir(), "echo hi", 10, 256)
-	if !res.Success || res.ExitCode != 0 {
+	res, _ := runExec(t.TempDir(), "echo hi", 10, 256, false)
+	m := res.(execResult)
+	if !m.Success || m.ExitCode != 0 {
 		t.Fatalf("echo failed: %+v", res)
 	}
 }
@@ -142,8 +143,9 @@ func TestExecTimeoutKills(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("sleep-based timeout test unix-only")
 	}
-	res := runExec(t.TempDir(), "sleep 10", 1, 256)
-	if !res.TimedOut {
+	res, _ := runExec(t.TempDir(), "sleep 10", 1, 256, false)
+	m := res.(execResult)
+	if !m.TimedOut {
 		t.Fatalf("expected timeout, got %+v", res)
 	}
 }
@@ -160,9 +162,50 @@ func TestExecWorkdirJailed(t *testing.T) {
 
 func TestExecRejectsUnknownAction(t *testing.T) {
 	tools := BuildTools(testAgent(t.TempDir()), nil)
-	out, _ := tools["exec"].Run(context.Background(), map[string]any{"action": "list"})
+	out, _ := tools["exec"].Run(context.Background(), map[string]any{"action": "invalid"})
 	if m, _ := out.(map[string]any); m["success"] != false {
-		t.Fatalf("exec non-run must fail: %v", out)
+		t.Fatalf("exec unknown action must fail: %v", out)
+	}
+}
+
+func TestExecBackgroundSessions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("background session timing unix-behavior check")
+	}
+	tools := BuildTools(testAgent(t.TempDir()), nil)
+	ctx := context.Background()
+	out, _ := tools["exec"].Run(ctx, map[string]any{"action": "run", "command": "sleep 5", "background": true, "timeout": 30})
+	m, _ := out.(map[string]any)
+	sid, _ := m["sessionId"].(string)
+	if m["success"] != true || sid == "" {
+		t.Fatalf("background run must return sessionId: %v", out)
+	}
+	lst, _ := tools["exec"].Run(ctx, map[string]any{"action": "list"})
+	found := false
+	if arr, ok := lst.([]map[string]any); ok {
+		for _, s := range arr {
+			if s["sessionId"] == sid {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("session %s missing from list: %v", sid, lst)
+	}
+	p, _ := tools["exec"].Run(ctx, map[string]any{"action": "poll", "sessionId": sid})
+	if pm, _ := p.(map[string]any); pm["sessionId"] != sid {
+		t.Fatalf("poll must return session: %v", p)
+	}
+	r, _ := tools["exec"].Run(ctx, map[string]any{"action": "read", "sessionId": sid})
+	if rm, _ := r.(map[string]any); rm["sessionId"] != sid {
+		t.Fatalf("read must return session output: %v", r)
+	}
+	k, _ := tools["exec"].Run(ctx, map[string]any{"action": "kill", "sessionId": sid})
+	if km, _ := k.(map[string]any); km["sessionId"] != sid {
+		t.Fatalf("kill must confirm session: %v", k)
+	}
+	if bad, _ := tools["exec"].Run(ctx, map[string]any{"action": "poll", "sessionId": "nope"}); !hasErrPicoclaw(bad) {
+		t.Fatalf("poll unknown session must error: %v", bad)
 	}
 }
 
@@ -222,17 +265,17 @@ func hasErrPicoclaw(v any) bool {
 }
 
 // Output exec dipotong saat capture: buffer tidak pernah lebih dari cap,
-// kelebihan ditandai ...[truncated].
+// kelebihan ditandai ...[truncated, total X].
 func TestCappedWriterTruncates(t *testing.T) {
 	w := &cappedWriter{max: 100}
 	if _, err := w.Write([]byte(strings.Repeat("abcdef", 50))); err != nil {
 		t.Fatal(err)
 	}
 	s := w.String()
-	if len(s) > 100+len("\n...[truncated]") {
+	if len(s) > 100+64 {
 		t.Fatalf("buffer bocor: %d bytes", len(s))
 	}
-	if !strings.HasSuffix(s, "[truncated]") {
+	if !strings.Contains(s, "[truncated") {
 		t.Fatalf("kelebihan harus ditandai truncated")
 	}
 	w2 := &cappedWriter{max: 100}

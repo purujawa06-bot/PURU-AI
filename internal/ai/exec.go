@@ -5,10 +5,30 @@ import (
 	"fmt"
 	"os/exec"
 	"runtime"
+	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
+
+var (
+	sessions   = make(map[string]*execSession)
+	sessionsMu sync.RWMutex
+)
+
+type execSession struct {
+	mu            sync.RWMutex
+	ID            string
+	Cmd           *exec.Cmd
+	Output        *cappedWriter
+	Cancel        context.CancelFunc
+	StartTime     time.Time
+	EndTime       time.Time
+	IsRunning     bool
+	TimedOut      bool
+	MemoryLimited bool
+}
 
 // Exec timeout policy: default 60s when the agent omits timeout,
 // hard cap 300s. On timeout the whole process group is killed so no RAM
@@ -30,6 +50,10 @@ const (
 
 // maxExecFileBlocks is maxExecFileMB in ulimit -f units (512-byte blocks).
 const maxExecFileBlocks = maxExecFileMB * 1024 * 1024 / 512
+
+// maxExecSessions caps stored exec sessions so blocking/background runs
+// never grow the map (and its 20k output buffers) without bound.
+const maxExecSessions = 20
 
 type execResult struct {
 	Success       bool   `json:"success"`
@@ -73,8 +97,11 @@ func clampTimeout(v any) int {
 // cappedWriter collects at most max output bytes; the rest is discarded and
 // flagged. Truncation happens DURING capture, so giant outputs (cat file
 // besar) never sit fully in RAM before being cut — the buffer itself is
-// the cap, and the "...[truncated]" marker tells the agent output was cut.
+// the cap, and the "...[truncated, total X]" marker tells the agent output was cut.
+// Thread-safe: Write runs on the process goroutine while String can be read
+// concurrently via exec read/poll.
 type cappedWriter struct {
+	mu    sync.Mutex
 	buf   []byte
 	max   int
 	total int
@@ -82,6 +109,8 @@ type cappedWriter struct {
 }
 
 func (w *cappedWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	n := len(p)
 	w.total += n
 	if w.total > w.max {
@@ -97,69 +126,244 @@ func (w *cappedWriter) Write(p []byte) (int, error) {
 }
 
 func (w *cappedWriter) String() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	if w.cut {
-		return string(w.buf) + "\n...[truncated]"
+		return string(w.buf) + fmt.Sprintf("\n...[truncated, total %s]", formatSize(int64(w.total)))
 	}
 	return string(w.buf)
+}
+
+// snapshot copies session status under lock so poll/read/kill/list never race
+// the watcher goroutine that marks completion.
+func (s *execSession) snapshot() (running bool, timedOut bool, memLimited bool, start time.Time) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.IsRunning, s.TimedOut, s.MemoryLimited, s.StartTime
+}
+
+func (s *execSession) finish(timedOut bool, memLimited bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.IsRunning = false
+	s.EndTime = time.Now()
+	s.TimedOut = timedOut
+	s.MemoryLimited = memLimited
 }
 
 // runExec runs command via shell in dir with timeoutSec and a memMB resident-
 // memory budget for the whole process group. The process starts in its own
 // process group (unix) so timeout/memory kills hit the PID group, not just
 // the shell — children can't leak RAM.
-func runExec(dir, command string, timeoutSec, memMB int) execResult {
+func runExec(dir, command string, timeoutSec, memMB int, background bool) (any, error) {
 	if strings.TrimSpace(command) == "" {
-		return execResult{Success: false, ExitCode: -1, Output: "command kosong"}
+		return execResult{Success: false, ExitCode: -1, Output: "command kosong"}, nil
 	}
 	memMB = clampMemMB(memMB)
 	if runtime.GOOS != "windows" {
-		// Cap file sizes written by the command (100MB); best-effort.
 		command = fmt.Sprintf("ulimit -f %d 2>/dev/null; %s", maxExecFileBlocks, command)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSec)*time.Second)
-	defer cancel()
 
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSec)*time.Second)
 	shell, prefix := defaultShell()
 	args := append(prefix, command)
 	cmd := exec.CommandContext(ctx, shell, args...)
 	cmd.Dir = dir
 	setupKillGroup(cmd)
+
 	outW := &cappedWriter{max: maxExecOutput}
 	cmd.Stdout = outW
 	cmd.Stderr = outW
 
-	runErr := cmd.Start()
-	if runErr != nil {
-		return execResult{Success: false, ExitCode: -1, Output: runErr.Error()}
+	err := cmd.Start()
+	if err != nil {
+		cancel()
+		return execResult{Success: false, ExitCode: -1, Output: err.Error()}, nil
 	}
+
+	sessionID := fmt.Sprintf("sess_%d", time.Now().UnixNano())
+	sess := &execSession{
+		ID:        sessionID,
+		Cmd:       cmd,
+		Output:    outW,
+		Cancel:    cancel,
+		StartTime: time.Now(),
+		IsRunning: true,
+	}
+
+	sessionsMu.Lock()
+	sessions[sessionID] = sess
+	pruneSessionsLocked()
+	sessionsMu.Unlock()
+
 	pid := -1
 	if cmd.Process != nil {
 		pid = cmd.Process.Pid
 	}
-	// Watch group RSS on Linux; no-op elsewhere. stop closed after Wait.
-	stopWatch := make(chan struct{})
-	defer close(stopWatch)
-	var memKilled atomic.Bool
-	startMemWatch(pid, int64(memMB)<<20, stopWatch, &memKilled)
-	waitErr := cmd.Wait()
 
-	out := outW.String()
+	go func() {
+		stopWatch := make(chan struct{})
+		var memKilled atomic.Bool
+		startMemWatch(pid, int64(memMB)<<20, stopWatch, &memKilled)
 
-	if memKilled.Load() {
-		return execResult{Success: false, ExitCode: -1,
-			Output:        out + fmt.Sprintf("\n[memory limit %dMB — grup proses di-kill]", memMB),
-			MemoryLimited: true}
-	}
-	if ctx.Err() == context.DeadlineExceeded {
-		killGroup(pid)
-		return execResult{Success: false, ExitCode: -1, Output: out + fmt.Sprintf("\n[timeout %ds — proses di-kill]", timeoutSec), TimedOut: true}
-	}
-	if waitErr != nil {
-		code := -1
-		if ee, ok := waitErr.(*exec.ExitError); ok {
-			code = ee.ExitCode()
+		_ = cmd.Wait()
+		close(stopWatch)
+		cancel()
+
+		timedOut := ctx.Err() == context.DeadlineExceeded
+		sess.finish(timedOut, memKilled.Load())
+		if timedOut {
+			killGroup(pid)
 		}
-		return execResult{Success: false, ExitCode: code, Output: out}
+	}()
+
+	if background {
+		return map[string]any{"success": true, "sessionId": sessionID, "status": "running"}, nil
 	}
-	return execResult{Success: true, ExitCode: 0, Output: out}
+
+	// Wait for completion if not background
+	for {
+		running, _, _, start := sess.snapshot()
+		if !running {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+		if time.Since(start) > time.Duration(timeoutSec+2)*time.Second {
+			break // safety break
+		}
+	}
+
+	running, timedOut, memLimited, _ := sess.snapshot()
+	res := execResult{
+		Success:       sess.Cmd.ProcessState != nil && sess.Cmd.ProcessState.Success() && !running,
+		ExitCode:      -1,
+		Output:        sess.Output.String(),
+		TimedOut:      timedOut,
+		MemoryLimited: memLimited,
+	}
+	if sess.Cmd.ProcessState != nil {
+		res.ExitCode = sess.Cmd.ProcessState.ExitCode()
+	}
+	return res, nil
+}
+
+func lookupSession(sessionID string) (*execSession, bool) {
+	sessionsMu.RLock()
+	defer sessionsMu.RUnlock()
+	sess, ok := sessions[sessionID]
+	return sess, ok
+}
+
+// pruneSessionsLocked evicts oldest finished sessions beyond maxExecSessions.
+// Caller must hold sessionsMu (write). Running sessions are never evicted so
+// poll/read/kill on live processes keep working; the leak fixed here is the
+// unbounded pile-up of finished (blocking + background) sessions, each
+// holding a 20k output buffer.
+func pruneSessionsLocked() {
+	if len(sessions) <= maxExecSessions {
+		return
+	}
+	type entry struct {
+		id    string
+		start time.Time
+	}
+	var finished []entry
+	for id, sess := range sessions {
+		running, _, _, start := sess.snapshot()
+		if !running {
+			finished = append(finished, entry{id, start})
+		}
+	}
+	sort.Slice(finished, func(i, j int) bool { return finished[i].start.Before(finished[j].start) })
+	for _, e := range finished {
+		if len(sessions) <= maxExecSessions {
+			break
+		}
+		delete(sessions, e.id)
+	}
+}
+
+func pollExec(sessionID string) (any, error) {
+	sess, ok := lookupSession(sessionID)
+	if !ok {
+		return nil, fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	running, timedOut, memLimited, _ := sess.snapshot()
+	status := "running"
+	if !running {
+		status = "finished"
+	}
+
+	return map[string]any{
+		"sessionId":      sess.ID,
+		"status":         status,
+		"running":        running,
+		"timed_out":      timedOut,
+		"memory_limited": memLimited,
+	}, nil
+}
+
+func readExec(sessionID string) (any, error) {
+	sess, ok := lookupSession(sessionID)
+	if !ok {
+		return nil, fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	running, timedOut, memLimited, _ := sess.snapshot()
+	status := "running"
+	if !running {
+		status = "finished"
+	}
+	return map[string]any{
+		"sessionId":      sess.ID,
+		"status":         status,
+		"output":         sess.Output.String(),
+		"running":        running,
+		"timed_out":      timedOut,
+		"memory_limited": memLimited,
+	}, nil
+}
+
+func killExec(sessionID string) (any, error) {
+	sess, ok := lookupSession(sessionID)
+	if !ok {
+		return nil, fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	running, timedOut, memLimited, _ := sess.snapshot()
+	if running {
+		sess.Cancel()
+		if sess.Cmd != nil && sess.Cmd.Process != nil {
+			killGroup(sess.Cmd.Process.Pid)
+		}
+		// Tandai selesai langsung agar poll/read/list tak lagi lihat
+		// running=true selama jeda sampai watcher cmd.Wait() jalan.
+		sess.finish(timedOut, memLimited)
+		return map[string]any{"sessionId": sessionID, "status": "killed"}, nil
+	}
+	return map[string]any{"sessionId": sessionID, "status": "already finished"}, nil
+}
+
+func listSessions() any {
+	sessionsMu.RLock()
+	defer sessionsMu.RUnlock()
+	var list []map[string]any
+	for id, sess := range sessions {
+		running, _, _, start := sess.snapshot()
+		list = append(list, map[string]any{
+			"sessionId": id,
+			"running":   running,
+			"start":     start.Format(time.RFC3339),
+		})
+	}
+	if len(list) == 0 {
+		return "No active sessions."
+	}
+	sort.Slice(list, func(i, j int) bool {
+		si, _ := list[i]["sessionId"].(string)
+		sj, _ := list[j]["sessionId"].(string)
+		return si < sj
+	})
+	return list
 }

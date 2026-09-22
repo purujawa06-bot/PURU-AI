@@ -38,9 +38,10 @@ const MaxSummaries = 20
 // conversation transcript. English: summaries are injected into the
 // English system prompt.
 const summarizePrompt = `Summarize the conversation below into concise markdown (max ~400 words). ` +
-	`Sections: ## Key facts (lasting user info, preferences, decisions), ` +
-	`## Done (tasks completed + outcomes), ## Pending (open tasks, questions, next steps), ` +
-	`## Notes (anything else worth remembering). Skip empty sections. No preamble, just the markdown.\n\n`
+	`Focus on extracting lasting facts, task progress, and pending items. ` +
+	`Sections: ## Key facts (stable user info, preferences, decisions), ` +
+	`## Done (tasks completed + specific outcomes), ## Pending (open tasks, unanswered questions), ` +
+	`## Notes (technical details or context for future turns). Skip empty sections. No preamble, just the markdown.\n\n`
 
 type Manager struct {
 	Workspace string
@@ -125,6 +126,11 @@ func historyText(msgs []*messages.Message) string {
 					}
 				case "tool-result":
 					if t := p.ResultText(); t != "" {
+						// Context optimization: limit tool result length sent to summarizer
+						// to prevent large outputs from bloating the summary request.
+						if len(t) > 1000 {
+							t = t[:1000] + " ... [truncated for summary]"
+						}
 						text += "\n[tool-result] " + t
 					}
 				}

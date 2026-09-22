@@ -1,12 +1,13 @@
 // Package ai: lightweight local assistant agent.
 //
-// Tools (8, all jailed to Workspace when
+// Tools (9, all jailed to Workspace when
 // Config.RestrictWorkspace is true) — declarations mirror picoclaw:
 //   - read_file (path, offset, length), write_file (path, content, overwrite),
 //     list_dir (path), edit_file (path, old_text, new_text), exec (action
-//     wajib; command, sessionId, keys, data, background, pty, cwd, timeout
-//     opsional — hanya run yang diimplementasikan)
+//     wajib: run/list/poll/read/kill; command, sessionId, background, cwd,
+//     timeout opsional)
 //   - telegram_sendfile, telegram_getuser (need a Telegram request context)
+//   - get_env (environment info)
 //
 // No VFS, no sandbox, no web, no fallback, no skills.
 package ai
@@ -17,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 )
 
@@ -72,11 +74,38 @@ func insideDir(abs, dir string) bool {
 }
 
 // resolveWorkdir jails exec workdir the same way. Empty = workspace.
+// Hasil selalu dipastikan ada dan berupa direktori agar cmd.Start tak gagal
+// dengan pesan chdir generik — AI dapat pesan jelas untuk koreksi mandiri.
 func resolveWorkdir(workspace string, restrict bool, w string) (string, error) {
 	if strings.TrimSpace(w) == "" {
+		if strings.TrimSpace(workspace) == "" {
+			return workspace, nil
+		}
+		if st, err := os.Stat(workspace); err != nil {
+			if os.IsNotExist(err) {
+				return "", fmt.Errorf("workspace tidak ditemukan: %s", workspace)
+			}
+			return "", fmt.Errorf("workspace tidak bisa diakses: %s: %v", workspace, err)
+		} else if !st.IsDir() {
+			return "", fmt.Errorf("workspace bukan direktori: %s", workspace)
+		}
 		return workspace, nil
 	}
-	return resolvePath(workspace, restrict, w)
+	abs, err := resolvePath(workspace, restrict, w)
+	if err != nil {
+		return "", err
+	}
+	st, err := os.Stat(abs)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("cwd tidak ditemukan: %s. Gunakan list_dir untuk melihat isi workspace", w)
+		}
+		return "", fmt.Errorf("cwd tidak bisa diakses: %s: %v", w, err)
+	}
+	if !st.IsDir() {
+		return "", fmt.Errorf("cwd bukan direktori: %s. Gunakan list_dir untuk melihat isi workspace", w)
+	}
+	return abs, nil
 }
 
 func editLocalFile(workspace string, restrict bool, p, oldStr, newStr string) error {
@@ -91,7 +120,7 @@ func editLocalFile(workspace string, restrict bool, p, oldStr, newStr string) er
 	s := string(b)
 	n := strings.Count(s, oldStr)
 	if oldStr == "" || n == 0 {
-		return fmt.Errorf("old_text not found in file. Make sure it matches exactly")
+		return fmt.Errorf("old_text tidak ditemukan di %s. Pastikan teks sama persis (termasuk spasi/newline). Tips: baca file lagi untuk memastikan konten terbaru", p)
 	}
 	if n > 1 {
 		return fmt.Errorf("old_text appears %d times. Please provide more context to make it unique", n)
@@ -119,6 +148,12 @@ func readLocalFile(workspace string, restrict bool, p string, offset, length int
 	}
 	f, err := os.Open(abs)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("file tidak ditemukan: %s", p)
+		}
+		if os.IsPermission(err) {
+			return "", fmt.Errorf("akses ditolak ke file: %s", p)
+		}
 		return "", fmt.Errorf("failed to open file: %w", err)
 	}
 	defer f.Close()
@@ -127,7 +162,7 @@ func readLocalFile(workspace string, restrict bool, p string, offset, length int
 		return "", fmt.Errorf("failed to stat file: %w", err)
 	}
 	if info.IsDir() {
-		return "", fmt.Errorf("path is a directory: %s", p)
+		return "", fmt.Errorf("path is a directory: %s. Use list_dir to see its contents", p)
 	}
 	if _, err := f.Seek(offset, io.SeekStart); err != nil {
 		return "", fmt.Errorf("failed to seek to offset %d: %w", offset, err)
@@ -184,8 +219,11 @@ func writeLocalFile(workspace string, restrict bool, p, content string, overwrit
 	if err != nil {
 		return err
 	}
-	if !overwrite {
-		if _, err := os.Stat(abs); err == nil {
+	if info, err := os.Stat(abs); err == nil {
+		if info.IsDir() {
+			return fmt.Errorf("cannot write: %s is a directory. Use list_dir to see its contents", p)
+		}
+		if !overwrite {
 			return fmt.Errorf("file: %s already exists. To add to it or change part of it without losing the current contents, use append_file or edit_file. Only set overwrite=true if you intend to replace the entire file.", p)
 		}
 	}
@@ -228,12 +266,31 @@ func listLocalDir(workspace string, restrict bool, p string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to read directory: %w", err)
 	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].IsDir() && !entries[j].IsDir() {
+			return true
+		}
+		if !entries[i].IsDir() && entries[j].IsDir() {
+			return false
+		}
+		return strings.ToLower(entries[i].Name()) < strings.ToLower(entries[j].Name())
+	})
 	var sb strings.Builder
-	for _, e := range entries {
+	maxEntries := 1000
+	for i, e := range entries {
+		if i >= maxEntries {
+			sb.WriteString(fmt.Sprintf("\n... [truncated, %d more entries]", len(entries)-maxEntries))
+			break
+		}
 		if e.IsDir() {
 			sb.WriteString("DIR:  " + e.Name() + "\n")
 		} else {
-			sb.WriteString("FILE: " + e.Name() + "\n")
+			info, err := e.Info()
+			sizeStr := "unknown size"
+			if err == nil {
+				sizeStr = formatSize(info.Size())
+			}
+			sb.WriteString(fmt.Sprintf("FILE: %s (%s)\n", e.Name(), sizeStr))
 		}
 	}
 	if sb.Len() == 0 {
@@ -247,4 +304,17 @@ func defaultShell() (string, []string) {
 		return "cmd", []string{"/C"}
 	}
 	return "sh", []string{"-c"}
+}
+
+func formatSize(b int64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
 }
