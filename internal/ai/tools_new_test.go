@@ -132,7 +132,7 @@ func TestClampTimeout(t *testing.T) {
 }
 
 func TestExecSuccess(t *testing.T) {
-	res, _ := runExec(t.TempDir(), "echo hi", 10, 256, false)
+	res, _ := runExec(context.Background(), t.TempDir(), "echo hi", 10, 256, false)
 	m := res.(execResult)
 	if !m.Success || m.ExitCode != 0 {
 		t.Fatalf("echo failed: %+v", res)
@@ -143,7 +143,7 @@ func TestExecTimeoutKills(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("sleep-based timeout test unix-only")
 	}
-	res, _ := runExec(t.TempDir(), "sleep 10", 1, 256, false)
+	res, _ := runExec(context.Background(), t.TempDir(), "sleep 10", 1, 256, false)
 	m := res.(execResult)
 	if !m.TimedOut {
 		t.Fatalf("expected timeout, got %+v", res)

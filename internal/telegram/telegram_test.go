@@ -113,8 +113,8 @@ func TestSetCommands(t *testing.T) {
 	if err := api.SetCommands(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if cmds := botCommands(); len(cmds) != 3 || cmds[0].Command != "help" || cmds[1].Command != "clear" || cmds[2].Command != "token" {
-		t.Fatalf("menu harus tepat /help /clear /token, got %+v", cmds)
+	if cmds := botCommands(); len(cmds) != 4 || cmds[0].Command != "help" || cmds[1].Command != "clear" || cmds[2].Command != "token" || cmds[3].Command != "stop" {
+		t.Fatalf("menu harus tepat /help /clear /token /stop, got %+v", cmds)
 	}
 }
 

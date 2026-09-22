@@ -36,14 +36,53 @@ func New(cfg *config.Config, tg *telegram.API, h *history.Store, a *ai.Agent, m 
 	return &App{cfg: cfg, tg: tg, hist: h, agent: a, mem: m}
 }
 
-func (a *App) tryAcquire(userID int64) bool {
-	_, loaded := a.busy.LoadOrStore(userID, struct{}{})
+// busySession adalah entry busy-guard per-user. Disimpan sebagai pointer
+// agar CompareAndDelete aman: func value (context.CancelFunc) tidak boleh
+// dibandingkan langsung dengan == (panic), jadi pembandingnya pointer struct.
+type busySession struct {
+	cancel context.CancelFunc
+}
+
+func (a *App) tryAcquire(userID int64, sess *busySession) bool {
+	if sess == nil || sess.cancel == nil {
+		_, loaded := a.busy.LoadOrStore(userID, struct{}{})
+		return !loaded
+	}
+	_, loaded := a.busy.LoadOrStore(userID, sess)
 	return !loaded
 }
 
-func (a *App) release(userID int64) { a.busy.Delete(userID) }
+// releaseCancel hanya melepas bila entry masih milik sesi ini (pointer sess
+// yang sama) — goroutine lama yang selesai belakangan tak boleh menendang sesi
+// baru yang mulai setelah /stop.
+func (a *App) releaseCancel(userID int64, sess *busySession) {
+	if sess == nil {
+		a.busy.Delete(userID)
+		return
+	}
+	a.busy.CompareAndDelete(userID, sess)
+}
+
+// stopUser membatalkan proses agent yang berjalan untuk user tersebut.
+// Return true bila ada proses yang dihentikan, false bila tak ada.
+// Pakai CompareAndDelete atas nilai yang di-Load (pointer, comparable) agar
+// tak menghapus sesi baru yang mulai tepat setelah Load (balapan /stop vs
+// pesan baru). Aman dari panic compare func karena yang dibandingkan pointer.
+func (a *App) stopUser(userID int64) bool {
+	v, ok := a.busy.Load(userID)
+	if !ok {
+		return false
+	}
+	if sess, ok := v.(*busySession); ok && sess != nil && sess.cancel != nil {
+		sess.cancel()
+	}
+	a.busy.CompareAndDelete(userID, v)
+	return true
+}
 
 // Handle dispatches one update async per user (busy-guarded).
+// Di grup (group/supergroup) bot diam kecuali dipanggil via /ai atau
+// command instan (/help /clear /token /stop). Di private semua teks diproses.
 func (a *App) Handle(ctx context.Context, upd *telegram.Update) error {
 	if upd.Message == nil || upd.Message.From == nil || upd.Message.Chat == nil {
 		return nil
@@ -60,7 +99,28 @@ func (a *App) Handle(ctx context.Context, upd *telegram.Update) error {
 	if strings.TrimSpace(msg.Text) == "" {
 		return nil
 	}
-	if isCommand(msg.Text) {
+	userMessage := msg.Text
+	if isGroupChat(msg.Chat.Type) {
+		if isCommand(msg.Text) {
+			go func() {
+				if err := a.handleCommand(ctx, msg); err != nil {
+					log.Printf("[app] command user %d: %v", userID, err)
+				}
+			}()
+			return nil
+		}
+		rest, ok := parseAICommand(msg.Text)
+		if !ok {
+			return nil
+		}
+		if strings.TrimSpace(rest) == "" {
+			if a.tg == nil {
+				return nil
+			}
+			return a.safeReply(ctx, msg, "Kirim /ai <pertanyaan>.", true)
+		}
+		userMessage = strings.TrimSpace(rest)
+	} else if isCommand(msg.Text) {
 		go func() {
 			if err := a.handleCommand(ctx, msg); err != nil {
 				log.Printf("[app] command user %d: %v", userID, err)
@@ -68,32 +128,67 @@ func (a *App) Handle(ctx context.Context, upd *telegram.Update) error {
 		}()
 		return nil
 	}
-	if !a.tryAcquire(userID) {
+	rctx, cancel := context.WithCancel(ctx)
+	sess := &busySession{cancel: cancel}
+	if !a.tryAcquire(userID, sess) {
+		cancel()
 		return a.safeReply(ctx, msg, "⏳ Masih ada yang diproses, tunggu sebentar ya...", true)
 	}
 	go func() {
-		defer a.release(userID)
-		if err := a.processMessage(ctx, msg, msg.Text); err != nil {
+		defer cancel()
+		defer a.releaseCancel(userID, sess)
+		if err := a.processMessage(rctx, msg, userMessage); err != nil {
 			log.Printf("[app] handle user %d: %v", userID, err)
 		}
 	}()
 	return nil
 }
 
+// isGroupChat true untuk chat grup Telegram (group/supergroup).
+func isGroupChat(t string) bool {
+	return t == "group" || t == "supergroup"
+}
+
+// parseAICommand mengenali /ai dan /ai@namabot di awal teks.
+// Return sisa teks + true bila cocok; /aid dkk bukan /ai.
+func parseAICommand(s string) (string, bool) {
+	t := strings.TrimSpace(s)
+	if !strings.HasPrefix(t, "/ai") {
+		return "", false
+	}
+	rest := strings.TrimPrefix(t, "/ai")
+	if rest == "" || strings.HasPrefix(rest, " ") || strings.HasPrefix(rest, "\t") || strings.HasPrefix(rest, "\n") {
+		return strings.TrimSpace(rest), true
+	}
+	if strings.HasPrefix(rest, "@") {
+		if i := strings.IndexAny(rest, " \t\n"); i >= 0 {
+			return strings.TrimSpace(rest[i:]), true
+		}
+		return "", true
+	}
+	return "", false
+}
+
 func isCommand(s string) bool {
 	t := strings.TrimSpace(s)
 	return strings.HasPrefix(t, "/help") ||
 		strings.HasPrefix(t, "/clear") ||
-		strings.HasPrefix(t, "/token")
+		strings.HasPrefix(t, "/token") ||
+		strings.HasPrefix(t, "/stop")
 }
 
 func (a *App) handleCommand(ctx context.Context, msg *telegram.Message) error {
 	t := strings.TrimSpace(msg.Text)
 	switch {
+	case strings.HasPrefix(t, "/stop"):
+		if a.stopUser(msg.From.ID) {
+			return a.safeReply(ctx, msg, "⏹️ Proses dihentikan.", true)
+		}
+		return a.safeReply(ctx, msg, "Tidak ada proses yang berjalan.", true)
 	case strings.HasPrefix(t, "/token"):
 		return a.safeReply(ctx, msg, tokenInfo(history.TokenCountFull(a.renderedSystem(), a.hist.Get(msg.From.ID)), a.cfg.HistoryTokenLimit), true)
 	case strings.HasPrefix(t, "/help"):
-		return a.safeReply(ctx, msg, "PURU-AI lightweight — kirim pesan apa saja.\n/clear = hapus history.\n/token = info pemakaian token memory.", true)
+		return a.safeReply(ctx, msg, "PURU-AI lightweight — kirim pesan apa saja.\n/clear = hapus history.\n/token = info pemakaian token memory.\n/stop = hentikan proses yang berjalan.\nDi grup: panggil via /ai <pertanyaan> (contoh: /ai jelaskan Raft).", true)
 	default: // /clear
 		_ = a.hist.Clear(msg.From.ID)
 		return a.safeReply(ctx, msg, "History dihapus.", true)
@@ -220,6 +315,12 @@ func (a *App) processMessage(ctx context.Context, msg *telegram.Message, userMes
 	}
 
 	res := a.agent.ProcessMessage(ctx, userMessage, stored, opts)
+	if ctx.Err() != nil {
+		if a.tg != nil {
+			_ = a.tg.DeleteMessage(context.Background(), msg.Chat.ID, thID)
+		}
+		return ctx.Err()
+	}
 
 	saved := make([]*messages.Message, 0, len(stored)+1+len(res.ResponseMessages))
 	saved = append(saved, stored...)

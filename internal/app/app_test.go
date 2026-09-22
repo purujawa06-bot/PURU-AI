@@ -18,8 +18,8 @@ import (
 	"github.com/purujawa06-bot/PURU-AI/internal/telegram"
 )
 
-func TestIsCommandOnlyThree(t *testing.T) {
-	for _, c := range []string{"/help", "/help@bot", "/clear", "/token"} {
+func TestIsCommandMenu(t *testing.T) {
+	for _, c := range []string{"/help", "/help@bot", "/clear", "/token", "/stop", "/stop@bot"} {
 		if !isCommand(c) {
 			t.Errorf("%q harus dikenali sebagai command", c)
 		}
@@ -149,5 +149,93 @@ func TestHandleBlocksUnauthorized(t *testing.T) {
 	}
 	if got := hist.Get(999); len(got) != 0 {
 		t.Fatalf("unauthorized tidak boleh menulis history, got %+v", got)
+	}
+}
+
+// /stop tanpa proses berjalan harus false (tak ada yang dihentikan).
+func TestStopUserIdle(t *testing.T) {
+	ws := t.TempDir()
+	a := New(&config.Config{Workspace: ws}, nil, history.New(t.TempDir()), nil, memory.New(ws))
+	if a.stopUser(7) {
+		t.Fatalf("stopUser idle harus false")
+	}
+}
+
+// /stop harus memanggil cancel sesi dan melepas busy-guard; sesi baru yang
+// mulai setelahnya tidak boleh ikut terlepas oleh goroutine lama.
+func TestStopUserCancelsAndReleases(t *testing.T) {
+	ws := t.TempDir()
+	a := New(&config.Config{Workspace: ws}, nil, history.New(t.TempDir()), nil, memory.New(ws))
+	_, cancel := context.WithCancel(context.Background())
+	old := &busySession{cancel: cancel}
+	if !a.tryAcquire(7, old) {
+		t.Fatalf("tryAcquire harus berhasil")
+	}
+	if !a.stopUser(7) {
+		t.Fatalf("stopUser harus true saat ada sesi")
+	}
+	if _, ok := a.busy.Load(int64(7)); ok {
+		t.Fatalf("busy harus dilepas setelah /stop")
+	}
+	// Sesi baru mulai; goroutine lama yang selesai belakangan tak boleh
+	// menendang entry baru (releaseCancel hanya hapus pointer miliknya).
+	_, cancel2 := context.WithCancel(context.Background())
+	cur := &busySession{cancel: cancel2}
+	if !a.tryAcquire(7, cur) {
+		t.Fatalf("tryAcquire sesi baru harus berhasil")
+	}
+	a.releaseCancel(7, old)
+	if v, ok := a.busy.Load(int64(7)); !ok || v != any(cur) {
+		t.Fatalf("releaseCancel sesi lama tak boleh hapus sesi baru")
+	}
+	a.releaseCancel(7, cur)
+	if _, ok := a.busy.Load(int64(7)); ok {
+		t.Fatalf("releaseCancel sesi sendiri harus melepas")
+	}
+	if a.stopUser(7) {
+		t.Fatalf("stopUser kedua harus false")
+	}
+}
+
+// Ronde 21: grup diam kecuali /ai. isCommand tetap 4 command instan.
+func TestIsCommandIgnoresAI(t *testing.T) {
+	for _, c := range []string{"/ai halo", "/ai@bot halo", "/ai"} {
+		if isCommand(c) {
+			t.Errorf("%q bukan command instan, harus false", c)
+		}
+	}
+}
+
+func TestIsGroupChat(t *testing.T) {
+	if !isGroupChat("group") || !isGroupChat("supergroup") {
+		t.Fatalf("group/supergroup harus true")
+	}
+	for _, c := range []string{"private", "channel", ""} {
+		if isGroupChat(c) {
+			t.Errorf("%q harus false", c)
+		}
+	}
+}
+
+func TestParseAICommand(t *testing.T) {
+	cases := map[string]struct {
+		ok   bool
+		rest string
+	}{
+		"/ai halo":        {true, "halo"},
+		"/ai  halo dunia": {true, "halo dunia"},
+		"/ai@bot halo":    {true, "halo"},
+		"/ai@bot":         {true, ""},
+		"/ai":             {true, ""},
+		"/aid bukan":      {false, ""},
+		"/aix":            {false, ""},
+		"halo /ai":        {false, ""},
+		"halo":            {false, ""},
+	}
+	for in, want := range cases {
+		rest, ok := parseAICommand(in)
+		if ok != want.ok || rest != want.rest {
+			t.Errorf("parseAICommand(%q) = (%q,%v), want (%q,%v)", in, rest, ok, want.rest, want.ok)
+		}
 	}
 }

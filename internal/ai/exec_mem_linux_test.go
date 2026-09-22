@@ -3,6 +3,7 @@
 package ai
 
 import (
+	"context"
 	"os/exec"
 	"testing"
 )
@@ -27,7 +28,7 @@ func TestMemBudgetKillsHog(t *testing.T) {
 	if _, err := exec.LookPath("python3"); err != nil {
 		t.Skip("butuh python3")
 	}
-	resAny, _ := runExec(t.TempDir(), `python3 -c "import time; a=bytearray(300_000_000); time.sleep(30)"`, 60, 64, false)
+	resAny, _ := runExec(context.Background(), t.TempDir(), `python3 -c "import time; a=bytearray(300_000_000); time.sleep(30)"`, 60, 64, false)
 	res, _ := resAny.(execResult)
 	if !res.MemoryLimited || res.Success {
 		t.Fatalf("hog 300MB dengan budget 64MB harus di-kill: %+v", res)

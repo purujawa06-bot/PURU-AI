@@ -188,7 +188,7 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 					if a != nil && a.Config != nil {
 						memMB = clampMemMB(a.Config.ExecMemoryMB)
 					}
-					return runExec(dir, command, clampTimeout(timeout), memMB, argBool(args, "background"))
+					return runExec(ctx, dir, command, clampTimeout(timeout), memMB, argBool(args, "background"))
 				default:
 					return errVal(fmt.Errorf("unsupported action: %s", action))
 				}

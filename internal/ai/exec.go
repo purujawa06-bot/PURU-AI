@@ -155,16 +155,25 @@ func (s *execSession) finish(timedOut bool, memLimited bool) {
 // memory budget for the whole process group. The process starts in its own
 // process group (unix) so timeout/memory kills hit the PID group, not just
 // the shell — children can't leak RAM.
-func runExec(dir, command string, timeoutSec, memMB int, background bool) (any, error) {
+func runExec(parent context.Context, dir, command string, timeoutSec, memMB int, background bool) (any, error) {
 	if strings.TrimSpace(command) == "" {
 		return execResult{Success: false, ExitCode: -1, Output: "command kosong"}, nil
+	}
+	if parent == nil {
+		parent = context.Background()
+	}
+	if background {
+		// Sesi background hidup lintas request (dipoll/diread/dikill belakangan),
+		// jadi timeout-nya dilepas dari cancel request: /stop hanya menghentikan
+		// run agent yang sedang berjalan, bukan sesi background (pakai kill).
+		parent = context.WithoutCancel(parent)
 	}
 	memMB = clampMemMB(memMB)
 	if runtime.GOOS != "windows" {
 		command = fmt.Sprintf("ulimit -f %d 2>/dev/null; %s", maxExecFileBlocks, command)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSec)*time.Second)
+	ctx, cancel := context.WithTimeout(parent, time.Duration(timeoutSec)*time.Second)
 	shell, prefix := defaultShell()
 	args := append(prefix, command)
 	cmd := exec.CommandContext(ctx, shell, args...)
@@ -221,13 +230,21 @@ func runExec(dir, command string, timeoutSec, memMB int, background bool) (any, 
 		return map[string]any{"success": true, "sessionId": sessionID, "status": "running"}, nil
 	}
 
-	// Wait for completion if not background
+	// Wait for completion if not background. /stop (parent ctx cancel) ikut
+	// membunuh grup proses agar run blocking langsung berhenti, bukan nunggu
+	// timeout sendiri (maks 300 dtk).
 	for {
 		running, _, _, start := sess.snapshot()
 		if !running {
 			break
 		}
-		time.Sleep(100 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			if sess.Cmd != nil && sess.Cmd.Process != nil {
+				killGroup(sess.Cmd.Process.Pid)
+			}
+		case <-time.After(100 * time.Millisecond):
+		}
 		if time.Since(start) > time.Duration(timeoutSec+2)*time.Second {
 			break // safety break
 		}
