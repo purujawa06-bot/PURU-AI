@@ -89,6 +89,20 @@ func (a *App) Handle(ctx context.Context, upd *telegram.Update) error {
 	}
 	msg := upd.Message
 	userID := msg.From.ID
+
+	// 1. Filter: In groups, only respond to /ai or bot commands to avoid spamming unauthorized users.
+	userMessage := msg.Text
+	if isGroupChat(msg.Chat.Type) {
+		if !isCommand(msg.Text) {
+			rest, ok := parseAICommand(msg.Text)
+			if !ok {
+				return nil
+			}
+			userMessage = strings.TrimSpace(rest)
+		}
+	}
+
+	// 2. Check permission
 	if a.cfg != nil && !a.cfg.IsUserAllowed(userID) {
 		log.Printf("[app] blocked unauthorized user %d", userID)
 		if a.tg == nil {
@@ -96,10 +110,12 @@ func (a *App) Handle(ctx context.Context, upd *telegram.Update) error {
 		}
 		return a.safeReply(ctx, msg, "⛔ Maaf, Anda tidak terdaftar untuk memakai bot ini.", true)
 	}
+
 	if strings.TrimSpace(msg.Text) == "" {
 		return nil
 	}
-	userMessage := msg.Text
+
+	// 3. Proceed with command or AI
 	if isGroupChat(msg.Chat.Type) {
 		if isCommand(msg.Text) {
 			go func() {
