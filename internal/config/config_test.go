@@ -98,3 +98,29 @@ func TestResolvePathPrecedence(t *testing.T) {
 		t.Errorf("env harus dipakai, got %s", got)
 	}
 }
+
+func TestIsUserAllowed(t *testing.T) {
+	var nilCfg *Config
+	if !nilCfg.IsUserAllowed(1) {
+		t.Errorf("nil cfg harus allow semua")
+	}
+	c := &Config{}
+	if !c.IsUserAllowed(123) {
+		t.Errorf("allowlist kosong harus allow semua")
+	}
+	c = &Config{TelegramAllowedUsers: []int64{111, 222}}
+	if !c.IsUserAllowed(111) || !c.IsUserAllowed(222) {
+		t.Errorf("id terdaftar harus allow")
+	}
+	if c.IsUserAllowed(333) {
+		t.Errorf("id tak terdaftar harus block")
+	}
+	p := writeCfg(t, `{"telegram_bot_token":"x","model":{"base_url":"http://m/v1","model":"puru"},"telegram_allowed_users":[111,222]}`)
+	lc, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !lc.IsUserAllowed(111) || lc.IsUserAllowed(999) {
+		t.Errorf("load allowlist salah: %+v", lc.TelegramAllowedUsers)
+	}
+}

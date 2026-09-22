@@ -108,8 +108,8 @@ func TestOnToolHookFires(t *testing.T) {
 	opts := &ProcessOptions{OnTool: func(name string, args map[string]any) { calls = append(calls, name) }}
 	tools := BuildTools(a, opts)
 	ctx := context.Background()
-	_, _ = tools["exec"].Run(ctx, map[string]any{"command": "echo hook"})
-	_, _ = tools["edit_file"].Run(ctx, map[string]any{"path": "h.txt", "old_string": "x", "new_string": "y"})
+	_, _ = tools["exec"].Run(ctx, map[string]any{"action": "run", "command": "echo hook"})
+	_, _ = tools["edit_file"].Run(ctx, map[string]any{"path": "h.txt", "old_text": "x", "new_text": "y"})
 	if len(calls) != 2 || calls[0] != "exec" || calls[1] != "edit_file" {
 		t.Fatalf("hook calls = %v", calls)
 	}

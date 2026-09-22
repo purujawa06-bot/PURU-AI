@@ -41,9 +41,11 @@ type ModelConfig struct {
 }
 
 type Config struct {
-	TelegramBotToken string      `json:"telegram_bot_token"`
-	Model            ModelConfig `json:"model"`
-	Workspace        string      `json:"workspace"`
+	TelegramBotToken string `json:"telegram_bot_token"`
+	// TelegramAllowedUsers: allowlist ID user Telegram. Kosong = semua boleh.
+	TelegramAllowedUsers []int64     `json:"telegram_allowed_users"`
+	Model                ModelConfig `json:"model"`
+	Workspace            string      `json:"workspace"`
 	// RestrictWorkspace jails the agent inside Workspace: file tools reject
 	// absolute paths / ../ escapes outside it, and exec runs with Dir forced
 	// inside it.
@@ -58,7 +60,7 @@ type Config struct {
 	ToolsPreview *bool `json:"tools_preview"`
 	// LoopDelaySeconds: jeda antar loop/iterasi agent (default 3, maks 60).
 	LoopDelaySeconds int `json:"loop_delay_seconds"`
-	// ExecMemoryMB: budget RAM untuk tiap perintah exec (default 256, min 64).
+	// ExecMemoryMB: budget RAM untuk tiap perintah exec (default = min 64).
 	// Grup proses yang lewat budget langsung di-kill (linux).
 	ExecMemoryMB int    `json:"exec_memory_mb"`
 	ConfigDir    string `json:"-"`
@@ -151,6 +153,20 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("buat history dir: %w", err)
 	}
 	return &c, nil
+}
+
+// IsUserAllowed reports whether a Telegram user id may use the bot.
+// Empty TelegramAllowedUsers = everyone allowed.
+func (c *Config) IsUserAllowed(id int64) bool {
+	if c == nil || len(c.TelegramAllowedUsers) == 0 {
+		return true
+	}
+	for _, a := range c.TelegramAllowedUsers {
+		if a == id {
+			return true
+		}
+	}
+	return false
 }
 
 // ShowToolsPreview reports whether live tool-call preview is enabled

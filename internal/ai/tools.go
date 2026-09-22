@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 )
 
 // TelegramUser is the chat user asking (Telegram only; nil in CLI).
@@ -35,10 +36,11 @@ type TelegramClient interface {
 // maxSendFileBytes caps telegram_sendfile uploads (Telegram bots allow 50MB).
 const maxSendFileBytes = 20 << 20
 
-// BuildTools returns 4 tools: 2 local workspace tools (edit_file, exec)
+// BuildTools returns 8 tools: 6 local workspace tools with picoclaw-mirrored
+// declarations (read_file, write_file, list_dir, edit_file, append_file, exec)
 // + 2 Telegram tools (telegram_sendfile, telegram_getuser, only usable with
-// a Telegram context). File reads/writes go through exec (cat, heredoc, …).
-// opts carries workspace config, current chat/user, and the OnTool preview hook.
+// a Telegram context). opts carries workspace config, current chat/user, and
+// the OnTool preview hook.
 func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 	ws := ""
 	restrict := true
@@ -54,35 +56,122 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 			return run(ctx, args)
 		}}
 	}
+	errVal := func(err error) (any, error) {
+		return map[string]any{"success": false, "error": err.Error()}, nil
+	}
 	return map[string]*Tool{
-		"edit_file": mk("edit_file", "Replace one unique old_string with new_string in a workspace file.",
-			objSchema([]string{"path", "old_string", "new_string"}, map[string]any{
-				"path":       strProp("Workspace-relative path."),
-				"old_string": strProp("Exact text to find (must occur exactly once)."),
-				"new_string": strProp("Replacement text."),
+		"read_file": mk("read_file", "Read the contents of a file. Supports pagination via `offset` and `length`.",
+			objSchema([]string{"path"}, map[string]any{
+				"path":   strProp("Path to the file to read."),
+				"offset": intProp("Byte offset to start reading from.", 0),
+				"length": intProp("Maximum number of bytes to read.", maxReadFileSize),
 			}),
 			func(ctx context.Context, args map[string]any) (any, error) {
-				if err := editLocalFile(ws, restrict, argStr(args, "path"), argStr(args, "old_string"), argStr(args, "new_string")); err != nil {
-					return map[string]any{"success": false, "error": err.Error()}, nil
+				length := int64(maxReadFileSize)
+				if _, ok := args["length"]; ok {
+					length = argInt(args, "length")
 				}
-				return map[string]any{"success": true, "path": argStr(args, "path")}, nil
+				text, err := readLocalFile(ws, restrict, argStr(args, "path"), argInt(args, "offset"), length)
+				if err != nil {
+					return errVal(err)
+				}
+				return text, nil
 			}),
-		"exec": mk("exec", "Run a shell command. Strictly capped: timeout 60s default (max 300s), RAM capped by exec_memory_mb (group killed when over), files capped 100MB, output truncated 20k chars.",
-			objSchema([]string{"command"}, map[string]any{
-				"command":         strProp("Shell command, e.g. \"go test ./...\" or \"ls -la\"."),
-				"workdir":         strProp("Working dir inside workspace (default: workspace root)."),
-				"timeout_seconds": map[string]any{"type": "number", "description": fmt.Sprintf("Timeout 1-%d detik (default %d).", maxExecTimeoutSec, defaultExecTimeoutSec)},
+		"write_file": mk("write_file", "Write content to a file, replacing any existing content. Content is written byte-for-byte after argument decoding. If the file already exists you must set overwrite=true, which replaces the ENTIRE file. To add to or change part of an existing file without losing its current contents, use append_file or edit_file instead.",
+			objSchema([]string{"path", "content"}, map[string]any{
+				"path":      strProp("Path to the file to write"),
+				"content":   strProp("Content to write to the file."),
+				"overwrite": boolProp("Set to true to replace an existing file in full. This discards the file's current contents.", false),
 			}),
 			func(ctx context.Context, args map[string]any) (any, error) {
-				dir, err := resolveWorkdir(ws, restrict, argStr(args, "workdir"))
+				content, ok := args["content"].(string)
+				if !ok {
+					return errVal(fmt.Errorf("content is required"))
+				}
+				if err := writeLocalFile(ws, restrict, argStr(args, "path"), content, argBool(args, "overwrite")); err != nil {
+					return errVal(err)
+				}
+				return fmt.Sprintf("File written: %s", argStr(args, "path")), nil
+			}),
+		"list_dir": mk("list_dir", "List files and directories in a path",
+			objSchema([]string{"path"}, map[string]any{
+				"path": strProp("Path to list"),
+			}),
+			func(ctx context.Context, args map[string]any) (any, error) {
+				text, err := listLocalDir(ws, restrict, argStr(args, "path"))
 				if err != nil {
-					return map[string]any{"success": false, "error": err.Error()}, nil
+					return errVal(err)
+				}
+				return text, nil
+			}),
+		"edit_file": mk("edit_file", "Edit a file by replacing old_text with new_text. The old_text must exist exactly in the file.",
+			objSchema([]string{"path", "old_text", "new_text"}, map[string]any{
+				"path":     strProp("The file path to edit"),
+				"old_text": strProp("The exact text to find and replace."),
+				"new_text": strProp("The text to replace with."),
+			}),
+			func(ctx context.Context, args map[string]any) (any, error) {
+				oldText, ok := args["old_text"].(string)
+				if !ok {
+					return errVal(fmt.Errorf("old_text is required"))
+				}
+				newText, ok := args["new_text"].(string)
+				if !ok {
+					return errVal(fmt.Errorf("new_text is required"))
+				}
+				if err := editLocalFile(ws, restrict, argStr(args, "path"), oldText, newText); err != nil {
+					return errVal(err)
+				}
+				return fmt.Sprintf("File edited: %s", argStr(args, "path")), nil
+			}),
+		"append_file": mk("append_file", "Append content to the end of a file.",
+			objSchema([]string{"path", "content"}, map[string]any{
+				"path":    strProp("The file path to append to"),
+				"content": strProp("The content to append."),
+			}),
+			func(ctx context.Context, args map[string]any) (any, error) {
+				content, ok := args["content"].(string)
+				if !ok {
+					return errVal(fmt.Errorf("content is required"))
+				}
+				if err := appendLocalFile(ws, restrict, argStr(args, "path"), content); err != nil {
+					return errVal(err)
+				}
+				return fmt.Sprintf("Appended to %s", argStr(args, "path")), nil
+			}),
+		"exec": mk("exec", "Execute shell commands. Action must be \"run\". Strictly capped: timeout 60s default (max 300s), RAM capped by exec_memory_mb (group killed when over), files capped 100MB, output truncated 20k chars.",
+			objSchema([]string{"action"}, map[string]any{
+				"action":     enumProp("Action: run (execute command), list (show sessions), poll (check status), read (get output), write (send input), kill (terminate), send-keys (send keys to PTY)", []string{"run", "list", "poll", "read", "write", "kill", "send-keys"}),
+				"command":    strProp("Shell command to execute (required for run)"),
+				"sessionId":  strProp("Session ID (required for poll/read/write/kill/send-keys)"),
+				"keys":       strProp("Key names for send-keys: up, down, left, right, enter, tab, escape, backspace, ctrl-c, ctrl-d, home, end, pageup, pagedown, f1-f12"),
+				"data":       strProp("Data to write to stdin (required for write)"),
+				"background": strProp("Run in background immediately"),
+				"pty":        strProp("Run in a pseudo-terminal (PTY) when available"),
+				"cwd":        strProp("Working directory inside workspace (default: workspace root)."),
+				"timeout":    intProp("Timeout in seconds (default 60, max 300).", defaultExecTimeoutSec),
+			}),
+			func(ctx context.Context, args map[string]any) (any, error) {
+				action := argStr(args, "action")
+				if action == "" {
+					return errVal(fmt.Errorf("action is required"))
+				}
+				if action != "run" {
+					return errVal(fmt.Errorf("unknown action: %s (only \"run\" is supported)", action))
+				}
+				dir, err := resolveWorkdir(ws, restrict, argStr(args, "cwd"))
+				if err != nil {
+					return errVal(err)
+				}
+				timeout := defaultExecTimeoutSec
+				if _, ok := args["timeout"]; ok {
+					timeout = int(argInt(args, "timeout"))
 				}
 				memMB := defaultExecMemMB
 				if a != nil && a.Config != nil {
 					memMB = clampMemMB(a.Config.ExecMemoryMB)
 				}
-				res := runExec(dir, argStr(args, "command"), clampTimeout(args["timeout_seconds"]), memMB)
+				res := runExec(dir, argStr(args, "command"), clampTimeout(timeout), memMB)
 				out := map[string]any{"success": res.Success, "exit_code": res.ExitCode, "output": res.Output}
 				if res.TimedOut {
 					out["timed_out"] = true
@@ -92,10 +181,11 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				}
 				return out, nil
 			}),
-		"telegram_sendfile": mk("telegram_sendfile", "Send a workspace file to the current Telegram chat as a document. Only works in Telegram chat.",
+		"telegram_sendfile": mk("telegram_sendfile", "Send a local file (image, document, etc.) to the user on the current chat channel. Only works in Telegram chat.",
 			objSchema([]string{"path"}, map[string]any{
-				"path":    strProp("Workspace-relative file path to send."),
-				"caption": strProp("Optional caption for the file."),
+				"path":     strProp("Path to the local file. Relative paths are resolved from workspace."),
+				"filename": strProp("Optional display filename. Defaults to the basename of path."),
+				"caption":  strProp("Optional caption for the file."),
 			}),
 			func(ctx context.Context, args map[string]any) (any, error) {
 				if a == nil || a.Telegram == nil || opts == nil || opts.ChatID == 0 {
@@ -112,7 +202,11 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				if len(b) > maxSendFileBytes {
 					return map[string]any{"error": "file terlalu besar (maks 20MB)"}, nil
 				}
-				if err := a.Telegram.SendFile(ctx, opts.ChatID, filepath.Base(abs), b, argStr(args, "caption")); err != nil {
+				name := argStr(args, "filename")
+				if name == "" {
+					name = filepath.Base(abs)
+				}
+				if err := a.Telegram.SendFile(ctx, opts.ChatID, name, b, argStr(args, "caption")); err != nil {
 					return map[string]any{"success": false, "error": err.Error()}, nil
 				}
 				return map[string]any{"success": true, "path": argStr(args, "path")}, nil
@@ -158,8 +252,22 @@ func argInt(a map[string]any, k string) int64 {
 		return int64(n)
 	case int64:
 		return n
+	case string:
+		if v, err := strconv.ParseInt(n, 10, 64); err == nil {
+			return v
+		}
 	}
 	return 0
+}
+
+func argBool(a map[string]any, k string) bool {
+	switch v := a[k].(type) {
+	case bool:
+		return v
+	case string:
+		return v == "true"
+	}
+	return false
 }
 
 func argStr(a map[string]any, k string) string {
@@ -177,4 +285,16 @@ func objSchema(required []string, props map[string]any) map[string]any {
 
 func strProp(desc string) map[string]any {
 	return map[string]any{"type": "string", "description": desc}
+}
+
+func intProp(desc string, def int64) map[string]any {
+	return map[string]any{"type": "integer", "description": desc, "default": def}
+}
+
+func boolProp(desc string, def bool) map[string]any {
+	return map[string]any{"type": "boolean", "description": desc, "default": def}
+}
+
+func enumProp(desc string, values []string) map[string]any {
+	return map[string]any{"type": "string", "enum": values, "description": desc}
 }

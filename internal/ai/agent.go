@@ -1,12 +1,12 @@
 // Package ai implements the lightweight local tool-calling agent.
 //
-// Single model from config.json, 4 tools (edit_file,
-// exec, telegram_sendfile, telegram_getuser), no fallback: one executor run
-// per request, max iterations from config (default 500), pause between
-// iterations from config (loop_delay_seconds, default 3s). Every model call
-// streams, and API errors are retried up to 5x total (2s delay) per call —
-// failed tools are never re-run because retries happen inside the model call,
-// not the run.
+// Single model from config.json, 8 tools (read_file, write_file, list_dir,
+// edit_file, append_file, exec, telegram_sendfile, telegram_getuser), no
+// fallback: one executor run per request, max iterations from config (default
+// 500), pause between iterations from config (loop_delay_seconds, default 3s).
+// Every model call streams, and API errors are retried up to 5x total (2s
+// delay) per call — failed tools are never re-run because retries happen
+// inside the model call, not the run.
 package ai
 
 import (
@@ -28,6 +28,7 @@ import (
 	"github.com/tmc/langchaingo/tools"
 
 	"github.com/purujawa06-bot/PURU-AI/internal/config"
+	"github.com/purujawa06-bot/PURU-AI/internal/memory"
 	"github.com/purujawa06-bot/PURU-AI/internal/messages"
 	"github.com/purujawa06-bot/PURU-AI/internal/prompt"
 )
@@ -523,19 +524,22 @@ func (a *Agent) runOnce(ctx context.Context, system string, history []*messages.
 }
 
 // ProcessMessage runs one request: NO history trimming here — the caller
-// (app layer) dumps history raw into a context/*.json file when the
-// token limit is hit (only the file path is injected back).
+// (app layer) summarizes history with the model into a context/*.md file when
+// the token limit is hit, wipes history, and the newest summary is injected
+// into the system prompt (see memory.LatestSummary).
 // Single executor run, no provider fallback; API errors are retried per model
 // call (5x total, 2s delay) inside the model wrapper.
 func (a *Agent) ProcessMessage(ctx context.Context, userMessage string, history []*messages.Message, opts *ProcessOptions) *ProcessResult {
 	memoryContent := ""
+	summary := ""
 	if a.Config != nil {
 		if b, err := os.ReadFile(a.Config.MemoryPath()); err == nil {
 			memoryContent = string(b)
 		}
+		summary = memory.LatestSummary(a.Config.Workspace)
 	}
 
-	systemPrompt, err := prompt.Get(memoryContent)
+	systemPrompt, err := prompt.Get(memoryContent, summary)
 	if err != nil {
 		log.Printf("[ai] prompt.Get failed: %v", err)
 		systemPrompt = ""

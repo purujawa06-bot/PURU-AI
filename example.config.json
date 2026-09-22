@@ -1,5 +1,6 @@
 {
   "telegram_bot_token": "123456:ABCDEF-ganti-dengan-token-bot",
+  "telegram_allowed_users": [],
   "model": {
     "base_url": "https://betatestervueui2-b.hf.space/v1",
     "api_key": "sk-ganti-dengan-key",

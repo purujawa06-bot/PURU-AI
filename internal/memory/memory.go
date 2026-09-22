@@ -1,23 +1,23 @@
-// Package memory: raw conversation dump for the lightweight assistant.
+// Package memory: model-generated conversation summaries.
 //
 // Flow (no history trimming anywhere else):
 //   - Before each new prompt, the app counts history tokens.
 //   - If history >= HistoryTokenLimit (default 30k), Compact is called:
-//     the raw messages are dumped as-is (JSON) into one file under
-//     <workspace>/context/YYYY-MM-DD_HH-MM-SS.json, only the newest 20
+//     the model summarizes the full history into one markdown file under
+//     <workspace>/context/YYYY-MM-DD_HH-MM-SS.md, only the newest 20
 //     files are kept, then history is wiped clean.
-//   - The AI is NOT given the file content — only the file path is
-//     injected as a system note, so it can read that file (or older ones
-//     in context/) with exec (cat) when old context is needed.
+//   - The NEWEST summary is injected into the system prompt on every
+//     request (see LatestSummary), so the AI keeps long-term context.
+//     Older summaries stay in context/ for reference only.
+//   - On summarize failure Compact returns an error and history is kept
+//     as-is (the next message retries).
 //
-// No model call happens here: dumping is instant and free.
 // MEMORY.md is NEVER touched here: it holds lasting user facts
 // (name, hobby, personal info) written by the agent itself.
 package memory
 
 import (
 	"context"
-	"encoding/json"
 	"log"
 	"os"
 	"path/filepath"
@@ -26,28 +26,43 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tmc/langchaingo/llms"
+
 	"github.com/purujawa06-bot/PURU-AI/internal/messages"
 )
 
 // MaxSummaries keeps only this many newest files in context/.
 const MaxSummaries = 20
 
+// summarizePrompt asks the model for a compact markdown summary of a
+// conversation transcript. English: summaries are injected into the
+// English system prompt.
+const summarizePrompt = `Summarize the conversation below into concise markdown (max ~400 words). ` +
+	`Sections: ## Key facts (lasting user info, preferences, decisions), ` +
+	`## Done (tasks completed + outcomes), ## Pending (open tasks, questions, next steps), ` +
+	`## Notes (anything else worth remembering). Skip empty sections. No preamble, just the markdown.\n\n`
+
 type Manager struct {
 	Workspace string
+	// Model summarizes history (retryModel: non-streaming call, 5x retry).
+	// Nil = Compact fails closed (history is kept, next message retries).
+	Model llms.Model
 }
 
 func New(workspace string) *Manager {
 	return &Manager{Workspace: workspace}
 }
 
-// ContextDir is <workspace>/context — where dump files live.
+// ContextDir is <workspace>/context — where summary files live.
 func (m *Manager) ContextDir() string { return filepath.Join(m.Workspace, "context") }
 
-// Compact dumps msgs as raw JSON into context/YYYY-MM-DD_HH-MM-SS.json
-// (date+time only), prunes old dumps to MaxSummaries newest, and returns
-// the workspace-relative path (e.g. "context/2026-09-21_14-05-30.json").
-// MEMORY.md is never touched. Returns "" when there is nothing to dump.
-func (m *Manager) Compact(_ context.Context, msgs []*messages.Message) (string, error) {
+// Compact summarizes msgs with the model into
+// context/YYYY-MM-DD_HH-MM-SS.md (date+time only), prunes old files to
+// MaxSummaries newest, and returns the workspace-relative path (e.g.
+// "context/2026-09-21_14-05-30.md"). MEMORY.md is never touched.
+// Returns "" when there is nothing to dump; returns an error (history kept)
+// when no model is set or summarization fails.
+func (m *Manager) Compact(ctx context.Context, msgs []*messages.Message) (string, error) {
 	var live []*messages.Message
 	for _, msg := range msgs {
 		if msg != nil {
@@ -57,11 +72,14 @@ func (m *Manager) Compact(_ context.Context, msgs []*messages.Message) (string, 
 	if len(live) == 0 {
 		return "", nil
 	}
-	raw, err := json.MarshalIndent(live, "", "  ")
+	if m.Model == nil {
+		return "", errNoModel
+	}
+	summary, err := m.summarize(ctx, live)
 	if err != nil {
 		return "", err
 	}
-	rel, err := m.saveDump(append(raw, '\n'))
+	rel, err := m.saveSummary(summary)
 	if err != nil {
 		return "", err
 	}
@@ -69,35 +87,117 @@ func (m *Manager) Compact(_ context.Context, msgs []*messages.Message) (string, 
 	return rel, nil
 }
 
-// SummaryNote is the system note injected after compaction: path only,
-func SummaryNote(rel string) string {
-	return "Percakapan sebelumnya telah disimpan mentah di " + rel +
-		". Baca file itu dengan exec (mis. cat) bila butuh konteks lama; file lama lain ada di folder context/."
+// summarize calls the model once (non-streaming) over the transcript.
+func (m *Manager) summarize(ctx context.Context, msgs []*messages.Message) (string, error) {
+	resp, err := m.Model.GenerateContent(ctx,
+		[]llms.MessageContent{{
+			Role:  llms.ChatMessageTypeHuman,
+			Parts: []llms.ContentPart{llms.TextContent{Text: summarizePrompt + historyText(msgs)}},
+		}})
+	if err != nil {
+		return "", err
+	}
+	if resp == nil || len(resp.Choices) == 0 {
+		return "", errEmptySummary
+	}
+	out := strings.TrimSpace(resp.Choices[0].Content)
+	if out == "" {
+		return "", errEmptySummary
+	}
+	return out + "\n", nil
 }
 
-// saveDump writes the file (deduping name collisions on same-second
+// historyText flattens messages to "role: text" lines, including tool-call
+// names+args and tool-result outputs (reasoning excluded).
+func historyText(msgs []*messages.Message) string {
+	var sb strings.Builder
+	for _, m := range msgs {
+		if m == nil {
+			continue
+		}
+		text := m.Text()
+		if messages.IsParts(m) {
+			for _, p := range messages.ContentParts(m) {
+				switch p.Type() {
+				case "tool-call":
+					if t := p.ToolCallText(); t != "" {
+						text += "\n[tool-call] " + t
+					}
+				case "tool-result":
+					if t := p.ResultText(); t != "" {
+						text += "\n[tool-result] " + t
+					}
+				}
+			}
+		}
+		text = strings.TrimSpace(text)
+		if text == "" {
+			continue
+		}
+		sb.WriteString(m.Role + ": " + text + "\n\n")
+	}
+	return sb.String()
+}
+
+// Latest returns the content of the newest summary in context/ ("" when
+// none). Injected into the system prompt on every request.
+func (m *Manager) Latest() string { return LatestSummary(m.Workspace) }
+
+// LatestSummary reads the newest *.md summary in <workspace>/context.
+func LatestSummary(workspace string) string {
+	dir := filepath.Join(workspace, "context")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	best := ""
+	var bestMod time.Time
+	for _, e := range entries {
+		n := e.Name()
+		if e.IsDir() || !strings.HasSuffix(n, ".md") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		if best == "" || info.ModTime().After(bestMod) {
+			best, bestMod = n, info.ModTime()
+		}
+	}
+	if best == "" {
+		return ""
+	}
+	b, err := os.ReadFile(filepath.Join(dir, best))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
+// saveSummary writes the file (deduping name collisions on same-second
 // compactions) and returns the workspace-relative path with forward slashes.
-func (m *Manager) saveDump(raw []byte) (string, error) {
+func (m *Manager) saveSummary(summary string) (string, error) {
 	dir := m.ContextDir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
 	stamp := time.Now().Format("2006-01-02_15-04-05")
-	name := stamp + ".json"
+	name := stamp + ".md"
 	for i := 2; ; i++ {
 		if _, err := os.Stat(filepath.Join(dir, name)); os.IsNotExist(err) {
 			break
 		}
-		name = stamp + "-" + strconv.Itoa(i) + ".json"
+		name = stamp + "-" + strconv.Itoa(i) + ".md"
 	}
-	if err := os.WriteFile(filepath.Join(dir, name), raw, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(summary), 0o644); err != nil {
 		return "", err
 	}
 	return "context/" + name, nil
 }
 
-// prune deletes oldest dumps beyond MaxSummaries newest (best-effort).
-// Old .md summaries (from before the raw-dump era) count toward the cap
+// prune deletes oldest files beyond MaxSummaries newest (best-effort).
+// Old .json dumps (from before the summarize era) count toward the cap
 // too so they age out naturally.
 func (m *Manager) prune() {
 	entries, err := os.ReadDir(m.ContextDir())
@@ -111,7 +211,7 @@ func (m *Manager) prune() {
 	var files []fi
 	for _, e := range entries {
 		n := e.Name()
-		if e.IsDir() || (!strings.HasSuffix(n, ".json") && !strings.HasSuffix(n, ".md")) {
+		if e.IsDir() || (!strings.HasSuffix(n, ".md") && !strings.HasSuffix(n, ".json")) {
 			continue
 		}
 		info, err := e.Info()

@@ -41,6 +41,7 @@ func main() {
 	}
 	hist := history.New(cfg.HistoryDir())
 	mem := memory.New(cfg.Workspace)
+	mem.Model = llm
 	agent := &ai.Agent{Client: llm, Config: cfg, HTTP: hc}
 	ctx := context.Background()
 
@@ -85,9 +86,7 @@ func process(ctx context.Context, agent *ai.Agent, hist *history.Store, mem *mem
 		if cerr != nil {
 			log.Printf("compact: %v", cerr)
 		} else if rel != "" {
-			note := &messages.Message{Role: "system"}
-			messages.SetContentString(note, memory.SummaryNote(rel))
-			stored = []*messages.Message{note}
+			stored = []*messages.Message{}
 			_ = hist.Set(chatID, stored)
 			fmt.Printf("(tersimpan: %s)\n", rel)
 		}
@@ -106,13 +105,14 @@ func process(ctx context.Context, agent *ai.Agent, hist *history.Store, mem *mem
 }
 
 // renderedSystemPrompt renders the same system prompt the agent sends so
-// token counting matches the real request context.
+// token counting matches the real request context (MEMORY.md + latest
+// context/*.md summary).
 func renderedSystemPrompt(cfg *config.Config) string {
 	mem := ""
 	if b, err := os.ReadFile(cfg.MemoryPath()); err == nil {
 		mem = string(b)
 	}
-	s, err := prompt.Get(mem)
+	s, err := prompt.Get(mem, memory.LatestSummary(cfg.Workspace))
 	if err != nil {
 		return ""
 	}

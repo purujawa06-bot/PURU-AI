@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// Exec timeout policy: default 60s when the agent omits timeout_seconds,
+// Exec timeout policy: default 60s when the agent omits timeout,
 // hard cap 300s. On timeout the whole process group is killed so no RAM
 // is left behind.
 const (
@@ -19,7 +19,7 @@ const (
 )
 
 // Exec RAM policy: each command's whole process group is capped at memMB
-// resident memory (default 256MB, min 64MB via config exec_memory_mb).
+// resident memory (default = min 64MB via config exec_memory_mb).
 // Over budget → SIGKILL the group. Files written by commands are capped at
 // maxExecFileMB via ulimit -f (unix only, best-effort).
 const (

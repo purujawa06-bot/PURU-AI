@@ -49,10 +49,17 @@ func (a *App) Handle(ctx context.Context, upd *telegram.Update) error {
 		return nil
 	}
 	msg := upd.Message
+	userID := msg.From.ID
+	if a.cfg != nil && !a.cfg.IsUserAllowed(userID) {
+		log.Printf("[app] blocked unauthorized user %d", userID)
+		if a.tg == nil {
+			return nil
+		}
+		return a.safeReply(ctx, msg, "⛔ Maaf, Anda tidak terdaftar untuk memakai bot ini.", true)
+	}
 	if strings.TrimSpace(msg.Text) == "" {
 		return nil
 	}
-	userID := msg.From.ID
 	if isCommand(msg.Text) {
 		go func() {
 			if err := a.handleCommand(ctx, msg); err != nil {
@@ -138,15 +145,18 @@ func fmtPct(p float64) string {
 }
 
 // renderedSystem renders the same system prompt the agent sends on every
-// request (template + MEMORY.md) so token counting matches reality.
+// request (template + MEMORY.md + latest context/*.md summary) so token
+// counting matches reality.
 func (a *App) renderedSystem() string {
 	mem := ""
+	summary := ""
 	if a.cfg != nil {
 		if b, err := os.ReadFile(a.cfg.MemoryPath()); err == nil {
 			mem = string(b)
 		}
+		summary = memory.LatestSummary(a.cfg.Workspace)
 	}
-	s, err := prompt.Get(mem)
+	s, err := prompt.Get(mem, summary)
 	if err != nil {
 		return ""
 	}
@@ -154,9 +164,10 @@ func (a *App) renderedSystem() string {
 }
 
 // maybeCompact checks the token trigger BEFORE the new prompt: when hit,
-// dump full history raw into context/YYYY-MM-DD_HH-MM-SS.json, wipe history,
-// and inject back ONLY the dump path as a system note (content is never
-// injected — the AI reads the file when it needs old context).
+// the model summarizes full history into context/YYYY-MM-DD_HH-MM-SS.md,
+// history is wiped, and the new summary flows into the system prompt on the
+// next request (see memory.LatestSummary). On summarize failure history is
+// kept as-is and the next message retries.
 func (a *App) maybeCompact(ctx context.Context, userID int64, stored []*messages.Message) []*messages.Message {
 	limit := a.cfg.HistoryTokenLimit
 	if limit <= 0 || a.mem == nil || len(stored) == 0 {
@@ -164,6 +175,9 @@ func (a *App) maybeCompact(ctx context.Context, userID int64, stored []*messages
 	}
 	if history.TokenCountFull(a.renderedSystem(), stored) < limit {
 		return stored
+	}
+	if a.mem.Model == nil && a.agent != nil {
+		a.mem.Model = a.agent.Client
 	}
 	cctx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
@@ -175,9 +189,7 @@ func (a *App) maybeCompact(ctx context.Context, userID int64, stored []*messages
 	if rel == "" {
 		return stored
 	}
-	note := &messages.Message{Role: "system"}
-	messages.SetContentString(note, memory.SummaryNote(rel))
-	kept := []*messages.Message{note}
+	kept := []*messages.Message{}
 	if err := a.hist.Set(userID, kept); err != nil {
 		log.Printf("[memory] save note failed: %v", err)
 	}
@@ -254,7 +266,7 @@ func (a *App) previewHook(ctx context.Context, chatID, msgID int64) func(string,
 // toolArgPreview shows the most relevant arg for a tool call.
 func toolArgPreview(name string, args map[string]any) string {
 	switch name {
-	case "edit_file", "telegram_sendfile":
+	case "read_file", "write_file", "list_dir", "edit_file", "append_file", "telegram_sendfile":
 		return previewStr(args["path"])
 	case "exec":
 		return previewStr(args["command"])
