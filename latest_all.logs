@@ -20,14 +20,14 @@
 === RUN   TestKillExecMarksFinishedImmediately
 --- PASS: TestKillExecMarksFinishedImmediately (0.00s)
 === RUN   TestRetrySucceedsAfterFlakes
-2026/09/22 14:34:41 [ai] API error (Call 1/5): API returned unexpected status code: 503 — coba lagi 2s
-2026/09/22 14:34:43 [ai] API error (Call 2/5): API returned unexpected status code: 503 — coba lagi 2s
+2026/09/22 14:35:40 [ai] API error (Call 1/5): API returned unexpected status code: 503 — coba lagi 2s
+2026/09/22 14:35:42 [ai] API error (Call 2/5): API returned unexpected status code: 503 — coba lagi 2s
 --- PASS: TestRetrySucceedsAfterFlakes (4.00s)
 === RUN   TestRetryGivesUpAfterFive
-2026/09/22 14:34:45 [ai] API error (Call 1/5): API returned unexpected status code: 503 — coba lagi 2s
-2026/09/22 14:34:47 [ai] API error (Call 2/5): API returned unexpected status code: 503 — coba lagi 2s
-2026/09/22 14:34:49 [ai] API error (Call 3/5): API returned unexpected status code: 503 — coba lagi 2s
-2026/09/22 14:34:51 [ai] API error (Call 4/5): API returned unexpected status code: 503 — coba lagi 2s
+2026/09/22 14:35:44 [ai] API error (Call 1/5): API returned unexpected status code: 503 — coba lagi 2s
+2026/09/22 14:35:46 [ai] API error (Call 2/5): API returned unexpected status code: 503 — coba lagi 2s
+2026/09/22 14:35:48 [ai] API error (Call 3/5): API returned unexpected status code: 503 — coba lagi 2s
+2026/09/22 14:35:50 [ai] API error (Call 4/5): API returned unexpected status code: 503 — coba lagi 2s
 --- PASS: TestRetryGivesUpAfterFive (8.00s)
 === RUN   TestRetryCancelledContext
 --- PASS: TestRetryCancelledContext (0.00s)
@@ -46,7 +46,7 @@
 === RUN   TestPicoclawParamDeclarations
 --- PASS: TestPicoclawParamDeclarations (0.00s)
 === RUN   TestWorkspaceJail
---- PASS: TestWorkspaceJail (0.02s)
+--- PASS: TestWorkspaceJail (0.01s)
 === RUN   TestClampTimeout
 --- PASS: TestClampTimeout (0.00s)
 === RUN   TestExecSuccess
@@ -58,8 +58,7 @@
 === RUN   TestExecRejectsUnknownAction
 --- PASS: TestExecRejectsUnknownAction (0.00s)
 === RUN   TestExecBackgroundSessions
-    tools_new_test.go:226: poll unknown session must error: <nil>
---- FAIL: TestExecBackgroundSessions (0.00s)
+--- PASS: TestExecBackgroundSessions (0.00s)
 === RUN   TestPicoclawStyleResponses
 --- PASS: TestPicoclawStyleResponses (0.00s)
 === RUN   TestCappedWriterTruncates
@@ -95,7 +94,7 @@
 === RUN   TestResolveWorkdirValidatesDir
 --- PASS: TestResolveWorkdirValidatesDir (0.00s)
 FAIL
-FAIL	github.com/purujawa06-bot/PURU-AI/internal/ai	13.740s
+FAIL	github.com/purujawa06-bot/PURU-AI/internal/ai	13.733s
 === RUN   TestToolCallAssemblyHF
 --- PASS: TestToolCallAssemblyHF (0.00s)
 === RUN   TestToolCallAssemblyOpenAI
@@ -133,15 +132,15 @@ ok  	github.com/purujawa06-bot/PURU-AI/internal/ai/openai	(cached)
 === RUN   TestFmtInt
 --- PASS: TestFmtInt (0.00s)
 === RUN   TestMaybeCompactSummarizesWipesInjects
-2026/09/22 14:34:41 [memory] compacted -> context/2026-09-22_14-34-41.md for user 42
+2026/09/22 14:35:39 [memory] compacted -> context/2026-09-22_14-35-39.md for user 42
 --- PASS: TestMaybeCompactSummarizesWipesInjects (0.01s)
 === RUN   TestMaybeCompactFailsClosed
-2026/09/22 14:34:41 [memory] compact failed: boom
+2026/09/22 14:35:39 [memory] compact failed: boom
 --- PASS: TestMaybeCompactFailsClosed (0.00s)
 === RUN   TestMaybeCompactBelowLimit
 --- PASS: TestMaybeCompactBelowLimit (0.00s)
 === RUN   TestHandleBlocksUnauthorized
-2026/09/22 14:34:41 [app] blocked unauthorized user 999
+2026/09/22 14:35:39 [app] blocked unauthorized user 999
 --- PASS: TestHandleBlocksUnauthorized (0.00s)
 === RUN   TestStopUserIdle
 --- PASS: TestStopUserIdle (0.00s)
