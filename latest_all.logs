@@ -1,0 +1,292 @@
+=== RUNNING VERIFICATION ===
+--- GO VET ---
+go: downloading github.com/tmc/langchaingo v0.1.14
+go: downloading github.com/mymmrac/telego v1.11.0
+go: downloading github.com/tiktoken-go/tokenizer v0.8.1
+go: downloading github.com/pkoukk/tiktoken-go v0.1.6
+go: downloading go.starlark.net v0.0.0-20230302034142-4b1e35fe2254
+go: downloading github.com/Masterminds/sprig/v3 v3.2.3
+go: downloading github.com/nikolalohinski/gonja v1.5.3
+go: downloading github.com/valyala/fasthttp v1.72.0
+go: downloading github.com/valyala/fastjson v1.6.10
+go: downloading github.com/dlclark/regexp2 v1.10.0
+go: downloading github.com/google/uuid v1.6.0
+go: downloading golang.org/x/sys v0.46.0
+go: downloading github.com/grbit/go-json v0.11.0
+go: downloading github.com/Masterminds/goutils v1.1.1
+go: downloading github.com/Masterminds/semver/v3 v3.5.0
+go: downloading github.com/huandu/xstrings v1.3.3
+go: downloading github.com/imdario/mergo v0.3.13
+go: downloading github.com/mitchellh/copystructure v1.0.0
+go: downloading github.com/shopspring/decimal v1.2.0
+go: downloading github.com/spf13/cast v1.3.1
+go: downloading golang.org/x/crypto v0.53.0
+go: downloading github.com/goph/emperror v0.17.2
+go: downloading github.com/andybalholm/brotli v1.2.1
+go: downloading github.com/klauspost/compress v1.18.6
+go: downloading github.com/valyala/bytebufferpool v1.0.0
+go: downloading github.com/dlclark/regexp2/v2 v2.5.2
+go: downloading github.com/mitchellh/reflectwalk v1.0.0
+go: downloading github.com/dustin/go-humanize v1.0.1
+go: downloading github.com/json-iterator/go v1.1.12
+go: downloading github.com/pelletier/go-toml/v2 v2.0.9
+go: downloading github.com/pkg/errors v0.9.1
+go: downloading github.com/yargevad/filepathx v1.0.0
+go: downloading golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f
+go: downloading gopkg.in/yaml.v3 v3.0.1
+go: downloading github.com/sirupsen/logrus v1.9.3
+go: downloading github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd
+go: downloading github.com/modern-go/reflect2 v1.0.2
+
+--- GO TEST ---
+?   	github.com/purujawa06-bot/PURU-AI	[no test files]
+?   	github.com/purujawa06-bot/PURU-AI/cmd/cli	[no test files]
+=== RUN   TestRunExecParentCancelStopsBlocking
+--- PASS: TestRunExecParentCancelStopsBlocking (0.50s)
+=== RUN   TestRunExecBackgroundSurvivesParentCancel
+--- PASS: TestRunExecBackgroundSurvivesParentCancel (0.00s)
+=== RUN   TestParseProcStat
+    exec_mem_linux_test.go:16: pgrp salah: 0 false
+--- FAIL: TestParseProcStat (0.00s)
+=== RUN   TestMemBudgetKillsHog
+--- PASS: TestMemBudgetKillsHog (0.21s)
+=== RUN   TestPruneSessionsCapsFinished
+--- PASS: TestPruneSessionsCapsFinished (0.00s)
+=== RUN   TestReadExecCarriesStatusFlags
+--- PASS: TestReadExecCarriesStatusFlags (0.00s)
+=== RUN   TestKillExecMarksFinishedImmediately
+--- PASS: TestKillExecMarksFinishedImmediately (0.00s)
+=== RUN   TestRetrySucceedsAfterFlakes
+2026/09/22 12:28:01 [ai] API error (Call 1/5): API returned unexpected status code: 503 — coba lagi 2s
+2026/09/22 12:28:03 [ai] API error (Call 2/5): API returned unexpected status code: 503 — coba lagi 2s
+--- PASS: TestRetrySucceedsAfterFlakes (4.00s)
+=== RUN   TestRetryGivesUpAfterFive
+2026/09/22 12:28:05 [ai] API error (Call 1/5): API returned unexpected status code: 503 — coba lagi 2s
+2026/09/22 12:28:07 [ai] API error (Call 2/5): API returned unexpected status code: 503 — coba lagi 2s
+2026/09/22 12:28:09 [ai] API error (Call 3/5): API returned unexpected status code: 503 — coba lagi 2s
+2026/09/22 12:28:11 [ai] API error (Call 4/5): API returned unexpected status code: 503 — coba lagi 2s
+--- PASS: TestRetryGivesUpAfterFive (8.00s)
+=== RUN   TestRetryCancelledContext
+--- PASS: TestRetryCancelledContext (0.00s)
+=== RUN   TestToChatHistoryToolIDPairing
+--- PASS: TestToChatHistoryToolIDPairing (0.00s)
+=== RUN   TestToChatHistoryKeepsStoredIDs
+--- PASS: TestToChatHistoryKeepsStoredIDs (0.00s)
+=== RUN   TestToChatHistoryReasoning
+--- PASS: TestToChatHistoryReasoning (0.00s)
+=== RUN   TestStepsToChatMessagesReasoning
+--- PASS: TestStepsToChatMessagesReasoning (0.00s)
+=== RUN   TestToChatHistoryMultipleResultsPerMessage
+--- PASS: TestToChatHistoryMultipleResultsPerMessage (0.00s)
+=== RUN   TestToolCount
+--- PASS: TestToolCount (0.00s)
+=== RUN   TestPicoclawParamDeclarations
+--- PASS: TestPicoclawParamDeclarations (0.00s)
+=== RUN   TestWorkspaceJail
+    tools_new_test.go:116: fuzzy edit failed: map[error:old_text tidak ditemukan di fuzzy.txt. Pastikan teks benar-benar ada (termasuk indentasi dan spasi) success:false]
+--- FAIL: TestWorkspaceJail (0.00s)
+=== RUN   TestClampTimeout
+--- PASS: TestClampTimeout (0.00s)
+=== RUN   TestExecSuccess
+--- PASS: TestExecSuccess (0.00s)
+=== RUN   TestExecTimeoutKills
+--- PASS: TestExecTimeoutKills (1.00s)
+=== RUN   TestExecWorkdirJailed
+--- PASS: TestExecWorkdirJailed (0.00s)
+=== RUN   TestExecRejectsUnknownAction
+--- PASS: TestExecRejectsUnknownAction (0.00s)
+=== RUN   TestExecBackgroundSessions
+    tools_new_test.go:226: poll unknown session must error: <nil>
+--- FAIL: TestExecBackgroundSessions (0.00s)
+=== RUN   TestPicoclawStyleResponses
+--- PASS: TestPicoclawStyleResponses (0.00s)
+=== RUN   TestCappedWriterTruncates
+--- PASS: TestCappedWriterTruncates (0.00s)
+=== RUN   TestClampMemMB
+--- PASS: TestClampMemMB (0.00s)
+=== RUN   TestTelegramToolsNeedContext
+--- PASS: TestTelegramToolsNeedContext (0.00s)
+=== RUN   TestTelegramGetUser
+--- PASS: TestTelegramGetUser (0.00s)
+=== RUN   TestTelegramGetUserByID
+--- PASS: TestTelegramGetUserByID (0.00s)
+=== RUN   TestTelegramSendFile
+--- PASS: TestTelegramSendFile (0.00s)
+=== RUN   TestOnToolHookFires
+--- PASS: TestOnToolHookFires (0.00s)
+=== RUN   TestLoopDelayDefault
+--- PASS: TestLoopDelayDefault (0.00s)
+=== RUN   TestWebSearchRejectsEmptyQuery
+--- PASS: TestWebSearchRejectsEmptyQuery (0.00s)
+=== RUN   TestWebFetchRejectsNonHTTP
+--- PASS: TestWebFetchRejectsNonHTTP (0.00s)
+=== RUN   TestClampSearchFetch
+--- PASS: TestClampSearchFetch (0.00s)
+=== RUN   TestStripHTMLToText
+--- PASS: TestStripHTMLToText (0.00s)
+=== RUN   TestParseSearchHTMLPure
+--- PASS: TestParseSearchHTMLPure (0.00s)
+=== RUN   TestWebToolsOnToolHook
+--- PASS: TestWebToolsOnToolHook (0.00s)
+=== RUN   TestWebToolsRegistered
+--- PASS: TestWebToolsRegistered (0.00s)
+=== RUN   TestResolveWorkdirValidatesDir
+--- PASS: TestResolveWorkdirValidatesDir (0.00s)
+FAIL
+FAIL	github.com/purujawa06-bot/PURU-AI/internal/ai	13.738s
+=== RUN   TestToolCallAssemblyHF
+--- PASS: TestToolCallAssemblyHF (0.00s)
+=== RUN   TestToolCallAssemblyOpenAI
+--- PASS: TestToolCallAssemblyOpenAI (0.00s)
+=== RUN   TestToolCallAssemblyMultiple
+--- PASS: TestToolCallAssemblyMultiple (0.00s)
+=== RUN   TestSSECommentsAndUsage
+--- PASS: TestSSECommentsAndUsage (0.00s)
+=== RUN   TestNonStreamFallback
+--- PASS: TestNonStreamFallback (0.00s)
+=== RUN   TestRequestStreamFlag
+--- PASS: TestRequestStreamFlag (0.00s)
+=== RUN   TestBuildMessagesToolCall
+--- PASS: TestBuildMessagesToolCall (0.00s)
+=== RUN   TestSSEReasoningContent
+--- PASS: TestSSEReasoningContent (0.00s)
+=== RUN   TestNonStreamReasoningContent
+--- PASS: TestNonStreamReasoningContent (0.00s)
+=== RUN   TestGenerateContentWithReasoning
+--- PASS: TestGenerateContentWithReasoning (0.00s)
+=== RUN   TestContentToStringImage
+--- PASS: TestContentToStringImage (0.00s)
+=== RUN   TestExtraHeadersAndSessionMarker
+--- PASS: TestExtraHeadersAndSessionMarker (0.00s)
+=== RUN   TestRelayProxy
+--- PASS: TestRelayProxy (0.00s)
+=== RUN   TestRelayProxyIgnoresOrigin
+--- PASS: TestRelayProxyIgnoresOrigin (0.00s)
+PASS
+ok  	github.com/purujawa06-bot/PURU-AI/internal/ai/openai	0.012s
+=== RUN   TestIsCommandMenu
+--- PASS: TestIsCommandMenu (0.00s)
+=== RUN   TestTokenInfoPercent
+--- PASS: TestTokenInfoPercent (0.00s)
+=== RUN   TestFmtInt
+--- PASS: TestFmtInt (0.00s)
+=== RUN   TestMaybeCompactSummarizesWipesInjects
+2026/09/22 12:28:00 [memory] compacted -> context/2026-09-22_12-28-00.md for user 42
+--- PASS: TestMaybeCompactSummarizesWipesInjects (0.02s)
+=== RUN   TestMaybeCompactFailsClosed
+2026/09/22 12:28:00 [memory] compact failed: boom
+--- PASS: TestMaybeCompactFailsClosed (0.00s)
+=== RUN   TestMaybeCompactBelowLimit
+--- PASS: TestMaybeCompactBelowLimit (0.00s)
+=== RUN   TestHandleBlocksUnauthorized
+2026/09/22 12:28:00 [app] blocked unauthorized user 999
+--- PASS: TestHandleBlocksUnauthorized (0.00s)
+=== RUN   TestStopUserIdle
+--- PASS: TestStopUserIdle (0.00s)
+=== RUN   TestStopUserCancelsAndReleases
+--- PASS: TestStopUserCancelsAndReleases (0.00s)
+=== RUN   TestIsCommandIgnoresAI
+--- PASS: TestIsCommandIgnoresAI (0.00s)
+=== RUN   TestIsGroupChat
+--- PASS: TestIsGroupChat (0.00s)
+=== RUN   TestParseAICommand
+--- PASS: TestParseAICommand (0.00s)
+PASS
+ok  	github.com/purujawa06-bot/PURU-AI/internal/app	0.039s
+=== RUN   TestLoadDefaults
+--- PASS: TestLoadDefaults (0.00s)
+=== RUN   TestToolsPreviewExplicit
+--- PASS: TestToolsPreviewExplicit (0.00s)
+=== RUN   TestLoadRejectsEmptyToken
+--- PASS: TestLoadRejectsEmptyToken (0.00s)
+=== RUN   TestResolvePathPrecedence
+--- PASS: TestResolvePathPrecedence (0.00s)
+=== RUN   TestIsUserAllowed
+--- PASS: TestIsUserAllowed (0.00s)
+PASS
+ok  	github.com/purujawa06-bot/PURU-AI/internal/config	0.008s
+=== RUN   TestHealthzOK
+--- PASS: TestHealthzOK (0.00s)
+=== RUN   TestUnknownPath404
+--- PASS: TestUnknownPath404 (0.00s)
+=== RUN   TestAddr
+--- PASS: TestAddr (0.00s)
+PASS
+ok  	github.com/purujawa06-bot/PURU-AI/internal/health	0.005s
+=== RUN   TestSetGetClear
+--- PASS: TestSetGetClear (0.00s)
+=== RUN   TestTokenCountGrows
+--- PASS: TestTokenCountGrows (0.02s)
+PASS
+ok  	github.com/purujawa06-bot/PURU-AI/internal/history	0.021s
+=== RUN   TestCompactSummarizesToMD
+--- PASS: TestCompactSummarizesToMD (0.00s)
+=== RUN   TestCompactFailsClosedWithoutModel
+--- PASS: TestCompactFailsClosedWithoutModel (0.00s)
+=== RUN   TestCompactEmptyHistory
+--- PASS: TestCompactEmptyHistory (0.00s)
+=== RUN   TestCompactPrunesTo20
+--- PASS: TestCompactPrunesTo20 (0.00s)
+=== RUN   TestContextFilenameIsDateTimeOnly
+--- PASS: TestContextFilenameIsDateTimeOnly (0.00s)
+PASS
+ok  	github.com/purujawa06-bot/PURU-AI/internal/memory	0.007s
+=== RUN   TestRoundTripPreservesExtras
+--- PASS: TestRoundTripPreservesExtras (0.00s)
+=== RUN   TestCapUserTurns
+--- PASS: TestCapUserTurns (0.00s)
+=== RUN   TestEnsureStartsWithUser
+--- PASS: TestEnsureStartsWithUser (0.00s)
+=== RUN   TestSanitizeTruncatesText
+--- PASS: TestSanitizeTruncatesText (0.00s)
+=== RUN   TestSanitizeDropsEmptyTextParts
+--- PASS: TestSanitizeDropsEmptyTextParts (0.00s)
+=== RUN   TestSanitizeHistoryDropsStubs
+--- PASS: TestSanitizeHistoryDropsStubs (0.00s)
+=== RUN   TestPruneKeepsReasoning
+--- PASS: TestPruneKeepsReasoning (0.00s)
+=== RUN   TestSanitizeTruncatesReasoning
+--- PASS: TestSanitizeTruncatesReasoning (0.00s)
+PASS
+ok  	github.com/purujawa06-bot/PURU-AI/internal/messages	0.004s
+=== RUN   TestGetRendersMemory
+--- PASS: TestGetRendersMemory (0.00s)
+PASS
+ok  	github.com/purujawa06-bot/PURU-AI/internal/prompt	0.003s
+=== RUN   TestSanitizeText
+--- PASS: TestSanitizeText (0.00s)
+=== RUN   TestSanitizeTextKeepsValidUTF8
+--- PASS: TestSanitizeTextKeepsValidUTF8 (0.00s)
+=== RUN   TestGetMe
+--- PASS: TestGetMe (0.00s)
+=== RUN   TestSendMessageReturnsID
+--- PASS: TestSendMessageReturnsID (0.01s)
+=== RUN   TestGetUpdatesMapsTypes
+--- PASS: TestGetUpdatesMapsTypes (0.00s)
+=== RUN   TestGetTelegramUser
+--- PASS: TestGetTelegramUser (0.00s)
+=== RUN   TestEditMessage
+--- PASS: TestEditMessage (0.00s)
+=== RUN   TestSetCommands
+--- PASS: TestSetCommands (0.00s)
+=== RUN   TestConflictWrapped
+--- PASS: TestConflictWrapped (0.00s)
+=== RUN   TestParseEntitiesWrapped
+--- PASS: TestParseEntitiesWrapped (0.00s)
+PASS
+ok  	github.com/purujawa06-bot/PURU-AI/internal/telegram	0.023s
+=== RUN   TestCountMessageToolResult
+--- PASS: TestCountMessageToolResult (0.01s)
+=== RUN   TestCountMessageToolCall
+--- PASS: TestCountMessageToolCall (0.00s)
+=== RUN   TestCountRequestIncludesSystem
+--- PASS: TestCountRequestIncludesSystem (0.00s)
+=== RUN   TestCountConversationText
+--- PASS: TestCountConversationText (0.00s)
+PASS
+ok  	github.com/purujawa06-bot/PURU-AI/internal/tokens	0.017s
+FAIL
+
+--- GO BUILD ---
+github.com/purujawa06-bot/PURU-AI/cmd/cli
+github.com/purujawa06-bot/PURU-AI
