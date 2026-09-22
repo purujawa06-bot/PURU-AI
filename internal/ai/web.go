@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	webSearchTimeout  = 15 * time.Second
-	webFetchTimeout   = 20 * time.Second
+	webSearchTimeout  = 60 * time.Second
+	webFetchTimeout   = 120 * time.Second
 	webFetchMaxBody   = 100 * 1024
 	defaultSearchN    = 5
 	defaultFetchChars = 8000
@@ -225,7 +225,7 @@ func fetchSearchHTML(ctx context.Context, fullURL string) (string, error) {
 	req.Header.Set("User-Agent", webBrowserUA)
 	req.Header.Set("Accept", "text/html,application/xhtml+xml")
 	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
-	client := &http.Client{Timeout: webSearchTimeout}
+	client := &http.Client{} // No hardcoded timeout, let context handle it
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
@@ -294,7 +294,7 @@ func fetchURLText(ctx context.Context, rawURL string, maxChars int) (string, err
 	}
 	req.Header.Set("User-Agent", webBrowserUA)
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,text/plain,*/*")
-	client := &http.Client{Timeout: webFetchTimeout}
+	client := &http.Client{} // No hardcoded timeout, let context handle it
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
