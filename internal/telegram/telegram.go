@@ -33,7 +33,7 @@ func New(token string, hc *http.Client) (*API, error) {
 // an httptest server; production always uses api.telegram.org).
 func newWithServer(token string, hc *http.Client, serverURL string) (*API, error) {
 	if hc == nil {
-		hc = &http.Client{Timeout: 70 * time.Second}
+		hc = &http.Client{} // No timeout, let the API decide
 	}
 	opts := []telego.BotOption{telego.WithHTTPClient(hc)}
 	if serverURL != "" {
