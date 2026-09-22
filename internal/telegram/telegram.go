@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/mymmrac/telego"
 	"github.com/mymmrac/telego/telegoapi"

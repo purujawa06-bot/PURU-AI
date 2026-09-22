@@ -1,6 +1,6 @@
 module github.com/purujawa06-bot/PURU-AI
 
-go 1.22
+go 1.26
 
 require (
 	github.com/mymmrac/telego v1.11.0
