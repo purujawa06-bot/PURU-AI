@@ -26,14 +26,14 @@ FAIL	github.com/purujawa06-bot/PURU-AI [build failed]
 === RUN   TestKillExecMarksFinishedImmediately
 --- PASS: TestKillExecMarksFinishedImmediately (0.00s)
 === RUN   TestRetrySucceedsAfterFlakes
-2026/09/22 15:04:41 [ai] API error (Call 1/5): API returned unexpected status code: 503 — coba lagi 2s
-2026/09/22 15:04:43 [ai] API error (Call 2/5): API returned unexpected status code: 503 — coba lagi 2s
+2026/09/22 15:06:57 [ai] API error (Call 1/5): API returned unexpected status code: 503 — coba lagi 2s
+2026/09/22 15:06:59 [ai] API error (Call 2/5): API returned unexpected status code: 503 — coba lagi 2s
 --- PASS: TestRetrySucceedsAfterFlakes (4.00s)
 === RUN   TestRetryGivesUpAfterFive
-2026/09/22 15:04:45 [ai] API error (Call 1/5): API returned unexpected status code: 503 — coba lagi 2s
-2026/09/22 15:04:47 [ai] API error (Call 2/5): API returned unexpected status code: 503 — coba lagi 2s
-2026/09/22 15:04:49 [ai] API error (Call 3/5): API returned unexpected status code: 503 — coba lagi 2s
-2026/09/22 15:04:51 [ai] API error (Call 4/5): API returned unexpected status code: 503 — coba lagi 2s
+2026/09/22 15:07:01 [ai] API error (Call 1/5): API returned unexpected status code: 503 — coba lagi 2s
+2026/09/22 15:07:03 [ai] API error (Call 2/5): API returned unexpected status code: 503 — coba lagi 2s
+2026/09/22 15:07:05 [ai] API error (Call 3/5): API returned unexpected status code: 503 — coba lagi 2s
+2026/09/22 15:07:07 [ai] API error (Call 4/5): API returned unexpected status code: 503 — coba lagi 2s
 --- PASS: TestRetryGivesUpAfterFive (8.00s)
 === RUN   TestRetryCancelledContext
 --- PASS: TestRetryCancelledContext (0.00s)
@@ -100,7 +100,7 @@ FAIL	github.com/purujawa06-bot/PURU-AI [build failed]
 === RUN   TestResolveWorkdirValidatesDir
 --- PASS: TestResolveWorkdirValidatesDir (0.00s)
 PASS
-ok  	github.com/purujawa06-bot/PURU-AI/internal/ai	13.732s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/ai	13.730s
 === RUN   TestToolCallAssemblyHF
 --- PASS: TestToolCallAssemblyHF (0.00s)
 === RUN   TestToolCallAssemblyOpenAI
