@@ -36,9 +36,9 @@ jobs:
           echo -e "\n--- GO BUILD ---" >> logs/latest_all.logs
           go build -v -o /dev/null ./... 2>&1 | tee -a logs/latest_all.logs || true
           
-          # Extract errors and warnings
-          grep -iE "error|fail|exit status" logs/latest_all.logs > logs/latest_error.logs || touch logs/latest_error.logs
-          grep -i "warn" logs/latest_all.logs > logs/latest_warn.logs || touch logs/latest_warn.logs
+          # Extract actual failures and compilation errors
+          grep -E "^--- FAIL|^FAIL|exit status [1-9]|: error:|: fatal:" logs/latest_all.logs > logs/latest_error.logs || touch logs/latest_error.logs
+          grep -i "warn" logs/latest_all.logs | grep -v "PASS" > logs/latest_warn.logs || touch logs/latest_warn.logs
 
       - name: Push Logs to info branch
         run: |
