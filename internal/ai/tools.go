@@ -161,19 +161,31 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 					if sid == "" {
 						return errVal(fmt.Errorf("sessionId is required for poll"))
 					}
-					return pollExec(sid)
+					res, err := pollExec(sid)
+					if err != nil {
+						return errVal(err)
+					}
+					return res, nil
 				case "read":
 					sid := argStr(args, "sessionId")
 					if sid == "" {
 						return errVal(fmt.Errorf("sessionId is required for read"))
 					}
-					return readExec(sid)
+					res, err := readExec(sid)
+					if err != nil {
+						return errVal(err)
+					}
+					return res, nil
 				case "kill":
 					sid := argStr(args, "sessionId")
 					if sid == "" {
 						return errVal(fmt.Errorf("sessionId is required for kill"))
 					}
-					return killExec(sid)
+					res, err := killExec(sid)
+					if err != nil {
+						return errVal(err)
+					}
+					return res, nil
 				case "run":
 					command := argStr(args, "command")
 					if command == "" {
