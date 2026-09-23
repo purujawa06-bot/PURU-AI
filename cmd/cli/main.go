@@ -100,6 +100,7 @@ func process(ctx context.Context, agent *ai.Agent, hist *history.Store, mem *mem
 	res := agent.ProcessMessage(ctx, prompt, stored, opts)
 	saved := append(append([]*messages.Message{}, stored...), userMsg(prompt)...)
 	saved = append(saved, messages.SanitizeHistoryMessages(res.ResponseMessages)...)
+	saved = messages.PruneTurn(saved)
 	_ = hist.Set(chatID, saved)
 	return res.Text
 }

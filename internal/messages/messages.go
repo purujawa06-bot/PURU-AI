@@ -347,6 +347,131 @@ func PruneMessages(msgs []*Message) []*Message {
 	return out
 }
 
+// ---------------------------------------------------------------------------
+// PruneTurn: per-turn trim called once per completed turn after
+// SanitizeHistoryMessages and before hist.Set (see app.processMessage and
+// cmd/cli process). Single pass, no loops that can hang:
+//
+//   - tool-call/tool-result parts are kept only on the last 6 messages,
+//     older messages keep their text/reasoning (reasoning then reduced below).
+//   - only the single newest reasoning/reasoning-file part is kept globally.
+//   - empty messages (null, whitespace-only string, or zero parts after the
+//     stripping above) are removed.
+//
+// It never mutates its input. Compaction/memory logic is untouched — this only
+// bounds per-turn tool/reasoning growth so history stays small until the token
+// trigger summarizes it.
+// ---------------------------------------------------------------------------
+
+// PruneTurn trims one completed turn for storage.
+func PruneTurn(msgs []*Message) []*Message {
+	if len(msgs) == 0 {
+		return msgs
+	}
+	work := make([]*Message, 0, len(msgs))
+	for _, m := range msgs {
+		work = append(work, cloneMessage(m))
+	}
+	const keepLast = 6
+	threshold := len(work) - keepLast
+	if threshold < 0 {
+		threshold = 0
+	}
+
+	// Locate the single newest reasoning part (scan from the end).
+	newestMsg := -1
+	newestPart := -1
+	for i := len(work) - 1; i >= 0; i-- {
+		m := work[i]
+		if m == nil || !IsParts(m) {
+			continue
+		}
+		parts := ContentParts(m)
+		for j := len(parts) - 1; j >= 0; j-- {
+			if t := parts[j].Type(); t == "reasoning" || t == "reasoning-file" {
+				newestMsg = i
+				newestPart = j
+				break
+			}
+		}
+		if newestMsg >= 0 {
+			break
+		}
+	}
+
+	// Strip old tool parts and all but the newest reasoning part.
+	for i, m := range work {
+		if m == nil || !IsParts(m) {
+			continue
+		}
+		parts := ContentParts(m)
+		kept := make([]Part, 0, len(parts))
+		for j, p := range parts {
+			switch p.Type() {
+			case "tool-call", "tool-result":
+				if i < threshold {
+					continue
+				}
+				kept = append(kept, p)
+			case "reasoning", "reasoning-file":
+				if i == newestMsg && j == newestPart {
+					kept = append(kept, p)
+				}
+				// else: drop older reasoning
+			default:
+				kept = append(kept, p)
+			}
+		}
+		SetContentParts(m, kept)
+	}
+
+	// Drop empty messages.
+	out := make([]*Message, 0, len(work))
+	for _, m := range work {
+		if m == nil || isEmptyStored(m) {
+			continue
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
+// isEmptyStored reports messages with nothing worth storing: null content,
+// whitespace-only string content, or zero parts (e.g. fully stripped above).
+// Messages carrying legacy top-level toolCalls are never empty.
+func isEmptyStored(m *Message) bool {
+	if len(m.Extra("toolCalls")) > 0 {
+		return false
+	}
+	if ContentNull(m) {
+		return true
+	}
+	if s, ok := ContentString(m); ok {
+		return strings.TrimSpace(s) == ""
+	}
+	if IsParts(m) {
+		parts := ContentParts(m)
+		if len(parts) == 0 {
+			return true
+		}
+		for _, p := range parts {
+			switch p.Type() {
+			case "tool-call", "tool-result", "reasoning", "reasoning-file":
+				return false
+			case "text":
+				if strings.TrimSpace(p.Text()) != "" {
+					return false
+				}
+			default:
+				// Unknown part types count as content.
+				return false
+			}
+		}
+		return true
+	}
+	return NetLen(m) == 0
+}
+
 // EnsureStartsWithUser guarantees the first non-system message is a user
 // message (avoids API error 400). Leading system messages are preserved.
 func EnsureStartsWithUser(msgs []*Message) []*Message {

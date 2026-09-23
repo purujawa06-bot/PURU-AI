@@ -342,6 +342,7 @@ func (a *App) processMessage(ctx context.Context, msg *telegram.Message, userMes
 	messages.SetContentString(u, userMessage)
 	saved = append(saved, u)
 	saved = append(saved, messages.SanitizeHistoryMessages(res.ResponseMessages)...)
+	saved = messages.PruneTurn(saved)
 	_ = a.hist.Set(userID, saved)
 
 	if err := a.safeSend(ctx, msg, res.Text); err != nil {

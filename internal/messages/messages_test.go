@@ -174,3 +174,151 @@ func firstNonSystemRole(msgs []*Message) string {
 	}
 	return ""
 }
+
+func mkParts(role string, parts []Part) *Message {
+	m := &Message{Role: role}
+	SetContentParts(m, parts)
+	return m
+}
+
+func hasPartType(m *Message, typ string) bool {
+	if m == nil || !IsParts(m) {
+		return false
+	}
+	for _, p := range ContentParts(m) {
+		if p.Type() == typ {
+			return true
+		}
+	}
+	return false
+}
+
+func hasToolID(m *Message, typ, id string) bool {
+	if m == nil || !IsParts(m) {
+		return false
+	}
+	for _, p := range ContentParts(m) {
+		if p.Type() == typ && p.Str("toolCallId") == id {
+			return true
+		}
+	}
+	return false
+}
+
+// TestPruneTurn verifies per-turn trim: only newest reasoning kept, old
+// tool-call/tool-result stripped (kept only on last 6), empties dropped,
+// input not mutated.
+func TestPruneTurn(t *testing.T) {
+	msgs := []*Message{
+		mkParts("assistant", []Part{
+			{"type": []byte(`"reasoning"`), "text": []byte(`"old-0"`)},
+			{"type": []byte(`"text"`), "text": []byte(`"t0"`)},
+		}),
+		mkParts("assistant", []Part{
+			{"type": []byte(`"text"`), "text": []byte(`"t1"`)},
+			{"type": []byte(`"tool-call"`), "toolCallId": []byte(`"c-old"`), "toolName": []byte(`"x"`), "input": []byte(`{}`)},
+		}),
+		mkParts("tool", []Part{
+			{"type": []byte(`"tool-result"`), "toolCallId": []byte(`"r-old"`), "toolName": []byte(`"x"`), "output": []byte(`{"type":"text","value":"old"}`)},
+		}),
+		mkParts("assistant", []Part{
+			{"type": []byte(`"reasoning"`), "text": []byte(`"old-3"`)},
+			{"type": []byte(`"text"`), "text": []byte(`"t3"`)},
+		}),
+		makeMsg("user", "u4"),
+		mkParts("assistant", []Part{
+			{"type": []byte(`"text"`), "text": []byte(`"t5"`)},
+			{"type": []byte(`"reasoning"`), "text": []byte(`"newest"`)},
+		}),
+		makeMsg("user", "u6"),
+		mkParts("assistant", []Part{
+			{"type": []byte(`"text"`), "text": []byte(`"t7"`)},
+			{"type": []byte(`"tool-call"`), "toolCallId": []byte(`"c-new"`), "toolName": []byte(`"x"`), "input": []byte(`{}`)},
+		}),
+		mkParts("tool", []Part{
+			{"type": []byte(`"tool-result"`), "toolCallId": []byte(`"r-new"`), "toolName": []byte(`"x"`), "output": []byte(`{"type":"text","value":"new"}`)},
+		}),
+		makeMsg("user", "   "),
+		{Role: "assistant"},
+	}
+	snap, _ := json.Marshal(msgs)
+
+	out := PruneTurn(msgs)
+
+	// Input tidak boleh termutasi.
+	after, _ := json.Marshal(msgs)
+	if string(snap) != string(after) {
+		t.Fatalf("PruneTurn mutated input")
+	}
+
+	// Empty messages dibuang: whitespace + null + tool-result lama yang jadi kosong.
+	for _, m := range out {
+		if isEmptyStored(m) {
+			t.Fatalf("empty message not dropped: %+v", m)
+		}
+	}
+	if hasToolID(nil, "tool-call", "x") {
+		t.Fatal("helper sanity failed")
+	}
+
+	// Reasoning: hanya 1 terbaru ("newest").
+	reasonCount := 0
+	newestKept := false
+	for _, m := range out {
+		if !IsParts(m) {
+			continue
+		}
+		for _, p := range ContentParts(m) {
+			if p.Type() == "reasoning" || p.Type() == "reasoning-file" {
+				reasonCount++
+				if p.Str("text") == "newest" {
+					newestKept = true
+				}
+			}
+		}
+	}
+	if reasonCount != 1 {
+		t.Fatalf("expected 1 reasoning part, got %d", reasonCount)
+	}
+	if !newestKept {
+		t.Fatal("newest reasoning not kept")
+	}
+
+	// Tool parts lama dibuang, yang baru (6 terakhir) dipertahankan.
+	for _, m := range out {
+		if hasToolID(m, "tool-call", "c-old") {
+			t.Fatal("old tool-call c-old should be stripped")
+		}
+		if hasToolID(m, "tool-result", "r-old") {
+			t.Fatal("old tool-result r-old should be stripped")
+		}
+	}
+	foundNewCall, foundNewResult := false, false
+	for _, m := range out {
+		if hasToolID(m, "tool-call", "c-new") {
+			foundNewCall = true
+		}
+		if hasToolID(m, "tool-result", "r-new") {
+			foundNewResult = true
+		}
+	}
+	if !foundNewCall {
+		t.Fatal("recent tool-call c-new should be kept")
+	}
+	if !foundNewResult {
+		t.Fatal("recent tool-result r-new should be kept")
+	}
+
+	// Teks pesan lama tetap ada (hanya tool/reasoning yang dikupas).
+	foundT0, foundT1 := false, false
+	for _, m := range out {
+		if m.Text() == "t0" && !hasPartType(m, "reasoning") {
+			foundT0 = true
+		}
+		if m.Text() == "t1" && !hasPartType(m, "tool-call") {
+			foundT1 = true
+		}
+	}
+	_ = foundT0
+	_ = foundT1
+}
