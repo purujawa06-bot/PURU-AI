@@ -1,7 +1,7 @@
 name: Release (manual)
 
 # Satu-satunya workflow: hanya jalan via Run workflow manual.
-# Pilih bump (major/minor/patch) → verify → buat tag → publish Docker → buat GitHub Release.
+# Pilih bump (major/minor/patch) → verify → buat tag → build CLI+Docker → GitHub Release → npm publish.
 on:
   workflow_dispatch:
     inputs:
@@ -37,6 +37,9 @@ jobs:
           go vet ./... 2>&1 | tee logs/vet.logs
           go test ./... 2>&1 | tee logs/test.logs
           go build -v -o /dev/null ./... 2>&1 | tee logs/build.logs
+          node --check npm/bin/puru.js 2>&1 | tee logs/npm-bin.logs
+          node --check npm/scripts/install.js 2>&1 | tee logs/npm-install.logs
+          node --check npm/scripts/binary.js 2>&1 | tee logs/npm-binary.logs
           cat logs/*.logs > logs/latest_all.logs
           grep -E "^--- FAIL|^FAIL|exit status [1-9]|: error:|: fatal:" logs/latest_all.logs > logs/latest_error.logs || true
           [ -s logs/latest_error.logs ] || echo "(no logs)" > logs/latest_error.logs
@@ -100,6 +103,62 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "Tag baru: $TAG"
 
+  build-binaries:
+    needs: tag
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          # Termux Android 32-bit (armv7) — Node lapor arch 'arm'.
+          - goos: linux
+            goarch: arm
+            goarm: '7'
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+          - goos: windows
+            goarch: arm64
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.tag.outputs.tag }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
+      # CLI npm-friendly: cmd/puru tanpa web server (puru setup / gateway / chat).
+      # Version disuntik via ldflags agar `puru --version` = tag.
+      - name: Build puru CLI
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
+          CGO_ENABLED: '0'
+        run: |
+          TAG="${{ needs.tag.outputs.tag }}"
+          OUT="puru-${{ matrix.goos }}-${{ matrix.goarch }}"
+          if [ "${{ matrix.goos }}" = "windows" ]; then OUT="$OUT.exe"; fi
+          mkdir -p dist
+          go build -trimpath -ldflags="-s -w -X main.version=$TAG" -o "dist/$OUT" ./cmd/puru
+          ls -lh dist/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: puru-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
+          if-no-files-found: error
+
   docker:
     needs: tag
     runs-on: ubuntu-latest
@@ -132,7 +191,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   github-release:
-    needs: [tag, docker]
+    needs: [tag, docker, build-binaries]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -140,7 +199,58 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Create GitHub Release
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: puru-*
+          merge-multiple: true
+          path: dist
+
+      - name: Checksums
+        run: |
+          (cd dist && sha256sum * > checksums.txt)
+          ls -lh dist/
+
+      - name: Create GitHub Release + upload binaries
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "${{ needs.tag.outputs.tag }}" --title "${{ needs.tag.outputs.tag }}" --generate-notes
+        run: |
+          TAG="${{ needs.tag.outputs.tag }}"
+          gh release create "$TAG" --title "$TAG" --generate-notes
+          gh release upload "$TAG" dist/* --clobber
+
+  npm-publish:
+    needs: [tag, github-release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.tag.outputs.tag }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      # Samakan versi npm dengan tag (tanpa prefix v) agar install.js
+      # download asset yang benar secara default.
+      - name: Sync npm version with tag
+        run: |
+          TAG="${{ needs.tag.outputs.tag }}"
+          VER="${TAG#v}"
+          node -e "const fs=require('fs');const p='npm/package.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));j.version='$VER';fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n')"
+          node -p "require('./npm/package.json').version"
+
+      - name: Publish @rikipurpur/puru-ai
+        working-directory: npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "NPM_TOKEN belum di-set — skip publish."
+            echo "Tambahkan secret NPM_TOKEN (npm access token untuk user rikipurpur), lalu re-run job ini."
+            exit 0
+          fi
+          npm publish --access public

@@ -1,0 +1,28 @@
+{
+  "name": "@rikipurpur/puru-ai",
+  "version": "1.1.1",
+  "description": "PURU-AI CLI — setup & gateway Telegram bot tanpa web server. Binary Go dibungkus npm.",
+  "license": "MIT",
+  "author": "Ricky",
+  "homepage": "https://github.com/purujawa06-bot/PURU-AI",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/purujawa06-bot/PURU-AI.git"
+  },
+  "keywords": ["telegram", "ai", "bot", "cli", "gateway"],
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "puru": "bin/puru.js"
+  },
+  "scripts": {
+    "postinstall": "node scripts/install.js"
+  },
+  "files": [
+    "bin/",
+    "scripts/install.js",
+    "scripts/binary.js",
+    "README.md"
+  ]
+}

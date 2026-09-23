@@ -1,5 +1,7 @@
 node_modules/
+npm/scripts/vendor/
 /dist/
+dist/
 .env
 picoclaw/
 .claude

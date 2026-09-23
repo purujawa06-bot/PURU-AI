@@ -35,6 +35,31 @@ graph TD
 
 ## 🚀 Getting Started
 
+### Install via npm (easiest, no web server)
+
+```bash
+npm i -g @rikipurpur/puru-ai
+puru setup        # wizard → writes ~/.puru/config.json
+puru gateway      # run the Telegram bot (long-polling, no /health by default)
+puru gateway --health --port 8080   # opt-in health check for Docker/VPS
+puru chat "halo"  # local debug without Telegram
+```
+
+> The npm package downloads the prebuilt `puru` binary from GitHub Releases
+> on postinstall (linux/darwin/windows × amd64/arm64, plus linux/arm untuk
+> Termux Android 32-bit). Binaries are built
+> automatically by the manual **Release** workflow (`verify → tag →
+> build-binaries + docker → GitHub Release → npm publish`).
+
+### Termux (Android)
+
+```bash
+pkg install nodejs
+npm i -g @rikipurpur/puru-ai
+puru setup
+puru gateway
+```
+
 ### Deploy with Docker (Recommended)
 
 ```bash
