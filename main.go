@@ -83,7 +83,7 @@ func main() {
 			if errors.As(err, &te) && te.IsConflict() {
 				conflicts++
 				if conflicts >= 5 {
-					log.Printf("Conflict %dx — instance lain memakai token. Exit.", conflicts)
+					log.Printf("Conflict %dx — another instance is using the token. Exit.", conflicts)
 					os.Exit(1)
 				}
 				time.Sleep(10 * time.Second)

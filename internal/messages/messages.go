@@ -281,159 +281,23 @@ func NetLen(m *Message) int {
 }
 
 // ---------------------------------------------------------------------------
-// pruneMessages port (options used by this project):
-//   toolCalls  -> 'before-last-6-messages'
-//   emptyMessages -> remove
-//
-// Reasoning parts are NEVER pruned: thinking-mode providers (deepseek-reasoner
-// and friends) require every replayed assistant message to carry its
-// reasoning_content back — dropping it makes the API return HTTP 400.
+// Prune dinonaktifkan: history disimpan apa adanya (reasoning, tool-call,
+// tool-result, dan respon kosong dipertahankan persis setelah turn).
+// Pemangkasan hanya via compact (memory.Compact) saat kena history_token_limit.
+// PruneMessages/PruneTurn dipertahankan sebagai no-op agar pemanggil lama
+// tidak rusak.
 // ---------------------------------------------------------------------------
 
-// PruneMessages mirrors Vercel's ai.pruneMessages with the configuration the
-// bot uses. It never mutates its input.
+// PruneMessages adalah no-op: kembalikan input apa adanya tanpa menghapus
+// reasoning, tool parts, maupun pesan kosong.
 func PruneMessages(msgs []*Message) []*Message {
-	work := make([]*Message, 0, len(msgs))
-	for _, m := range msgs {
-		work = append(work, cloneMessage(m))
-	}
-
-	// toolCalls: 'before-last-6-messages'
-	const keepLast = 6
-	kept := map[string]struct{}{}
-	start := len(work) - minInt(keepLast, len(work))
-	if start < 0 {
-		start = 0
-	}
-	for _, m := range work[start:] {
-		if (m.Role == "assistant" || m.Role == "tool") && IsParts(m) {
-			for _, p := range ContentParts(m) {
-				if p.Type() == "tool-call" || p.Type() == "tool-result" {
-					if id := p.Str("toolCallId"); id != "" {
-						kept[id] = struct{}{}
-					}
-				}
-			}
-		}
-	}
-	for i, m := range work {
-		if (m.Role != "assistant" && m.Role != "tool") || !IsParts(m) {
-			continue
-		}
-		if i >= len(work)-keepLast {
-			continue
-		}
-		parts := make([]Part, 0, len(ContentParts(m)))
-		for _, p := range ContentParts(m) {
-			t := p.Type()
-			keep := true
-			if t == "tool-call" || t == "tool-result" {
-				_, keep = kept[p.Str("toolCallId")]
-			}
-			if keep {
-				parts = append(parts, p)
-			}
-		}
-		SetContentParts(m, parts)
-	}
-
-	// emptyMessages: remove
-	out := make([]*Message, 0, len(work))
-	for _, m := range work {
-		if m != nil && NetLen(m) > 0 {
-			out = append(out, m)
-		}
-	}
-	return out
+	return msgs
 }
 
-// ---------------------------------------------------------------------------
-// PruneTurn: per-turn trim called once per completed turn after
-// SanitizeHistoryMessages and before hist.Set (see app.processMessage and
-// cmd/cli process). Single pass, no loops that can hang:
-//
-//   - tool-call/tool-result parts are kept only on the last 6 messages,
-//     older messages keep their text/reasoning (reasoning then reduced below).
-//   - only the single newest reasoning/reasoning-file part is kept globally.
-//   - empty messages (null, whitespace-only string, or zero parts after the
-//     stripping above) are removed.
-//
-// It never mutates its input. Compaction/memory logic is untouched — this only
-// bounds per-turn tool/reasoning growth so history stays small until the token
-// trigger summarizes it.
-// ---------------------------------------------------------------------------
-
-// PruneTurn trims one completed turn for storage.
+// PruneTurn adalah no-op: kembalikan input apa adanya. Jangan strip reasoning
+// maupun drop pesan kosong — biarkan compact yang bekerja saat kena limit.
 func PruneTurn(msgs []*Message) []*Message {
-	if len(msgs) == 0 {
-		return msgs
-	}
-	work := make([]*Message, 0, len(msgs))
-	for _, m := range msgs {
-		work = append(work, cloneMessage(m))
-	}
-	const keepLast = 6
-	threshold := len(work) - keepLast
-	if threshold < 0 {
-		threshold = 0
-	}
-
-	// Locate the single newest reasoning part (scan from the end).
-	newestMsg := -1
-	newestPart := -1
-	for i := len(work) - 1; i >= 0; i-- {
-		m := work[i]
-		if m == nil || !IsParts(m) {
-			continue
-		}
-		parts := ContentParts(m)
-		for j := len(parts) - 1; j >= 0; j-- {
-			if t := parts[j].Type(); t == "reasoning" || t == "reasoning-file" {
-				newestMsg = i
-				newestPart = j
-				break
-			}
-		}
-		if newestMsg >= 0 {
-			break
-		}
-	}
-
-	// Strip old tool parts and all but the newest reasoning part.
-	for i, m := range work {
-		if m == nil || !IsParts(m) {
-			continue
-		}
-		parts := ContentParts(m)
-		kept := make([]Part, 0, len(parts))
-		for j, p := range parts {
-			switch p.Type() {
-			case "tool-call", "tool-result":
-				if i < threshold {
-					continue
-				}
-				kept = append(kept, p)
-			case "reasoning", "reasoning-file":
-				if i == newestMsg && j == newestPart {
-					kept = append(kept, p)
-				}
-				// else: drop older reasoning
-			default:
-				kept = append(kept, p)
-			}
-		}
-		SetContentParts(m, kept)
-	}
-
-	// Drop empty messages.
-	out := make([]*Message, 0, len(work))
-	for _, m := range work {
-		if m == nil || isEmptyStored(m) {
-			continue
-		}
-		out = append(out, m)
-	}
-	return out
+	return msgs
 }
 
 // isEmptyStored reports messages with nothing worth storing: null content,
@@ -526,15 +390,15 @@ func CapUserTurns(history []*Message) []*Message {
 	return EnsureStartsWithUser(result)
 }
 
-// SanitizeHistoryMessages truncates stored message content (8k char limit per
-// message/part) so large tool outputs do not pile up in cache or Firebase. It
-// also drops assistant stubs that carry no real content (e.g. empty/whitespace
-// text parts from interrupted protocol-violation rounds).
+// SanitizeHistoryMessages hanya membatasi ukuran (8k char per message/part)
+// agar tool output besar tidak menumpuk. Tidak menghapus apa pun: reasoning,
+// tool-call/tool-result, dan respon kosong (whitespace/null) dipertahankan
+// apa adanya agar agent tidak halusinasi. Pemangkasan hanya via compact.
 func SanitizeHistoryMessages(msgs []*Message) []*Message {
 	out := make([]*Message, 0, len(msgs))
 	for _, m := range msgs {
 		c := SanitizeMessage(m)
-		if c == nil || (IsAssistant(c) && isEmptyStub(c)) {
+		if c == nil {
 			continue
 		}
 		out = append(out, c)
@@ -586,12 +450,8 @@ func SanitizeMessage(m *Message) *Message {
 			p := &parts[i]
 			switch p.Type() {
 			case "text":
-				t := p.Text()
-				if strings.TrimSpace(t) == "" {
-					continue // drop empty/whitespace text parts
-				}
-				p.SetText(truncateString(t, MaxStoredContent))
-			case "reasoning":
+				p.SetText(truncateString(p.Text(), MaxStoredContent))
+			case "reasoning", "reasoning-file":
 				if t := p.Str("text"); t != "" {
 					p.SetText(truncateString(t, MaxStoredContent))
 				}
@@ -599,14 +459,18 @@ func SanitizeMessage(m *Message) *Message {
 				if raw, ok := (*p)["input"]; ok && len(raw) > MaxStoredContent {
 					(*p)["input"] = json.RawMessage(`"[truncated tool input]"`)
 				}
+			case "tool-result":
+				if raw, ok := (*p)["output"]; ok && len(raw) > MaxStoredContent {
+					(*p)["output"] = json.RawMessage(`{"type":"json","value":"[truncated tool result]"}`)
+				}
 			}
 			out = append(out, *p)
 		}
 		if len(out) == 0 {
-			c.Content = nil
-		} else {
-			SetContentParts(c, out)
+			// Pertahankan pesan kosong apa adanya (jangan di-drop).
+			return c
 		}
+		SetContentParts(c, out)
 	}
 	// Legacy v5/v6 top-level toolCalls with args.
 	if tc := c.Extra("toolCalls"); len(tc) > 0 {

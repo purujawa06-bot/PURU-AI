@@ -1,5 +1,5 @@
 // CLI debug for the lightweight assistant (no Telegram).
-// Usage: go run ./cmd/cli "pesan..." | go run ./cmd/cli (REPL)
+// Usage: go run ./cmd/cli "message..." | go run ./cmd/cli (REPL)
 package main
 
 import (
@@ -25,9 +25,9 @@ import (
 func main() {
 	debug.SetMemoryLimit(50 << 20)
 
-	cfgPath := flag.String("config", "", "path config.json")
-	chatID := flag.Int64("chat", -777, "chat id debug")
-	reset := flag.Bool("reset", false, "hapus history lalu exit")
+	cfgPath := flag.String("config", "", "path to config.json")
+	chatID := flag.Int64("chat", -777, "debug chat id")
+	reset := flag.Bool("reset", false, "clear history and exit")
 	flag.Parse()
 
 	cfg, err := config.Load(config.ResolvePath(*cfgPath))
@@ -51,10 +51,10 @@ func main() {
 		return
 	}
 	if flag.NArg() == 0 {
-		fmt.Printf("CLI PURU-AI — chat=%d — /exit keluar, /reset hapus history\n", *chatID)
+		fmt.Printf("CLI PURU-AI — chat=%d — /exit to quit, /reset to clear history\n", *chatID)
 		sc := bufio.NewScanner(os.Stdin)
 		for {
-			fmt.Print("Anda > ")
+			fmt.Print("You > ")
 			if !sc.Scan() {
 				break
 			}
@@ -64,7 +64,7 @@ func main() {
 			}
 			if line == "/reset" {
 				_ = hist.Clear(*chatID)
-				fmt.Println("History dihapus.")
+				fmt.Println("History cleared.")
 				continue
 			}
 			if line == "" {
@@ -88,7 +88,7 @@ func process(ctx context.Context, agent *ai.Agent, hist *history.Store, mem *mem
 		} else if rel != "" {
 			stored = []*messages.Message{}
 			_ = hist.Set(chatID, stored)
-			fmt.Printf("(tersimpan: %s)\n", rel)
+			fmt.Printf("(saved: %s)\n", rel)
 		}
 	}
 	opts := &ai.ProcessOptions{ChatID: chatID}
@@ -99,8 +99,8 @@ func process(ctx context.Context, agent *ai.Agent, hist *history.Store, mem *mem
 	}
 	res := agent.ProcessMessage(ctx, prompt, stored, opts)
 	saved := append(append([]*messages.Message{}, stored...), userMsg(prompt)...)
+	// Simpan apa adanya; tanpa prune — biarkan compact yang bekerja.
 	saved = append(saved, messages.SanitizeHistoryMessages(res.ResponseMessages)...)
-	saved = messages.PruneTurn(saved)
 	_ = hist.Set(chatID, saved)
 	return res.Text
 }

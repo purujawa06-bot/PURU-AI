@@ -13,7 +13,7 @@ func TestResolveWorkdirValidatesDir(t *testing.T) {
 	ws := t.TempDir()
 
 	if _, err := resolveWorkdir(ws, true, "tak-ada"); err == nil ||
-		!strings.Contains(err.Error(), "cwd tidak ditemukan") {
+		!strings.Contains(err.Error(), "cwd not found") {
 		t.Fatalf("cwd tak ada harus ditolak jelas, got %v", err)
 	}
 
@@ -21,7 +21,7 @@ func TestResolveWorkdirValidatesDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := resolveWorkdir(ws, true, "f.txt"); err == nil ||
-		!strings.Contains(err.Error(), "cwd bukan direktori") {
+		!strings.Contains(err.Error(), "cwd is not a directory") {
 		t.Fatalf("cwd file harus ditolak jelas, got %v", err)
 	}
 

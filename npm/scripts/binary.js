@@ -8,7 +8,7 @@ function mapOS(platform = process.platform) {
   if (platform === 'darwin') return 'darwin';
   // Termux di Android lapor 'linux' — binary linux statik (CGO_ENABLED=0) jalan langsung.
   if (platform === 'linux' || platform === 'android') return 'linux';
-  throw new Error(`OS tidak didukung: ${platform} (didukung: linux, darwin, windows)`);
+  throw new Error(`Unsupported OS: ${platform} (supported: linux, darwin, windows)`);
 }
 
 function mapArch(arch = process.arch) {
@@ -16,7 +16,7 @@ function mapArch(arch = process.arch) {
   if (arch === 'arm64') return 'arm64';
   // HP Android 32-bit (armv7) — Termux lapor 'arm'.
   if (arch === 'arm') return 'arm';
-  throw new Error(`Arch tidak didukung: ${arch} (didukung: x64, arm64, arm)`);
+  throw new Error(`Unsupported arch: ${arch} (supported: x64, arm64, arm)`);
 }
 
 function assetName(goos, goarch) {

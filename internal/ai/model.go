@@ -56,7 +56,7 @@ func (r *retryModel) do(ctx context.Context, what string, fn func() error) error
 		if attempt == maxAPIAttempts {
 			break
 		}
-		log.Printf("[ai] API error (%s %d/%d): %v — coba lagi %v", what, attempt, maxAPIAttempts, err, apiRetryDelay)
+		log.Printf("[ai] API error (%s %d/%d): %v — retrying in %v", what, attempt, maxAPIAttempts, err, apiRetryDelay)
 		if !sleepOrDone(ctx, apiRetryDelay) {
 			return ctx.Err()
 		}

@@ -108,7 +108,7 @@ func (a *App) Handle(ctx context.Context, upd *telegram.Update) error {
 		if a.tg == nil {
 			return nil
 		}
-		return a.safeReply(ctx, msg, "⛔ Maaf, Anda tidak terdaftar untuk memakai bot ini.", true)
+		return a.safeReply(ctx, msg, "⛔ Sorry, you are not registered to use this bot.", true)
 	}
 
 	if strings.TrimSpace(msg.Text) == "" {
@@ -133,7 +133,7 @@ func (a *App) Handle(ctx context.Context, upd *telegram.Update) error {
 			if a.tg == nil {
 				return nil
 			}
-			return a.safeReply(ctx, msg, "Kirim /ai <pertanyaan>.", true)
+			return a.safeReply(ctx, msg, "Send /ai <question>.", true)
 		}
 		userMessage = strings.TrimSpace(rest)
 	} else if isCommand(msg.Text) {
@@ -148,7 +148,7 @@ func (a *App) Handle(ctx context.Context, upd *telegram.Update) error {
 	sess := &busySession{cancel: cancel}
 	if !a.tryAcquire(userID, sess) {
 		cancel()
-		return a.safeReply(ctx, msg, "⏳ Masih ada yang diproses, tunggu sebentar ya...", true)
+		return a.safeReply(ctx, msg, "⏳ Still processing your previous message, please wait a moment...", true)
 	}
 	go func() {
 		defer cancel()
@@ -198,16 +198,16 @@ func (a *App) handleCommand(ctx context.Context, msg *telegram.Message) error {
 	switch {
 	case strings.HasPrefix(t, "/stop"):
 		if a.stopUser(msg.From.ID) {
-			return a.safeReply(ctx, msg, "⏹️ Proses dihentikan.", true)
+			return a.safeReply(ctx, msg, "⏹️ Process stopped.", true)
 		}
-		return a.safeReply(ctx, msg, "Tidak ada proses yang berjalan.", true)
+		return a.safeReply(ctx, msg, "No process is running.", true)
 	case strings.HasPrefix(t, "/token"):
 		return a.safeReply(ctx, msg, tokenInfo(history.TokenCountFull(a.renderedSystem(), a.hist.Get(msg.From.ID)), a.cfg.HistoryTokenLimit), true)
 	case strings.HasPrefix(t, "/help"):
-		return a.safeReply(ctx, msg, "PURU-AI lightweight — kirim pesan apa saja.\n/clear = hapus history.\n/token = info pemakaian token memory.\n/stop = hentikan proses yang berjalan.\nDi grup: panggil via /ai <pertanyaan> (contoh: /ai jelaskan Raft).", true)
+		return a.safeReply(ctx, msg, "PURU-AI lightweight — just send any message.\n/clear = clear history.\n/token = memory token usage info.\n/stop = stop the running process.\nIn groups: call via /ai <question> (e.g. /ai explain Raft).", true)
 	default: // /clear
 		_ = a.hist.Clear(msg.From.ID)
-		return a.safeReply(ctx, msg, "History dihapus.", true)
+		return a.safeReply(ctx, msg, "History cleared.", true)
 	}
 }
 
@@ -226,10 +226,10 @@ func tokenInfo(used, limit int) string {
 		left = 0
 	}
 	return "📊 Token memory: " + fmtInt(used) + " / " + fmtInt(limit) +
-		" (" + fmtPct(pct) + ")\nSummarize + hapus history saat 100% (sisa " + fmtInt(left) + ")."
+		" (" + fmtPct(pct) + ")\nSummarized + history cleared at 100% (" + fmtInt(left) + " left)."
 }
 
-// fmtInt formats n with '.' thousands separator (id style): 30000 -> "30.000".
+// fmtInt formats n with ',' thousands separator: 30000 -> "30,000".
 func fmtInt(n int) string {
 	s := strconv.Itoa(n)
 	neg := strings.HasPrefix(s, "-")
@@ -239,7 +239,7 @@ func fmtInt(n int) string {
 	var b strings.Builder
 	for i, c := range s {
 		if i > 0 && (len(s)-i)%3 == 0 {
-			b.WriteByte('.')
+			b.WriteByte(',')
 		}
 		b.WriteRune(c)
 	}
@@ -249,10 +249,9 @@ func fmtInt(n int) string {
 	return b.String()
 }
 
-// fmtPct formats a percent with one comma decimal: 4.06 -> "4,1%".
+// fmtPct formats a percent with one decimal: 4.06 -> "4.1%".
 func fmtPct(p float64) string {
-	s := strconv.FormatFloat(p, 'f', 1, 64)
-	return strings.Replace(s, ".", ",", 1) + "%"
+	return strconv.FormatFloat(p, 'f', 1, 64) + "%"
 }
 
 // renderedSystem renders the same system prompt the agent sends on every
@@ -341,8 +340,10 @@ func (a *App) processMessage(ctx context.Context, msg *telegram.Message, userMes
 	u := &messages.Message{Role: "user"}
 	messages.SetContentString(u, userMessage)
 	saved = append(saved, u)
+	// Simpan apa adanya (reasoning + respon kosong dipertahankan);
+	// hanya truncate ukuran via Sanitize. Tanpa prune — biarkan compact
+	// yang bekerja saat kena history_token_limit.
 	saved = append(saved, messages.SanitizeHistoryMessages(res.ResponseMessages)...)
-	saved = messages.PruneTurn(saved)
 	_ = a.hist.Set(userID, saved)
 
 	if err := a.safeSend(ctx, msg, res.Text); err != nil {
@@ -424,7 +425,7 @@ func (a *App) safeReply(ctx context.Context, msg *telegram.Message, text string,
 
 func (a *App) safeSend(ctx context.Context, msg *telegram.Message, text string) error {
 	if len(text) > maxMessageLength {
-		_ = a.safeReply(ctx, msg, "⚠️ Respon terlalu panjang, dikirim sebagai file.", false)
+		_ = a.safeReply(ctx, msg, "⚠️ Response too long, sent as a file.", false)
 		return a.tg.SendFile(ctx, msg.Chat.ID, "respon.md", []byte(text), "Respon lengkap.")
 	}
 	return a.safeReply(ctx, msg, text, true)

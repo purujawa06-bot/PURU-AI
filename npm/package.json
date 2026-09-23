@@ -1,7 +1,7 @@
 {
   "name": "@rikipurpur/puru-ai",
   "version": "1.1.1",
-  "description": "PURU-AI CLI — setup & gateway Telegram bot tanpa web server. Binary Go dibungkus npm.",
+  "description": "PURU-AI CLI — setup wizard and Telegram bot gateway (no web server). Self-contained Go binary distributed via npm.",
   "license": "MIT",
   "author": "Ricky",
   "homepage": "https://github.com/purujawa06-bot/PURU-AI",

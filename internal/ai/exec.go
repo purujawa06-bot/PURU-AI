@@ -157,7 +157,7 @@ func (s *execSession) finish(timedOut bool, memLimited bool) {
 // the shell — children can't leak RAM.
 func runExec(parent context.Context, dir, command string, timeoutSec, memMB int, background bool) (any, error) {
 	if strings.TrimSpace(command) == "" {
-		return execResult{Success: false, ExitCode: -1, Output: "command kosong"}, nil
+		return execResult{Success: false, ExitCode: -1, Output: "command is empty"}, nil
 	}
 	if parent == nil {
 		parent = context.Background()

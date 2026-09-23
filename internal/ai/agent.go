@@ -48,7 +48,7 @@ type reasoningClient interface {
 	GenerateContentWithReasoning(ctx context.Context, messages []llms.MessageContent, reasonings []string, options ...llms.CallOption) (*llms.ContentResponse, error)
 }
 
-const stepLimitHint = "Batas langkah tercapai (max_iterations). Ketik `lanjut` untuk melanjutkan."
+const stepLimitHint = "Step limit reached (max_iterations). Type `continue` to carry on."
 
 // Usage is the token usage of a single model round-trip.
 type Usage struct {
@@ -161,9 +161,9 @@ func responseFromSteps(steps []schema.AgentStep, reasoningByStep []string) []*me
 		}
 		as := &messages.Message{Role: "assistant"}
 		messages.SetContentParts(as, parts)
-		if messages.NetLen(as) > 0 {
-			out = append(out, as)
-		}
+		// Pertahankan apa adanya termasuk respon kosong — jangan di-prune
+		// agar urutan tool-call/tool-result tidak halusinasi.
+		out = append(out, as)
 		for _, s := range group {
 			toolMsg := &messages.Message{Role: "tool"}
 			messages.SetContentParts(toolMsg, []messages.Part{{
@@ -580,11 +580,11 @@ func (a *Agent) ProcessMessage(ctx context.Context, userMessage string, history 
 
 func makeResult(text string, resp []*messages.Message, total int, usage Usage, finishReason string) *ProcessResult {
 	if strings.TrimSpace(text) == "" {
-		text = "Maaf, saya tidak bisa merespons saat ini."
+		text = "Sorry, I can't respond right now."
 	}
 	return &ProcessResult{Text: text, ResponseMessages: resp, TotalTokens: total, LastStepUsage: usage, LastFinishReason: finishReason}
 }
 
 func errResult() *ProcessResult {
-	return &ProcessResult{Text: "Maaf, saya tidak bisa merespons saat ini."}
+	return &ProcessResult{Text: "Sorry, I can't respond right now."}
 }

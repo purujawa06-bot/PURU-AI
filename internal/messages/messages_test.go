@@ -89,11 +89,14 @@ func TestSanitizeDropsEmptyTextParts(t *testing.T) {
 	})
 	got := SanitizeMessage(m)
 	parts := ContentParts(got)
-	if len(parts) != 1 || parts[0].Type() != "tool-call" {
-		t.Fatalf("expected only tool-call part to survive, got %d parts", len(parts))
+	// Prune dinonaktifkan: text kosong + tool-call dipertahankan apa adanya.
+	if len(parts) != 2 {
+		t.Fatalf("expected 2 parts preserved apa adanya, got %d parts", len(parts))
 	}
 }
 
+// Prune dinonaktifkan: Sanitize hanya truncate, tidak drop stub/empty agar
+// agent tidak halusinasi. Biarkan compact yang bekerja saat kena limit.
 func TestSanitizeHistoryDropsStubs(t *testing.T) {
 	partStub := &Message{Role: "assistant"}
 	SetContentParts(partStub, []Part{{"type": []byte(`"text"`), "text": []byte(`"\n"`)}})
@@ -106,17 +109,13 @@ func TestSanitizeHistoryDropsStubs(t *testing.T) {
 	})
 
 	out := SanitizeHistoryMessages([]*Message{partStub, stringStub, kept, makeMsg("user", "hi")})
-	if len(out) != 2 {
-		t.Fatalf("expected 2 messages (kept + user), got %d", len(out))
-	}
-	if out[0].Role != "assistant" || out[1].Role != "user" {
-		t.Fatalf("unexpected messages kept: %+v", out)
+	if len(out) != 4 {
+		t.Fatalf("expected 4 messages preserved apa adanya, got %d", len(out))
 	}
 }
 
-// TestPruneKeepsReasoning verifies that PruneMessages never strips reasoning
-// parts: thinking-mode providers (deepseek-reasoner) require every replayed
-// assistant message to carry its reasoning_content back.
+// TestPruneKeepsReasoning verifies that PruneMessages (no-op) preserves
+// reasoning parts apa adanya.
 func TestPruneKeepsReasoning(t *testing.T) {
 	assistant := &Message{Role: "assistant"}
 	SetContentParts(assistant, []Part{
@@ -205,9 +204,8 @@ func hasToolID(m *Message, typ, id string) bool {
 	return false
 }
 
-// TestPruneTurn verifies per-turn trim: only newest reasoning kept, old
-// tool-call/tool-result stripped (kept only on last 6), empties dropped,
-// input not mutated.
+// TestPruneTurn verifies PruneTurn is a no-op: reasoning, tool parts, dan
+// pesan kosong dipertahankan apa adanya (biarkan compact yang bekerja).
 func TestPruneTurn(t *testing.T) {
 	msgs := []*Message{
 		mkParts("assistant", []Part{
@@ -251,19 +249,16 @@ func TestPruneTurn(t *testing.T) {
 		t.Fatalf("PruneTurn mutated input")
 	}
 
-	// Empty messages dibuang: whitespace + null + tool-result lama yang jadi kosong.
-	for _, m := range out {
-		if isEmptyStored(m) {
-			t.Fatalf("empty message not dropped: %+v", m)
-		}
+	// Apa adanya: jumlah sama, semua reasoning/tool/empty dipertahankan.
+	if len(out) != len(msgs) {
+		t.Fatalf("PruneTurn harus no-op: got %d, want %d", len(out), len(msgs))
 	}
 	if hasToolID(nil, "tool-call", "x") {
 		t.Fatal("helper sanity failed")
 	}
 
-	// Reasoning: hanya 1 terbaru ("newest").
+	// Reasoning: semua 3 dipertahankan (old-0, old-3, newest).
 	reasonCount := 0
-	newestKept := false
 	for _, m := range out {
 		if !IsParts(m) {
 			continue
@@ -271,30 +266,22 @@ func TestPruneTurn(t *testing.T) {
 		for _, p := range ContentParts(m) {
 			if p.Type() == "reasoning" || p.Type() == "reasoning-file" {
 				reasonCount++
-				if p.Str("text") == "newest" {
-					newestKept = true
-				}
 			}
 		}
 	}
-	if reasonCount != 1 {
-		t.Fatalf("expected 1 reasoning part, got %d", reasonCount)
-	}
-	if !newestKept {
-		t.Fatal("newest reasoning not kept")
+	if reasonCount != 3 {
+		t.Fatalf("expected 3 reasoning parts preserved, got %d", reasonCount)
 	}
 
-	// Tool parts lama dibuang, yang baru (6 terakhir) dipertahankan.
+	// Tool parts lama + baru dipertahankan.
+	foundOldCall, foundOldResult, foundNewCall, foundNewResult := false, false, false, false
 	for _, m := range out {
 		if hasToolID(m, "tool-call", "c-old") {
-			t.Fatal("old tool-call c-old should be stripped")
+			foundOldCall = true
 		}
 		if hasToolID(m, "tool-result", "r-old") {
-			t.Fatal("old tool-result r-old should be stripped")
+			foundOldResult = true
 		}
-	}
-	foundNewCall, foundNewResult := false, false
-	for _, m := range out {
 		if hasToolID(m, "tool-call", "c-new") {
 			foundNewCall = true
 		}
@@ -302,23 +289,18 @@ func TestPruneTurn(t *testing.T) {
 			foundNewResult = true
 		}
 	}
-	if !foundNewCall {
-		t.Fatal("recent tool-call c-new should be kept")
-	}
-	if !foundNewResult {
-		t.Fatal("recent tool-result r-new should be kept")
+	if !foundOldCall || !foundOldResult || !foundNewCall || !foundNewResult {
+		t.Fatal("semua tool-call/tool-result harus dipertahankan apa adanya")
 	}
 
-	// Teks pesan lama tetap ada (hanya tool/reasoning yang dikupas).
-	foundT0, foundT1 := false, false
+	// Pesan kosong (whitespace + null) dipertahankan.
+	emptyKept := 0
 	for _, m := range out {
-		if m.Text() == "t0" && !hasPartType(m, "reasoning") {
-			foundT0 = true
-		}
-		if m.Text() == "t1" && !hasPartType(m, "tool-call") {
-			foundT1 = true
+		if isEmptyStored(m) {
+			emptyKept++
 		}
 	}
-	_ = foundT0
-	_ = foundT1
+	if emptyKept < 2 {
+		t.Fatalf("expected empty messages preserved, got %d", emptyKept)
+	}
 }

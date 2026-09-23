@@ -1,31 +1,36 @@
-# @rikipurpur/puru-ai (npm)
+# @rikipurpur/puru-ai
 
-CLI resmi PURU-AI — **tanpa web server** secara default.
-Binary Go di-download otomatis dari GitHub Releases saat install.
+PURU-AI on npm — a lightweight, self-hosted Telegram AI assistant. No web
+server by default. The Go binary is downloaded automatically from GitHub
+Releases during install.
+
+## Quick start
 
 ```bash
 npm i -g @rikipurpur/puru-ai
-puru setup        # wizard → tulis ~/.puru/config.json
-puru gateway      # jalankan bot Telegram (long-polling, tanpa /health)
-puru gateway --health --port 8080   # opt-in health check (Docker/VPS)
-puru chat "halo"  # debug lokal tanpa Telegram
+puru setup        # interactive wizard → writes ~/.puru/config.json
+puru gateway      # run the Telegram bot (long-polling, no /health endpoint)
+puru gateway --health --port 8080   # opt-in health check for Docker/VPS
+puru chat "hello" # local debugging without Telegram
 ```
 
-Non-interaktif (CI):
+## Non-interactive setup (CI)
 
 ```bash
-TELEGRAM_BOT_TOKEN=x PURU_BASE_URL=... PURU_API_KEY=... PURU_MODEL=puru \
+TELEGRAM_BOT_TOKEN=x PURU_BASE_URL=https://api.openai.com/v1 \
+  PURU_API_KEY=sk-... PURU_MODEL=gpt-4o-mini \
   puru setup --force
 ```
 
-Env installer: `PURU_AI_VERSION` (default = versi package), `PURU_AI_REPO`
-(default `purujawa06-bot/PURU-AI`), `PURU_AI_BINARY` (pakai binary lokal),
-`PURU_AI_SKIP_DOWNLOAD=1` (skip download).
+Installer environment variables: `PURU_AI_VERSION` (defaults to the package
+version), `PURU_AI_REPO` (defaults to `purujawa06-bot/PURU-AI`),
+`PURU_AI_BINARY` (use a local binary instead of downloading),
+`PURU_AI_SKIP_DOWNLOAD=1` (skip the download step).
 
 ## Termux (Android)
 
-HP 64-bit (umum) pakai binary `puru-linux-arm64`, HP 32-bit pakai
-`puru-linux-arm` (armv7) — installer otomatis pilih yang benar.
+Most 64-bit phones use the `puru-linux-arm64` binary; 32-bit phones use
+`puru-linux-arm` (armv7) — the installer picks the right one automatically.
 
 ```bash
 pkg install nodejs
@@ -34,8 +39,14 @@ puru setup
 puru gateway
 ```
 
-Tips: jalankan di bawah `termux-wake-lock` agar bot tidak mati saat layar
-mati. Tanpa Node pun bisa — download binary langsung dari
+Tip: run under `termux-wake-lock` so the bot stays alive when the screen is
+off. Node.js is optional — you can download the binary straight from
 [Releases](https://github.com/purujawa06-bot/PURU-AI/releases)
-(`puru-linux-arm64` atau `puru-linux-arm`), `chmod +x`, lalu
+(`puru-linux-arm64` or `puru-linux-arm`), `chmod +x` it, then run
 `./puru-linux-arm64 setup`.
+
+## Links
+
+- Repository: <https://github.com/purujawa06-bot/PURU-AI>
+- Issues: <https://github.com/purujawa06-bot/PURU-AI/issues>
+- License: MIT

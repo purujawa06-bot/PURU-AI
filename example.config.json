@@ -1,10 +1,10 @@
 {
-  "telegram_bot_token": "123456:ABCDEF-ganti-dengan-token-bot",
+  "telegram_bot_token": "123456:ABCDEF-replace-with-bot-token",
   "telegram_allowed_users": [],
   "model": {
-    "base_url": "https://betatestervueui2-b.hf.space/v1",
-    "api_key": "sk-ganti-dengan-key",
-    "model": "puru",
+    "base_url": "https://api.openai.com/v1",
+    "api_key": "sk-replace-with-openai-key",
+    "model": "gpt-4o-mini",
     "temperature": 0
   },
   "workspace": "/root/.puru/workspace",

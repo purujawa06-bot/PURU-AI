@@ -42,7 +42,7 @@ const maxSendFileBytes = 20 << 20
 // declarations (read_file, write_file, list_dir, edit_file, append_file, exec)
 // + 2 Telegram tools (telegram_sendfile, telegram_getuser, only usable with
 // a Telegram context) + get_env (environment info) + 2 web tools
-// (web_search via Yahoo HTML + Bing fallback, web_fetch URL to text).
+// (web_search via Bing HTML setlang=id default, web_fetch URL to text).
 // opts carries workspace config, current chat/user, and the OnTool preview hook.
 func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 	ws := ""
@@ -213,7 +213,7 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 			}),
 			func(ctx context.Context, args map[string]any) (any, error) {
 				if a == nil || a.Telegram == nil || opts == nil || opts.ChatID == 0 {
-					return map[string]any{"error": "telegram_sendfile hanya tersedia di chat Telegram"}, nil
+					return map[string]any{"error": "telegram_sendfile is only available in Telegram chat"}, nil
 				}
 				abs, err := resolvePath(ws, restrict, argStr(args, "path"))
 				if err != nil {
@@ -224,10 +224,10 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 					return map[string]any{"error": err.Error()}, nil
 				}
 				if stat.IsDir() {
-					return map[string]any{"error": "path adalah direktori, bukan file"}, nil
+					return map[string]any{"error": "path is a directory, not a file"}, nil
 				}
 				if stat.Size() > maxSendFileBytes {
-					return map[string]any{"error": fmt.Sprintf("file terlalu besar: %s (maks 20MB)", formatSize(stat.Size()))}, nil
+					return map[string]any{"error": fmt.Sprintf("file too large: %s (max 20MB)", formatSize(stat.Size()))}, nil
 				}
 				b, err := os.ReadFile(abs)
 				if err != nil {
@@ -249,7 +249,7 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 			func(ctx context.Context, args map[string]any) (any, error) {
 				if uid := argInt(args, "user_id"); uid != 0 {
 					if a == nil || a.Telegram == nil {
-						return map[string]any{"error": "telegram_getuser hanya tersedia di chat Telegram"}, nil
+						return map[string]any{"error": "telegram_getuser is only available in Telegram chat"}, nil
 					}
 					info, err := a.Telegram.GetTelegramUser(ctx, uid)
 					if err != nil {
@@ -258,7 +258,7 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 					return userInfoMap(info), nil
 				}
 				if opts == nil || opts.User == nil {
-					return map[string]any{"error": "telegram_getuser hanya tersedia di chat Telegram"}, nil
+					return map[string]any{"error": "telegram_getuser is only available in Telegram chat"}, nil
 				}
 				u := opts.User
 				return userInfoMap(&TelegramUserInfo{ID: u.ID, Username: u.Username, FirstName: u.FirstName, LastName: u.LastName}), nil
@@ -277,10 +277,11 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 					"memory_mb":  m.Alloc / 1024 / 1024,
 				}, nil
 			}),
-		"web_search": mk("web_search", "Search the web (Yahoo HTML with Bing fallback). Returns title + URL + snippet per result. Use when you need current/external info beyond the workspace.",
+		"web_search": mk("web_search", "Search the web via Bing (English by default). Returns title + URL + snippet per result. Use when you need current/external info beyond the workspace.",
 			objSchema([]string{"query"}, map[string]any{
 				"query": strProp("Search query (required, non-empty)."),
 				"count": intProp("Number of results (default 5, max 10).", defaultSearchN),
+				"lang":  strProp("Result language, Bing setlang code (default \"en\"; pass the language the user writes in, e.g. \"id\" for Indonesian, \"ms\", \"ar\")."),
 			}),
 			func(ctx context.Context, args map[string]any) (any, error) {
 				q := argStr(args, "query")
@@ -288,7 +289,7 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 					return errVal(err)
 				}
 				n := clampSearchCount(argInt(args, "count"))
-				text, err := runWebSearch(ctx, q, n)
+				text, err := runWebSearch(ctx, q, n, normalizeSearchLang(argStr(args, "lang")))
 				if err != nil {
 					return errVal(err)
 				}

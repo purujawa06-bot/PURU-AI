@@ -4,7 +4,7 @@
 //
 //	puru setup [--config PATH] [--force]   — interactive wizard, writes config.json
 //	puru gateway [--config PATH] [--health] — run Telegram bot (no /health unless --health)
-//	puru chat "pesan..." [--config PATH] [--chat ID] [--reset] — local debug, no Telegram
+//	puru chat "message..." [--config PATH] [--chat ID] [--reset] — local debug, no Telegram
 package main
 
 import (
@@ -70,25 +70,25 @@ func main() {
 }
 
 func usage() {
-	fmt.Printf(`puru %s — PURU-AI CLI (tanpa web server kecuali opt-in)
+	fmt.Printf(`puru %s — PURU-AI CLI (no web server unless opted in)
 
 Usage:
   puru setup [--config PATH] [--force]
-    Wizard interaktif, tulis config.json (default %s).
-    Env non-interaktif: TELEGRAM_BOT_TOKEN, PURU_BASE_URL, PURU_API_KEY,
-    PURU_MODEL, PURU_WORKSPACE. Tambah --force untuk timpa tanpa tanya.
+    Interactive wizard, writes config.json (default %s).
+    Non-interactive env: TELEGRAM_BOT_TOKEN, PURU_BASE_URL, PURU_API_KEY,
+    PURU_MODEL, PURU_WORKSPACE. Add --force to overwrite without asking.
 
   puru gateway [--config PATH] [--health] [--host H] [--port P]
-    Jalankan bot Telegram via long-polling. TANPA web server secara default.
-    Tambah --health untuk menyalakan GET /health (Docker / VPS).
+    Run the Telegram bot via long-polling. NO web server by default.
+    Add --health to enable GET /health (Docker / VPS).
 
-  puru chat "pesan..." [--config PATH] [--chat ID] [--reset]
-    Debug lokal tanpa Telegram (REPL bila tanpa argumen).
+  puru chat "message..." [--config PATH] [--chat ID] [--reset]
+    Local debug without Telegram (REPL when no args).
 
-Flags global:
-  --config PATH   path config.json (default ~/.puru/config.json)
+Global flags:
+  --config PATH   path to config.json (default ~/.puru/config.json)
 
-Contoh:
+Examples:
   puru setup
   puru gateway --config ~/.puru/config.json
   puru gateway --health --port 8080
@@ -105,13 +105,13 @@ type setupOptions struct {
 func parseSetupArgs(args []string) (*setupOptions, error) {
 	fs := flag.NewFlagSet("setup", flag.ContinueOnError)
 	o := &setupOptions{}
-	fs.StringVar(&o.configPath, "config", "", "path config.json")
-	fs.BoolVar(&o.force, "force", false, "timpa config tanpa konfirmasi")
+	fs.StringVar(&o.configPath, "config", "", "path to config.json")
+	fs.BoolVar(&o.force, "force", false, "overwrite config without asking")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
 	if fs.NArg() > 0 {
-		return nil, fmt.Errorf("argumen berlebih: %s", strings.Join(fs.Args(), " "))
+		return nil, fmt.Errorf("unexpected args: %s", strings.Join(fs.Args(), " "))
 	}
 	return o, nil
 }
@@ -123,8 +123,8 @@ func runSetup(args []string) error {
 	}
 	path := config.ResolvePath(o.configPath)
 	if _, err := os.Stat(path); err == nil && !o.force {
-		if !askYes(fmt.Sprintf("Config %s sudah ada. Timpa? [y/N]: ", path), false) {
-			fmt.Println("Batal, config tidak diubah.")
+		if !askYes(fmt.Sprintf("Config %s already exists. Overwrite? [y/N]: ", path), false) {
+			fmt.Println("Cancelled, config left unchanged.")
 			return nil
 		}
 	}
@@ -132,27 +132,27 @@ func runSetup(args []string) error {
 	nonInteractive := os.Getenv("PURU_NON_INTERACTIVE") != "" || !isTerminal(in)
 
 	token := firstNonEmpty(os.Getenv("TELEGRAM_BOT_TOKEN"), "")
-	baseURL := firstNonEmpty(os.Getenv("PURU_BASE_URL"), "https://betatestervueui2-b.hf.space/v1")
+	baseURL := firstNonEmpty(os.Getenv("PURU_BASE_URL"), "https://api.openai.com/v1")
 	apiKey := firstNonEmpty(os.Getenv("PURU_API_KEY"), "")
-	model := firstNonEmpty(os.Getenv("PURU_MODEL"), "puru")
+	model := firstNonEmpty(os.Getenv("PURU_MODEL"), "gpt-4o-mini")
 	workspace := firstNonEmpty(os.Getenv("PURU_WORKSPACE"), filepath.Join(config.DefaultDir(), "workspace"))
 
 	if !nonInteractive {
 		fmt.Println("== PURU-AI setup ==")
-		token = askLine(in, "Telegram bot token (dari @BotFather)", token, true)
+		token = askLine(in, "Telegram bot token (from @BotFather)", token, true)
 		baseURL = askLine(in, "Model base_url (OpenAI-compatible)", baseURL, true)
 		apiKey = askLine(in, "Model api_key", apiKey, true)
 		model = askLine(in, "Model name", model, true)
 		workspace = askLine(in, "Workspace dir", workspace, true)
 	}
 	if strings.TrimSpace(token) == "" {
-		return errors.New("telegram_bot_token wajib diisi (env TELEGRAM_BOT_TOKEN)")
+		return errors.New("telegram_bot_token is required (env TELEGRAM_BOT_TOKEN)")
 	}
 	if strings.TrimSpace(baseURL) == "" {
-		return errors.New("model.base_url wajib diisi (env PURU_BASE_URL)")
+		return errors.New("model.base_url is required (env PURU_BASE_URL)")
 	}
 	if strings.TrimSpace(model) == "" {
-		return errors.New("model.model wajib diisi (env PURU_MODEL)")
+		return errors.New("model.model is required (env PURU_MODEL)")
 	}
 
 	cfg := map[string]any{
@@ -179,10 +179,10 @@ func runSetup(args []string) error {
 	}
 	// Validate by loading (also creates workspace + history dirs).
 	if _, err := config.Load(path); err != nil {
-		return fmt.Errorf("config tertulis tapi tidak valid: %w", err)
+		return fmt.Errorf("config written but invalid: %w", err)
 	}
-	fmt.Printf("OK config tersimpan: %s\n", path)
-	fmt.Println("Lanjut: puru gateway --config " + path)
+	fmt.Printf("OK config saved: %s\n", path)
+	fmt.Println("Next: puru gateway --config " + path)
 	return nil
 }
 
@@ -265,15 +265,15 @@ type gatewayOptions struct {
 func parseGatewayArgs(args []string) (*gatewayOptions, error) {
 	fs := flag.NewFlagSet("gateway", flag.ContinueOnError)
 	o := &gatewayOptions{}
-	fs.StringVar(&o.configPath, "config", "", "path config.json")
-	fs.BoolVar(&o.withHealth, "health", false, "nyalakan GET /health")
-	fs.StringVar(&o.host, "host", "", "override host health (default dari config)")
-	fs.IntVar(&o.port, "port", 0, "override port health (default dari config)")
+	fs.StringVar(&o.configPath, "config", "", "path to config.json")
+	fs.BoolVar(&o.withHealth, "health", false, "enable GET /health")
+	fs.StringVar(&o.host, "host", "", "override health host (default from config)")
+	fs.IntVar(&o.port, "port", 0, "override health port (default from config)")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
 	if fs.NArg() > 0 {
-		return nil, fmt.Errorf("argumen berlebih: %s", strings.Join(fs.Args(), " "))
+		return nil, fmt.Errorf("unexpected args: %s", strings.Join(fs.Args(), " "))
 	}
 	return o, nil
 }
@@ -356,7 +356,7 @@ func runGateway(args []string) error {
 			if errors.As(err, &te) && te.IsConflict() {
 				conflicts++
 				if conflicts >= 5 {
-					return fmt.Errorf("conflict %dx — instance lain memakai token", conflicts)
+					return fmt.Errorf("conflict %dx — another instance is using the token", conflicts)
 				}
 				time.Sleep(10 * time.Second)
 				_ = tg.DeleteWebhook(ctx, true)
@@ -377,7 +377,7 @@ func runGateway(args []string) error {
 	}
 }
 
-// ---------- chat (debug lokal, tanpa Telegram) ----------
+// ---------- chat (local debug, no Telegram) ----------
 
 type chatOptions struct {
 	configPath string
@@ -388,9 +388,9 @@ type chatOptions struct {
 func parseChatArgs(args []string) (*chatOptions, []string, error) {
 	fs := flag.NewFlagSet("chat", flag.ContinueOnError)
 	o := &chatOptions{}
-	fs.StringVar(&o.configPath, "config", "", "path config.json")
-	fs.Int64Var(&o.chatID, "chat", -777, "chat id debug")
-	fs.BoolVar(&o.reset, "reset", false, "hapus history lalu exit")
+	fs.StringVar(&o.configPath, "config", "", "path to config.json")
+	fs.Int64Var(&o.chatID, "chat", -777, "debug chat id")
+	fs.BoolVar(&o.reset, "reset", false, "clear history and exit")
 	if err := fs.Parse(args); err != nil {
 		return nil, nil, err
 	}
@@ -423,10 +423,10 @@ func runChat(args []string) error {
 		return nil
 	}
 	if len(rest) == 0 {
-		fmt.Printf("CLI PURU-AI — chat=%d — /exit keluar, /reset hapus history\n", o.chatID)
+		fmt.Printf("CLI PURU-AI — chat=%d — /exit to quit, /reset to clear history\n", o.chatID)
 		sc := bufio.NewScanner(os.Stdin)
 		for {
-			fmt.Print("Anda > ")
+			fmt.Print("You > ")
 			if !sc.Scan() {
 				return nil
 			}
@@ -436,7 +436,7 @@ func runChat(args []string) error {
 			}
 			if line == "/reset" {
 				_ = hist.Clear(o.chatID)
-				fmt.Println("History dihapus.")
+				fmt.Println("History cleared.")
 				continue
 			}
 			if line == "" {
@@ -460,7 +460,7 @@ func processChat(ctx context.Context, agent *ai.Agent, hist *history.Store, mem 
 		} else if rel != "" {
 			stored = []*messages.Message{}
 			_ = hist.Set(chatID, stored)
-			fmt.Printf("(tersimpan: %s)\n", rel)
+			fmt.Printf("(saved: %s)\n", rel)
 		}
 	}
 	opts := &ai.ProcessOptions{ChatID: chatID}
@@ -471,8 +471,8 @@ func processChat(ctx context.Context, agent *ai.Agent, hist *history.Store, mem 
 	}
 	res := agent.ProcessMessage(ctx, p, stored, opts)
 	saved := append(append([]*messages.Message{}, stored...), userMsg(p)...)
+	// Simpan apa adanya; tanpa prune — biarkan compact yang bekerja.
 	saved = append(saved, messages.SanitizeHistoryMessages(res.ResponseMessages)...)
-	saved = messages.PruneTurn(saved)
 	_ = hist.Set(chatID, saved)
 	return res.Text
 }

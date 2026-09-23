@@ -7,9 +7,9 @@ const { binaryPath } = require('../scripts/binary');
 
 const bin = binaryPath();
 if (!fs.existsSync(bin)) {
-  console.error(`[puru-ai] binary tidak ditemukan: ${bin}`);
-  console.error('[puru-ai] Jalankan `npm rebuild -g @rikipurpur/puru-ai` atau reinstall.');
-  console.error('[puru-ai] Alternatif: set PURU_AI_BINARY=/path/ke/puru');
+  console.error(`[puru-ai] binary not found: ${bin}`);
+  console.error('[puru-ai] Run `npm rebuild -g @rikipurpur/puru-ai` or reinstall.');
+  console.error('[puru-ai] Alternative: set PURU_AI_BINARY=/path/to/puru');
   process.exit(1);
 }
 const res = spawnSync(bin, process.argv.slice(2), { stdio: 'inherit' });

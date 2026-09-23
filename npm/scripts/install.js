@@ -23,7 +23,7 @@ function fetch(url, dest, redirects = 5) {
   return new Promise((resolve, reject) => {
     https.get(url, { headers: { 'User-Agent': 'puru-ai-npm-install' } }, (res) => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        if (redirects === 0) return reject(new Error('Terlalu banyak redirect'));
+        if (redirects === 0) return reject(new Error('Too many redirects'));
         res.resume();
         const next = res.headers.location.startsWith('http')
           ? res.headers.location
@@ -32,7 +32,7 @@ function fetch(url, dest, redirects = 5) {
       }
       if (res.statusCode !== 200) {
         res.resume();
-        return reject(new Error(`Download gagal HTTP ${res.statusCode}: ${url}`));
+        return reject(new Error(`Download failed HTTP ${res.statusCode}: ${url}`));
       }
       const out = fs.createWriteStream(dest, { mode: 0o755 });
       res.pipe(out);
@@ -54,21 +54,21 @@ async function main() {
   const url = downloadURL({ repo, tag, goos, goarch });
   const dest = binaryPath();
   fs.mkdirSync(path.dirname(dest), { recursive: true });
-  console.log(`[puru-ai] download ${assetName(goos, goarch)} ${tag} dari ${repo}...`);
+  console.log(`[puru-ai] downloading ${assetName(goos, goarch)} ${tag} from ${repo}...`);
   try {
     await fetch(url, dest);
   } catch (err) {
     try { fs.unlinkSync(dest); } catch (_) {}
-    console.error(`[puru-ai] GAGAL: ${err.message}`);
-    console.error(`[puru-ai] Cek release ada di https://github.com/${repo}/releases/tag/${tag}`);
-    console.error(`[puru-ai] Atau set PURU_AI_BINARY=/path/ke/puru lalu install ulang.`);
+    console.error(`[puru-ai] FAILED: ${err.message}`);
+    console.error(`[puru-ai] Check the release at https://github.com/${repo}/releases/tag/${tag}`);
+    console.error(`[puru-ai] Or set PURU_AI_BINARY=/path/to/puru and reinstall.`);
     throw err;
   }
   if (goos !== 'windows') {
     try { fs.chmodSync(dest, 0o755); } catch (_) {}
   }
   console.log(`[puru-ai] OK: ${dest}`);
-  console.log('[puru-ai] Lanjut: puru setup  →  puru gateway');
+  console.log('[puru-ai] Next: puru setup  →  puru gateway');
 }
 
 if (require.main === module) {

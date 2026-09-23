@@ -34,14 +34,14 @@ const maxReadFileSize = 64 * 1024
 func resolvePath(workspace string, restrict bool, p string) (string, error) {
 	p = strings.TrimSpace(p)
 	if p == "" {
-		return "", fmt.Errorf("path kosong")
+		return "", fmt.Errorf("path is empty")
 	}
 	if restrict {
 		if filepath.IsAbs(p) {
 			// Allow absolute paths only when already inside workspace.
 			abs := filepath.Clean(p)
 			if !insideDir(abs, workspace) {
-				return "", fmt.Errorf("di luar workspace: %q", p)
+				return "", fmt.Errorf("outside workspace: %q", p)
 			}
 			return abs, nil
 		}
@@ -51,7 +51,7 @@ func resolvePath(workspace string, restrict bool, p string) (string, error) {
 			return "", err
 		}
 		if !insideDir(abs, workspace) {
-			return "", fmt.Errorf("di luar workspace: %q", p)
+			return "", fmt.Errorf("outside workspace: %q", p)
 		}
 		return abs, nil
 	}
@@ -83,11 +83,11 @@ func resolveWorkdir(workspace string, restrict bool, w string) (string, error) {
 		}
 		if st, err := os.Stat(workspace); err != nil {
 			if os.IsNotExist(err) {
-				return "", fmt.Errorf("workspace tidak ditemukan: %s", workspace)
+				return "", fmt.Errorf("workspace not found: %s", workspace)
 			}
-			return "", fmt.Errorf("workspace tidak bisa diakses: %s: %v", workspace, err)
+			return "", fmt.Errorf("workspace is not accessible: %s: %v", workspace, err)
 		} else if !st.IsDir() {
-			return "", fmt.Errorf("workspace bukan direktori: %s", workspace)
+			return "", fmt.Errorf("workspace is not a directory: %s", workspace)
 		}
 		return workspace, nil
 	}
@@ -98,12 +98,12 @@ func resolveWorkdir(workspace string, restrict bool, w string) (string, error) {
 	st, err := os.Stat(abs)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return "", fmt.Errorf("cwd tidak ditemukan: %s. Gunakan list_dir untuk melihat isi workspace", w)
+			return "", fmt.Errorf("cwd not found: %s. Use list_dir to see workspace contents", w)
 		}
-		return "", fmt.Errorf("cwd tidak bisa diakses: %s: %v", w, err)
+		return "", fmt.Errorf("cwd is not accessible: %s: %v", w, err)
 	}
 	if !st.IsDir() {
-		return "", fmt.Errorf("cwd bukan direktori: %s. Gunakan list_dir untuk melihat isi workspace", w)
+		return "", fmt.Errorf("cwd is not a directory: %s. Use list_dir to see workspace contents", w)
 	}
 	return abs, nil
 }
@@ -181,7 +181,7 @@ func editLocalFile(workspace string, restrict bool, p, oldStr, newStr string) er
 		return fmt.Errorf("fuzzy match found %d times; provide more context to make it unique", matchesFound)
 	}
 
-	return fmt.Errorf("old_text tidak ditemukan di %s. Pastikan teks benar-benar ada (termasuk indentasi dan spasi)", p)
+	return fmt.Errorf("old_text not found in %s. Make sure the text exists exactly (including indentation and spacing)", p)
 }
 
 // readLocalFile reads path with byte pagination (picoclaw read_file parity).
@@ -205,10 +205,10 @@ func readLocalFile(workspace string, restrict bool, p string, offset, length int
 	f, err := os.Open(abs)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return "", fmt.Errorf("file tidak ditemukan: %s", p)
+			return "", fmt.Errorf("file not found: %s", p)
 		}
 		if os.IsPermission(err) {
-			return "", fmt.Errorf("akses ditolak ke file: %s", p)
+			return "", fmt.Errorf("access denied to file: %s", p)
 		}
 		return "", fmt.Errorf("failed to open file: %w", err)
 	}

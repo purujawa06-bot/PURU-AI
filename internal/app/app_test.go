@@ -33,17 +33,17 @@ func TestIsCommandMenu(t *testing.T) {
 
 func TestTokenInfoPercent(t *testing.T) {
 	got := tokenInfo(15000, 30000)
-	if !strings.Contains(got, "15.000 / 30.000") || !strings.Contains(got, "50,0%") {
+	if !strings.Contains(got, "15,000 / 30,000") || !strings.Contains(got, "50.0%") {
 		t.Fatalf("got %q", got)
 	}
 	got = tokenInfo(0, 30000)
-	if !strings.Contains(got, "0 / 30.000") || !strings.Contains(got, "0,0%") {
+	if !strings.Contains(got, "0 / 30,000") || !strings.Contains(got, "0.0%") {
 		t.Fatalf("got %q", got)
 	}
 }
 
 func TestFmtInt(t *testing.T) {
-	cases := map[int]string{0: "0", 999: "999", 1000: "1.000", 30000: "30.000", 1234567: "1.234.567"}
+	cases := map[int]string{0: "0", 999: "999", 1000: "1,000", 30000: "30,000", 1234567: "1,234,567"}
 	for in, want := range cases {
 		if got := fmtInt(in); got != want {
 			t.Errorf("fmtInt(%d) = %q, want %q", in, got, want)

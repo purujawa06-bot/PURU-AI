@@ -97,22 +97,22 @@ func Load(path string) (*Config, error) {
 	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("baca config %s: %w (salin dari example.config.json)", path, err)
+		return nil, fmt.Errorf("read config %s: %w (copy from example.config.json)", path, err)
 	}
 	var c Config
 	if err := json.Unmarshal(raw, &c); err != nil {
-		return nil, fmt.Errorf("config %s bukan JSON valid: %w", path, err)
+		return nil, fmt.Errorf("config %s is not valid JSON: %w", path, err)
 	}
 	c.ConfigDir = filepath.Dir(path)
 
 	if c.TelegramBotToken == "" {
-		return nil, fmt.Errorf("config %s: telegram_bot_token wajib diisi", path)
+		return nil, fmt.Errorf("config %s: telegram_bot_token is required", path)
 	}
 	if c.Model.BaseURL == "" {
-		return nil, fmt.Errorf("config %s: model.base_url wajib diisi", path)
+		return nil, fmt.Errorf("config %s: model.base_url is required", path)
 	}
 	if c.Model.Model == "" {
-		return nil, fmt.Errorf("config %s: model.model wajib diisi", path)
+		return nil, fmt.Errorf("config %s: model.model is required", path)
 	}
 	if c.MaxIterations <= 0 {
 		c.MaxIterations = DefaultMaxIterations
@@ -143,14 +143,14 @@ func Load(path string) (*Config, error) {
 	}
 	abs, err := filepath.Abs(c.Workspace)
 	if err != nil {
-		return nil, fmt.Errorf("workspace tidak valid: %w", err)
+		return nil, fmt.Errorf("invalid workspace: %w", err)
 	}
 	c.Workspace = abs
 	if err := os.MkdirAll(c.Workspace, 0o755); err != nil {
-		return nil, fmt.Errorf("buat workspace %s: %w", c.Workspace, err)
+		return nil, fmt.Errorf("create workspace %s: %w", c.Workspace, err)
 	}
 	if err := os.MkdirAll(filepath.Join(DefaultDir(), "history"), 0o755); err != nil {
-		return nil, fmt.Errorf("buat history dir: %w", err)
+		return nil, fmt.Errorf("create history dir: %w", err)
 	}
 	return &c, nil
 }
