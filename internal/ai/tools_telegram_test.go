@@ -109,8 +109,8 @@ func TestOnToolHookFires(t *testing.T) {
 	tools := BuildTools(a, opts)
 	ctx := context.Background()
 	_, _ = tools["exec"].Run(ctx, map[string]any{"action": "run", "command": "echo hook"})
-	_, _ = tools["edit_file"].Run(ctx, map[string]any{"path": "h.txt", "old_text": "x", "new_text": "y"})
-	if len(calls) != 2 || calls[0] != "exec" || calls[1] != "edit_file" {
+	_, _ = tools["edit_file_replace_string"].Run(ctx, map[string]any{"path": "h.txt", "old_text": "x", "new_text": "y"})
+	if len(calls) != 2 || calls[0] != "exec" || calls[1] != "edit_file_replace_string" {
 		t.Fatalf("hook calls = %v", calls)
 	}
 }

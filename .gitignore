@@ -5,7 +5,4 @@ dist/
 .env
 picoclaw/
 .claude
-.env
-picoclaw/
-.claude
 AGENTS.md

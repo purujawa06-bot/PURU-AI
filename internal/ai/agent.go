@@ -1,7 +1,8 @@
 // Package ai implements the lightweight local tool-calling agent.
 //
-// Single model from config.json, 11 tools (read_file, write_file, list_dir,
-// edit_file, append_file, exec, telegram_sendfile, telegram_getuser, get_env,
+// Single model from config.json, 13 tools (read_file, write_file, list_dir,
+// edit_file_replace_string, edit_file_replace_line, edit_file_apply_patch,
+// append_file, exec, telegram_sendfile, telegram_getuser, get_env,
 // web_search, web_fetch), no
 // fallback: one executor run per request, max iterations from config (default
 // 500), pause between iterations from config (loop_delay_seconds, default 3s).
@@ -551,7 +552,11 @@ func (a *Agent) ProcessMessage(ctx context.Context, userMessage string, history 
 		summary = memory.LatestSummary(a.Config.Workspace)
 	}
 
-	systemPrompt, err := prompt.Get(memoryContent, summary)
+	workspace := ""
+	if a.Config != nil {
+		workspace = a.Config.Workspace
+	}
+	systemPrompt, err := prompt.Get(memoryContent, summary, workspace)
 	if err != nil {
 		log.Printf("[ai] prompt.Get failed: %v", err)
 		systemPrompt = ""

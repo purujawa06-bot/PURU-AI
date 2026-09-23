@@ -482,7 +482,7 @@ func renderedSystemPrompt(cfg *config.Config) string {
 	if b, err := os.ReadFile(cfg.MemoryPath()); err == nil {
 		mem = string(b)
 	}
-	s, err := prompt.Get(mem, memory.LatestSummary(cfg.Workspace))
+	s, err := prompt.Get(mem, memory.LatestSummary(cfg.Workspace), cfg.Workspace)
 	if err != nil {
 		return ""
 	}

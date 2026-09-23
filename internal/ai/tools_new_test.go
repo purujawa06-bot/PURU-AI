@@ -48,37 +48,46 @@ func TestToolSchemasValid(t *testing.T) {
 
 func TestToolCount(t *testing.T) {
 	tools := BuildTools(testAgent(t.TempDir()), nil)
-	if len(tools) != 11 {
-		t.Fatalf("tools = %d, want exactly 11", len(tools))
+	if len(tools) != 13 {
+		t.Fatalf("tools = %d, want exactly 13", len(tools))
 	}
-	for _, n := range []string{"read_file", "write_file", "list_dir", "edit_file", "append_file", "exec", "telegram_sendfile", "telegram_getuser", "get_env", "web_search", "web_fetch"} {
+	for _, n := range []string{"read_file", "write_file", "list_dir", "edit_file_replace_string", "edit_file_replace_line", "edit_file_apply_patch", "append_file", "exec", "telegram_sendfile", "telegram_getuser", "get_env", "web_search", "web_fetch"} {
 		if tools[n] == nil {
 			t.Fatalf("tool %s missing", n)
 		}
+	}
+	if tools["edit_file"] != nil {
+		t.Fatalf("legacy tool edit_file must be gone")
 	}
 }
 
 // Deklarasi picoclaw-parity: read_file(path, offset, length),
 // write_file(path, content, overwrite), list_dir(path),
-// edit_file(path, old_text, new_text), exec(action wajib; opsional
+// edit_file_replace_string(path, old_text, new_text),
+// edit_file_replace_line(path, start_line, end_line, new_text),
+// edit_file_apply_patch(path, patch), exec(action wajib; opsional
 // command, sessionId, keys, data, background, pty, cwd, timeout).
 func TestPicoclawParamDeclarations(t *testing.T) {
 	tools := BuildTools(testAgent(t.TempDir()), nil)
 	want := map[string][]string{
-		"read_file":   {"path", "offset", "length"},
-		"write_file":  {"path", "content", "overwrite"},
-		"list_dir":    {"path"},
-		"edit_file":   {"path", "old_text", "new_text"},
-		"append_file": {"path", "content"},
-		"exec":        {"action", "command", "sessionId", "background", "cwd", "timeout"},
+		"read_file":                {"path", "offset", "length"},
+		"write_file":               {"path", "content", "overwrite"},
+		"list_dir":                 {"path"},
+		"edit_file_replace_string": {"path", "old_text", "new_text"},
+		"edit_file_replace_line":   {"path", "start_line", "end_line", "new_text"},
+		"edit_file_apply_patch":    {"path", "patch"},
+		"append_file":              {"path", "content"},
+		"exec":                     {"action", "command", "sessionId", "background", "cwd", "timeout"},
 	}
 	wantRequired := map[string][]string{
-		"read_file":   {"path"},
-		"write_file":  {"path", "content"},
-		"list_dir":    {"path"},
-		"edit_file":   {"path", "old_text", "new_text"},
-		"append_file": {"path", "content"},
-		"exec":        {"action"},
+		"read_file":                {"path"},
+		"write_file":               {"path", "content"},
+		"list_dir":                 {"path"},
+		"edit_file_replace_string": {"path", "old_text", "new_text"},
+		"edit_file_replace_line":   {"path", "start_line", "new_text"},
+		"edit_file_apply_patch":    {"path", "patch"},
+		"append_file":              {"path", "content"},
+		"exec":                     {"action"},
 	}
 	for name, props := range want {
 		params, _ := tools[name].Parameters["properties"].(map[string]any)
@@ -125,7 +134,7 @@ func TestWorkspaceJail(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(ws, "sub", "a.txt"), []byte("halo"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	er, _ := tools["edit_file"].Run(ctx, map[string]any{"path": "sub/a.txt", "old_text": "halo", "new_text": "hai"})
+	er, _ := tools["edit_file_replace_string"].Run(ctx, map[string]any{"path": "sub/a.txt", "old_text": "halo", "new_text": "hai"})
 	if s, _ := er.(string); s != "File edited: sub/a.txt" {
 		t.Fatalf("edit failed: %v", er)
 	}
@@ -138,7 +147,7 @@ func TestWorkspaceJail(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Try editing with different spacing/newline
-	er, _ = tools["edit_file"].Run(ctx, map[string]any{
+	er, _ = tools["edit_file_replace_string"].Run(ctx, map[string]any{
 		"path":     "fuzzy.txt",
 		"old_text": "line1\nline2", // missing spaces and different newline handling
 		"new_text": "replaced",
@@ -151,7 +160,7 @@ func TestWorkspaceJail(t *testing.T) {
 	}
 
 	// edit outside must fail
-	wo, _ := tools["edit_file"].Run(ctx, map[string]any{"path": "../out.txt", "old_text": "x", "new_text": "y"})
+	wo, _ := tools["edit_file_replace_string"].Run(ctx, map[string]any{"path": "../out.txt", "old_text": "x", "new_text": "y"})
 	if m, _ := wo.(map[string]any); m["success"] != false {
 		t.Fatalf("escape edit must fail: %v", wo)
 	}
@@ -159,7 +168,7 @@ func TestWorkspaceJail(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(ws, "b.txt"), []byte("aaa"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	er, _ = tools["edit_file"].Run(ctx, map[string]any{"path": "b.txt", "old_text": "aaa", "new_text": "bbb"})
+	er, _ = tools["edit_file_replace_string"].Run(ctx, map[string]any{"path": "b.txt", "old_text": "aaa", "new_text": "bbb"})
 	if s, _ := er.(string); s != "File edited: b.txt" {
 		t.Fatalf("edit failed: %v", er)
 	}
@@ -294,9 +303,9 @@ func TestPicoclawStyleResponses(t *testing.T) {
 	if les, _ := le.(string); les == "" {
 		t.Fatalf("list_dir dir kosong tidak boleh string kosong (bikin model looping)")
 	}
-	e, _ := tools["edit_file"].Run(ctx, map[string]any{"path": "w.txt", "old_text": "x", "new_text": "y"})
+	e, _ := tools["edit_file_replace_string"].Run(ctx, map[string]any{"path": "w.txt", "old_text": "x", "new_text": "y"})
 	if es, _ := e.(string); es != "File edited: w.txt" {
-		t.Fatalf("edit_file = %q", e)
+		t.Fatalf("edit_file_replace_string = %q", e)
 	}
 	p, _ := tools["append_file"].Run(ctx, map[string]any{"path": "w.txt", "content": "z"})
 	if ps, _ := p.(string); ps != "Appended to w.txt" {
@@ -348,5 +357,89 @@ func TestClampMemMB(t *testing.T) {
 	}
 	if got := clampMemMB(512); got != 512 {
 		t.Errorf("512 -> %d", got)
+	}
+}
+
+func TestEditReplaceLine(t *testing.T) {
+	ws := t.TempDir()
+	tools := BuildTools(testAgent(ws), nil)
+	ctx := context.Background()
+	seed := "l1\nl2\nl3\nl4\n"
+	if err := os.WriteFile(filepath.Join(ws, "a.txt"), []byte(seed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// single line (end_line defaults to start_line)
+	if r, _ := tools["edit_file_replace_line"].Run(ctx, map[string]any{"path": "a.txt", "start_line": float64(2), "new_text": "L2"}); r.(string) != "File edited: a.txt" {
+		t.Fatalf("single line: %v", r)
+	}
+	// range with multi-line replacement
+	if r, _ := tools["edit_file_replace_line"].Run(ctx, map[string]any{"path": "a.txt", "start_line": float64(3), "end_line": float64(4), "new_text": "L3\nL4"}); r.(string) != "File edited: a.txt" {
+		t.Fatalf("range: %v", r)
+	}
+	if b, _ := os.ReadFile(filepath.Join(ws, "a.txt")); string(b) != "l1\nL2\nL3\nL4\n" {
+		t.Fatalf("mismatch: %q", b)
+	}
+	// empty new_text deletes the range
+	if r, _ := tools["edit_file_replace_line"].Run(ctx, map[string]any{"path": "a.txt", "start_line": float64(1), "end_line": float64(2), "new_text": ""}); r.(string) != "File edited: a.txt" {
+		t.Fatalf("delete: %v", r)
+	}
+	if b, _ := os.ReadFile(filepath.Join(ws, "a.txt")); string(b) != "L3\nL4\n" {
+		t.Fatalf("delete mismatch: %q", b)
+	}
+	// out of bounds must fail
+	if r, _ := tools["edit_file_replace_line"].Run(ctx, map[string]any{"path": "a.txt", "start_line": float64(9), "new_text": "x"}); !hasErrPicoclaw(r) {
+		t.Fatalf("oob must fail: %v", r)
+	}
+	// inverted range must fail
+	if r, _ := tools["edit_file_replace_line"].Run(ctx, map[string]any{"path": "a.txt", "start_line": float64(2), "end_line": float64(1), "new_text": "x"}); !hasErrPicoclaw(r) {
+		t.Fatalf("inverted must fail: %v", r)
+	}
+	// jail escape must fail
+	if r, _ := tools["edit_file_replace_line"].Run(ctx, map[string]any{"path": "../x.txt", "start_line": float64(1), "new_text": "x"}); !hasErrPicoclaw(r) {
+		t.Fatalf("escape must fail: %v", r)
+	}
+}
+
+func TestEditApplyPatch(t *testing.T) {
+	ws := t.TempDir()
+	tools := BuildTools(testAgent(ws), nil)
+	ctx := context.Background()
+	seed := "one\ntwo\nthree\nfour\n"
+	if err := os.WriteFile(filepath.Join(ws, "p.txt"), []byte(seed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	patch := "--- a/p.txt\n+++ b/p.txt\n@@ -1,4 +1,4 @@\n one\n-two\n+TWO\n three\n four\n"
+	r, _ := tools["edit_file_apply_patch"].Run(ctx, map[string]any{"path": "p.txt", "patch": patch})
+	s, _ := r.(string)
+	if !strings.Contains(s, "Patch applied: p.txt") || !strings.Contains(s, "+1/-1") {
+		t.Fatalf("apply: %v", r)
+	}
+	if b, _ := os.ReadFile(filepath.Join(ws, "p.txt")); string(b) != "one\nTWO\nthree\nfour\n" {
+		t.Fatalf("mismatch: %q", b)
+	}
+	// multi-hunk insert at top (oldStart=0) + change at bottom
+	patch2 := "@@ -0,0 +1,1 @@\n+zero\n@@ -4,1 +5,1 @@\n-four\n+FOUR\n"
+	if r, _ := tools["edit_file_apply_patch"].Run(ctx, map[string]any{"path": "p.txt", "patch": patch2}); !strings.Contains(r.(string), "2 hunk(s)") {
+		t.Fatalf("multi-hunk: %v", r)
+	}
+	if b, _ := os.ReadFile(filepath.Join(ws, "p.txt")); string(b) != "zero\none\nTWO\nthree\nFOUR\n" {
+		t.Fatalf("multi mismatch: %q", b)
+	}
+	// wrong context must fail and leave file untouched
+	before, _ := os.ReadFile(filepath.Join(ws, "p.txt"))
+	bad := "@@ -1,2 +1,2 @@\n one\n-WRONG\n+two\n"
+	if r, _ := tools["edit_file_apply_patch"].Run(ctx, map[string]any{"path": "p.txt", "patch": bad}); !hasErrPicoclaw(r) {
+		t.Fatalf("bad context must fail: %v", r)
+	}
+	if after, _ := os.ReadFile(filepath.Join(ws, "p.txt")); string(after) != string(before) {
+		t.Fatalf("failed patch modified file: %q", after)
+	}
+	// no hunks must fail
+	if r, _ := tools["edit_file_apply_patch"].Run(ctx, map[string]any{"path": "p.txt", "patch": "just text"}); !hasErrPicoclaw(r) {
+		t.Fatalf("hunkless must fail: %v", r)
+	}
+	// jail escape must fail
+	if r, _ := tools["edit_file_apply_patch"].Run(ctx, map[string]any{"path": "../x.txt", "patch": patch}); !hasErrPicoclaw(r) {
+		t.Fatalf("escape must fail: %v", r)
 	}
 }

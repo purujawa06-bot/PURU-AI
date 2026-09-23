@@ -260,13 +260,15 @@ func fmtPct(p float64) string {
 func (a *App) renderedSystem() string {
 	mem := ""
 	summary := ""
+	workspace := ""
 	if a.cfg != nil {
 		if b, err := os.ReadFile(a.cfg.MemoryPath()); err == nil {
 			mem = string(b)
 		}
 		summary = memory.LatestSummary(a.cfg.Workspace)
+		workspace = a.cfg.Workspace
 	}
-	s, err := prompt.Get(mem, summary)
+	s, err := prompt.Get(mem, summary, workspace)
 	if err != nil {
 		return ""
 	}
@@ -383,7 +385,7 @@ func (a *App) previewHook(ctx context.Context, chatID, msgID int64) func(string,
 // toolArgPreview shows the most relevant arg for a tool call.
 func toolArgPreview(name string, args map[string]any) string {
 	switch name {
-	case "read_file", "write_file", "list_dir", "edit_file", "append_file", "telegram_sendfile":
+	case "read_file", "write_file", "list_dir", "edit_file_replace_string", "edit_file_replace_line", "edit_file_apply_patch", "append_file", "telegram_sendfile":
 		return previewStr(args["path"])
 	case "exec":
 		return previewStr(args["command"])

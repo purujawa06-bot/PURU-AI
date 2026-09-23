@@ -38,8 +38,9 @@ type TelegramClient interface {
 // maxSendFileBytes caps telegram_sendfile uploads (Telegram bots allow 50MB).
 const maxSendFileBytes = 20 << 20
 
-// BuildTools returns 11 tools: 6 local workspace tools with picoclaw-mirrored
-// declarations (read_file, write_file, list_dir, edit_file, append_file, exec)
+// BuildTools returns 13 tools: 8 local workspace tools with picoclaw-mirrored
+// declarations (read_file, write_file, list_dir, edit_file_replace_string,
+// edit_file_replace_line, edit_file_apply_patch, append_file, exec)
 // + 2 Telegram tools (telegram_sendfile, telegram_getuser, only usable with
 // a Telegram context) + get_env (environment info) + 2 web tools
 // (web_search via Bing HTML setlang=id default, web_fetch URL to text).
@@ -80,7 +81,7 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				}
 				return text, nil
 			}),
-		"write_file": mk("write_file", "Write content to a file, replacing any existing content. Content is written byte-for-byte after argument decoding. If the file already exists you must set overwrite=true, which replaces the ENTIRE file. To add to or change part of an existing file without losing its current contents, use append_file or edit_file instead.",
+		"write_file": mk("write_file", "Write content to a file, replacing any existing content. Content is written byte-for-byte after argument decoding. If the file already exists you must set overwrite=true, which replaces the ENTIRE file. To add to or change part of an existing file without losing its current contents, use append_file, edit_file_replace_string, edit_file_replace_line, or edit_file_apply_patch instead.",
 			objSchema([]string{"path", "content"}, map[string]any{
 				"path":      strProp("Path to the file to write"),
 				"content":   strProp("Content to write to the file."),
@@ -107,10 +108,10 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				}
 				return text, nil
 			}),
-		"edit_file": mk("edit_file", "Edit a file by replacing old_text with new_text. Supports exact match and fuzzy line-based matching.",
+		"edit_file_replace_string": mk("edit_file_replace_string", "Edit a file by replacing old_text with new_text. The match must be unique: exact match first, then fuzzy line-based match (ignores indentation).",
 			objSchema([]string{"path", "old_text", "new_text"}, map[string]any{
 				"path":     strProp("The file path to edit"),
-				"old_text": strProp("The text to find and replace (exact or line-by-line)."),
+				"old_text": strProp("The text to find and replace (must occur exactly once)."),
 				"new_text": strProp("The text to replace with."),
 			}),
 			func(ctx context.Context, args map[string]any) (any, error) {
@@ -126,6 +127,44 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 					return errVal(err)
 				}
 				return fmt.Sprintf("File edited: %s", argStr(args, "path")), nil
+			}),
+		"edit_file_replace_line": mk("edit_file_replace_line", "Replace a line range in a file with new_text. Line numbers are 1-based and inclusive (end_line defaults to start_line for a single line).",
+			objSchema([]string{"path", "start_line", "new_text"}, map[string]any{
+				"path":       strProp("The file path to edit"),
+				"start_line": intProp("First line to replace (1-based).", 1),
+				"end_line":   intProp("Last line to replace, inclusive (default: same as start_line).", 0),
+				"new_text":   strProp("Replacement text, may span multiple lines. Empty string deletes the range."),
+			}),
+			func(ctx context.Context, args map[string]any) (any, error) {
+				newText, ok := args["new_text"].(string)
+				if !ok {
+					return errVal(fmt.Errorf("new_text is required"))
+				}
+				start := argInt(args, "start_line")
+				end := argInt(args, "end_line")
+				if end <= 0 {
+					end = start
+				}
+				if err := editLocalFileByLine(ws, restrict, argStr(args, "path"), start, end, newText); err != nil {
+					return errVal(err)
+				}
+				return fmt.Sprintf("File edited: %s", argStr(args, "path")), nil
+			}),
+		"edit_file_apply_patch": mk("edit_file_apply_patch", "Edit a file git-commit style: apply a unified-diff patch (git @@ hunks with ' '/'-'/'+' lines) to the file. Context and removal lines must match the file exactly; hunks apply at their original positions.",
+			objSchema([]string{"path", "patch"}, map[string]any{
+				"path":  strProp("The file path to patch"),
+				"patch": strProp("Unified diff text with one or more @@ hunks (file headers like '---'/'+++' are optional)."),
+			}),
+			func(ctx context.Context, args map[string]any) (any, error) {
+				patch, ok := args["patch"].(string)
+				if !ok || strings.TrimSpace(patch) == "" {
+					return errVal(fmt.Errorf("patch is required"))
+				}
+				res, err := editLocalFileApplyPatch(ws, restrict, argStr(args, "path"), patch)
+				if err != nil {
+					return errVal(err)
+				}
+				return res, nil
 			}),
 		"append_file": mk("append_file", "Append content to the end of a file.",
 			objSchema([]string{"path", "content"}, map[string]any{
