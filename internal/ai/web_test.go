@@ -2,6 +2,8 @@ package ai
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -83,14 +85,10 @@ func TestStripHTMLToText(t *testing.T) {
 	}
 }
 
-func TestParseSearchHTMLPure(t *testing.T) {
-	h := `<html><body><a href="https://example.com/a">Contoh Judul A</a><p>Snippet contoh yang cukup panjang untuk lolos filter minimal dua puluh karakter.</p><a href="https://example.com/b">Judul B Kedua</a></body></html>`
-	res := parseSearchHTML(h, 5)
-	if len(res) != 2 {
-		t.Fatalf("parse = %d, want 2: %+v", len(res), res)
-	}
-	if res[0].Title != "Contoh Judul A" || res[0].URL != "https://example.com/a" {
-		t.Fatalf("hasil pertama salah: %+v", res[0])
+func TestFormatWebResults(t *testing.T) {
+	res := []webResult{
+		{Title: "Contoh Judul A", URL: "https://example.com/a", Snippet: "Snippet contoh."},
+		{Title: "Judul B Kedua", URL: "https://example.com/b"},
 	}
 	if !strings.Contains(formatWebResults(res), "Contoh Judul A - https://example.com/a") {
 		t.Fatalf("format salah: %q", formatWebResults(res))
@@ -117,53 +115,17 @@ func TestWebToolsRegistered(t *testing.T) {
 	}
 }
 
-func TestParseSearchHTMLSingleQuoteAndNoSnippet(t *testing.T) {
-	// href kutip tunggal + tanpa <p> snippet: hasil tetap valid (tidak kosong).
-	h := `<html><body><a href='https://example.com/solo'>Judul Kutip Solo</a> teks lanjutan cukup panjang agar fallback snippet dapat terbentuk dengan baik.</body></html>`
-	res := parseSearchHTML(h, 5)
-	if len(res) != 1 {
-		t.Fatalf("parse = %d, want 1: %+v", len(res), res)
-	}
-	if res[0].URL != "https://example.com/solo" {
-		t.Fatalf("url salah: %+v", res[0])
-	}
-}
-
-func TestUnwrapDDGAndYahoo(t *testing.T) {
-	if got := unwrapResultURL("//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fx&rut=abc"); got != "https://example.com/x" {
-		t.Fatalf("ddg unwrap salah: %q", got)
-	}
-	if got := unwrapResultURL("https://r.search.yahoo.com/_ylt=abc/RU=https%3A%2F%2Fexample.com%2Fy/RK=123"); got != "https://example.com/y" {
-		t.Fatalf("yahoo unwrap salah: %q", got)
-	}
-	if got := unwrapResultURL("https://www.bing.com/ck/a?u=a1b2c3"); got != "" {
-		t.Fatalf("bing /ck/a invalid harus dilewati, got %q", got)
-	}
-	// Verified live: u=a1<base64> -> URL asli.
-	if got := unwrapResultURL("https://www.bing.com/ck/a?!&p=13dee03c691ffff6e229e665cccf2e4ecee70d0e0c1b01f3cd2279c4023fd911JmltdHM9MTc5MDEyMTYwMA&ptn=3&hsh=4&u=a1aHR0cHM6Ly9nby5kZXYvZG9jL2luc3RhbGw&ntb=1"); got != "https://go.dev/doc/install" {
-		t.Fatalf("bing u= base64 harus ke-decode, got %q", got)
-	}
-}
-
-func TestParseSearchHTMLSkipsBingTracking(t *testing.T) {
-	h := `<html><body><a href="https://www.bing.com/ck/a?u=a1b2">Hasil Tracking</a><a href="https://example.com/real">Hasil Asli Yang Valid</a><p>Deskripsi hasil asli yang cukup panjang untuk lolos filter snippet minimal.</p></body></html>`
-	res := parseSearchHTML(h, 5)
-	if len(res) != 1 || res[0].URL != "https://example.com/real" {
-		t.Fatalf("tracking invalid harus dilewati, got %+v", res)
-	}
-}
-
 func TestNormalizeSearchLang(t *testing.T) {
 	for in, want := range map[string]string{
-		"":        "en",
-		"  ":      "en",
-		"id":      "id",
-		"ID":      "id",
-		"en":      "en",
-		"EN":      "en",
-		"en-US":   "en-us",
-		"ms":      "ms",
-		"xyz!!":   "en",
+		"":          "en",
+		"  ":        "en",
+		"id":        "id",
+		"ID":        "id",
+		"en":        "en",
+		"EN":        "en",
+		"en-US":     "en-us",
+		"ms":        "ms",
+		"xyz!!":     "en",
 		"indonesia": "en",
 	} {
 		if got := normalizeSearchLang(in); got != want {
@@ -172,28 +134,90 @@ func TestNormalizeSearchLang(t *testing.T) {
 	}
 }
 
-func TestBingSearchURLSetlang(t *testing.T) {
-	u := bingSearchURL("harga emas", "id")
-	if !strings.Contains(u, "bing.com/search?q=harga+emas") && !strings.Contains(u, "bing.com/search?q=harga%20emas") {
+func TestPuruSearchURL(t *testing.T) {
+	u := puruSearchURL("harga emas", "id", 5)
+	if !strings.Contains(u, "query=harga+emas") && !strings.Contains(u, "query=harga%20emas") {
 		t.Fatalf("query tidak ter-encode: %q", u)
 	}
-	if !strings.Contains(u, "setlang=id") || !strings.Contains(u, "cc=ID") {
-		t.Fatalf("setlang/cc id hilang: %q", u)
+	if !strings.Contains(u, "lang=id") || !strings.Contains(u, "limit=5") {
+		t.Fatalf("lang/limit hilang: %q", u)
 	}
-	u = bingSearchURL("go tutorial", "en")
-	if !strings.Contains(u, "setlang=en") || !strings.Contains(u, "cc=US") {
-		t.Fatalf("setlang/cc en hilang: %q", u)
-	}
-	// lang kosong/invalid jatuh ke en.
-	u = bingSearchURL("x", "")
-	if !strings.Contains(u, "setlang=en") {
+	u = puruSearchURL("go tutorial", "", 3)
+	if !strings.Contains(u, "lang=en") {
 		t.Fatalf("default lang harus en: %q", u)
 	}
-	if h := acceptLanguageHeader("id"); !strings.Contains(h, "id-ID") {
-		t.Fatalf("accept-language id salah: %q", h)
+}
+
+func TestFetchPuruSearchMapsResults(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		if q.Get("query") == "" {
+			t.Errorf("query kosong sampai ke API")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"success":true,"query":"golang","count":3,"results":[` +
+			`{"title":"Judul A","url":"https://example.com/a","snippet":"<p>Snippet A</p>"},` +
+			`{"title":"Judul B","url":"https://example.com/b","snippet":null},` +
+			`{"title":"","url":"https://example.com/empty","snippet":"x"}` +
+			`]}`))
+	}))
+	defer srv.Close()
+	old := puruSearchAPIBase
+	puruSearchAPIBase = srv.URL
+	defer func() { puruSearchAPIBase = old }()
+
+	res, err := fetchPuruSearch(context.Background(), "golang", "id", 5)
+	if err != nil {
+		t.Fatalf("fetchPuruSearch error: %v", err)
 	}
-	if h := acceptLanguageHeader("en"); !strings.Contains(h, "en-US") {
-		t.Fatalf("accept-language en salah: %q", h)
+	if len(res) != 2 {
+		t.Fatalf("hasil = %d, want 2: %+v", len(res), res)
+	}
+	if res[0].Title != "Judul A" || res[0].URL != "https://example.com/a" {
+		t.Fatalf("hasil pertama salah: %+v", res[0])
+	}
+	if res[0].Snippet != "Snippet A" {
+		t.Fatalf("snippet HTML harus di-strip: %+v", res[0])
+	}
+	if res[1].Snippet != "" {
+		t.Fatalf("snippet null harus kosong: %+v", res[1])
+	}
+}
+
+func TestFetchPuruSearchAPIFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"success":false,"error":"Parameter query wajib diisi"}`))
+	}))
+	defer srv.Close()
+	old := puruSearchAPIBase
+	puruSearchAPIBase = srv.URL
+	defer func() { puruSearchAPIBase = old }()
+
+	if _, err := fetchPuruSearch(context.Background(), "x", "en", 5); err == nil {
+		t.Fatalf("success=false harus jadi error")
+	}
+	if _, err := runWebSearch(context.Background(), "", 5, "en"); err == nil {
+		t.Fatalf("query kosong harus error")
+	}
+}
+
+func TestRunWebSearchFormatsOutput(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"success":true,"results":[{"title":"Go Dev","url":"https://go.dev/doc/install","snippet":"Install Go quickly"}]}`))
+	}))
+	defer srv.Close()
+	old := puruSearchAPIBase
+	puruSearchAPIBase = srv.URL
+	defer func() { puruSearchAPIBase = old }()
+
+	out, err := runWebSearch(context.Background(), "go install", 5, "en")
+	if err != nil {
+		t.Fatalf("runWebSearch error: %v", err)
+	}
+	if !strings.Contains(out, "Go Dev - https://go.dev/doc/install") {
+		t.Fatalf("output salah: %q", out)
 	}
 }
 
@@ -203,30 +227,10 @@ func TestWebSearchLangParamRegistered(t *testing.T) {
 	if ws == nil {
 		t.Fatal("web_search missing")
 	}
-	// lang invalid tidak boleh bikin error validasi — dinormalkan ke id.
+	// lang invalid tidak boleh bikin error validasi — dinormalkan ke en.
 	out, _ := ws.Run(context.Background(), map[string]any{"query": "", "lang": "en"})
 	m, _ := out.(map[string]any)
 	if m["success"] != false {
 		t.Fatalf("query kosong harus tetap success=false walau lang diisi: %v", out)
-	}
-}
-
-func TestParseSearchHTMLRealBingMarkup(t *testing.T) {
-	// Markup b_algo asli dari Bing live: href /ck/a dengan u=a1<base64>,
-	// judul di <h2>, snippet di <p> — harus jadi 2 hasil, bukan kosong.
-	h := `<li class="b_algo"><h2><a target="_blank" href="https://www.bing.com/ck/a?!&amp;&amp;p=13dee03c691ffff6e229e665cccf2e4ecee70d0e0c1b01f3cd2279c4023fd911JmltdHM9MTc5MDEyMTYwMA&amp;ptn=3&amp;ver=2&amp;hsh=4&amp;u=a1aHR0cHM6Ly9nby5kZXYvZG9jL2luc3RhbGw&amp;ntb=1" h="ID=SERP,5139.1">Download and install - The Go Programming Language</a></h2><div class="b_caption"><p>Download and install Go quickly with the steps described here. For other content on installing, you might be interested in Managing Go installations.</p></div></li>` +
-		`<li class="b_algo"><h2><a target="_blank" href="https://www.bing.com/ck/a?!&amp;&amp;p=b03ae396709efdfb63fc0607ae4b19ffcf62e60999c81b5891945220a968a190JmltdHM9MTc5MDEyMTYwMA&amp;ptn=3&amp;ver=2&amp;hsh=4&amp;u=a1aHR0cHM6Ly9naXRodWIuY29tL2dvbGFuZy9nbw&amp;ntb=1" h="ID=SERP,5170.1">golang/go: The Go programming language</a></h2><div class="b_caption"><p>The Go programming language. Contribute to golang/go development by creating an account on GitHub.</p></div></li>`
-	res := parseSearchHTML(h, 5)
-	if len(res) != 2 {
-		t.Fatalf("parse bing real = %d, want 2: %+v", len(res), res)
-	}
-	if res[0].URL != "https://go.dev/doc/install" {
-		t.Fatalf("hasil bing 1 salah: %+v", res[0])
-	}
-	if res[1].URL != "https://github.com/golang/go" {
-		t.Fatalf("hasil bing 2 salah: %+v", res[1])
-	}
-	if res[0].Snippet == "" {
-		t.Fatalf("snippet bing 1 kosong: %+v", res[0])
 	}
 }

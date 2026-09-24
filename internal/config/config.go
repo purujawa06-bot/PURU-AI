@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/purujawa06-bot/PURU-AI/internal/workspace"
 )
 
 const (
@@ -146,7 +148,7 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("invalid workspace: %w", err)
 	}
 	c.Workspace = abs
-	if err := os.MkdirAll(c.Workspace, 0o755); err != nil {
+	if err := workspace.Ensure(c.Workspace); err != nil {
 		return nil, fmt.Errorf("create workspace %s: %w", c.Workspace, err)
 	}
 	if err := os.MkdirAll(filepath.Join(DefaultDir(), "history"), 0o755); err != nil {
@@ -186,8 +188,17 @@ func (c *Config) LoopDelay() time.Duration {
 	return time.Duration(c.LoopDelaySeconds) * time.Second
 }
 
-// MemoryPath is <workspace>/MEMORY.md — single memory file, local.
-func (c *Config) MemoryPath() string { return filepath.Join(c.Workspace, "MEMORY.md") }
+// MemoryPath is <workspace>/memory/MEMORY.md — single memory file, local.
+func (c *Config) MemoryPath() string { return workspace.MemoryPath(c.Workspace) }
+
+// MemoryDir is <workspace>/memory (MEMORY.md plus context/ summaries).
+func (c *Config) MemoryDir() string { return workspace.MemoryDir(c.Workspace) }
+
+// ContextDir is <workspace>/memory/context (system-managed summaries).
+func (c *Config) ContextDir() string { return workspace.ContextDir(c.Workspace) }
+
+// SkillsDir is <workspace>/skills (one SKILL.md per installed skill).
+func (c *Config) SkillsDir() string { return workspace.SkillsDir(c.Workspace) }
 
 // HistoryDir is ~/.puru/history (per-chat JSON files).
 func (c *Config) HistoryDir() string { return filepath.Join(DefaultDir(), "history") }

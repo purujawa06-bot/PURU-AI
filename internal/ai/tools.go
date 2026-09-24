@@ -43,7 +43,7 @@ const maxSendFileBytes = 20 << 20
 // edit_file_replace_line, edit_file_apply_patch, append_file, exec)
 // + 2 Telegram tools (telegram_sendfile, telegram_getuser, only usable with
 // a Telegram context) + get_env (environment info) + 2 web tools
-// (web_search via Bing HTML setlang=id default, web_fetch URL to text).
+// (web_search via PuruBoy Search API, web_fetch URL to text).
 // opts carries workspace config, current chat/user, and the OnTool preview hook.
 func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 	ws := ""
@@ -316,11 +316,11 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 					"memory_mb":  m.Alloc / 1024 / 1024,
 				}, nil
 			}),
-		"web_search": mk("web_search", "Search the web via Bing (English by default). Returns title + URL + snippet per result. Use when you need current/external info beyond the workspace.",
+		"web_search": mk("web_search", "Search the web via PuruBoy Search API. Returns title + URL + snippet per result. Use when you need current/external info beyond the workspace.",
 			objSchema([]string{"query"}, map[string]any{
 				"query": strProp("Search query (required, non-empty)."),
 				"count": intProp("Number of results (default 5, max 10).", defaultSearchN),
-				"lang":  strProp("Result language, Bing setlang code (default \"en\"; pass the language the user writes in, e.g. \"id\" for Indonesian, \"ms\", \"ar\")."),
+				"lang":  strProp("Result language (default \"en\"; pass the language the user writes in, e.g. \"id\" for Indonesian, \"ms\", \"ar\")."),
 			}),
 			func(ctx context.Context, args map[string]any) (any, error) {
 				q := argStr(args, "query")

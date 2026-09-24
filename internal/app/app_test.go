@@ -104,7 +104,7 @@ func TestMaybeCompactSummarizesWipesInjects(t *testing.T) {
 	if !strings.Contains(sys, "## Done") {
 		t.Fatalf("ringkasan terbaru harus di-inject ke system prompt, got %q", sys)
 	}
-	if _, err := os.Stat(filepath.Join(ws, "MEMORY.md")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(ws, "memory", "MEMORY.md")); !os.IsNotExist(err) {
 		t.Errorf("MEMORY.md tidak boleh disentuh compact")
 	}
 }

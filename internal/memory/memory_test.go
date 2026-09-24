@@ -52,7 +52,7 @@ func TestCompactSummarizesToMD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(rel, "context/") || !strings.HasSuffix(rel, ".md") {
+	if !strings.HasPrefix(rel, "memory/context/") || !strings.HasSuffix(rel, ".md") {
 		t.Fatalf("rel = %q", rel)
 	}
 	b, err := os.ReadFile(filepath.Join(ws, filepath.FromSlash(rel)))
@@ -72,7 +72,7 @@ func TestCompactSummarizesToMD(t *testing.T) {
 		t.Fatalf("Latest kosong = %q", got)
 	}
 	// MEMORY.md tidak boleh disentuh compactor.
-	if _, err := os.Stat(filepath.Join(ws, "MEMORY.md")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(ws, "memory", "MEMORY.md")); !os.IsNotExist(err) {
 		t.Errorf("MEMORY.md tidak boleh ditulis compactor")
 	}
 }
@@ -139,7 +139,7 @@ func TestContextFilenameIsDateTimeOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	name := strings.TrimPrefix(rel, "context/")
+	name := strings.TrimPrefix(rel, "memory/context/")
 	ok, err := filepath.Match("????-??-??_??-??-??.md", name)
 	if err != nil || !ok {
 		t.Fatalf("nama file harus tanggal+jam saja (YYYY-MM-DD_HH-MM-SS.md), got %q", rel)

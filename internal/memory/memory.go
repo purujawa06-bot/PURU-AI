@@ -4,15 +4,15 @@
 //   - Before each new prompt, the app counts history tokens.
 //   - If history >= HistoryTokenLimit (default 30k), Compact is called:
 //     the model summarizes the full history into one markdown file under
-//     <workspace>/context/YYYY-MM-DD_HH-MM-SS.md, only the newest 20
+//     <workspace>/memory/context/YYYY-MM-DD_HH-MM-SS.md, only the newest 20
 //     files are kept, then history is wiped clean.
 //   - The NEWEST summary is injected into the system prompt on every
 //     request (see LatestSummary), so the AI keeps long-term context.
-//     Older summaries stay in context/ for reference only.
+//     Older summaries stay in memory/context/ for reference only.
 //   - On summarize failure Compact returns an error and history is kept
 //     as-is (the next message retries).
 //
-// MEMORY.md is NEVER touched here: it holds lasting user facts
+// memory/MEMORY.md is NEVER touched here: it holds lasting user facts
 // (name, hobby, personal info) written by the agent itself.
 package memory
 
@@ -31,7 +31,7 @@ import (
 	"github.com/purujawa06-bot/PURU-AI/internal/messages"
 )
 
-// MaxSummaries keeps only this many newest files in context/.
+// MaxSummaries keeps only this many newest files in memory/context/.
 const MaxSummaries = 20
 
 // summarizePrompt asks the model for a compact markdown summary of a
@@ -54,13 +54,15 @@ func New(workspace string) *Manager {
 	return &Manager{Workspace: workspace}
 }
 
-// ContextDir is <workspace>/context — where summary files live.
-func (m *Manager) ContextDir() string { return filepath.Join(m.Workspace, "context") }
+// ContextDir is <workspace>/memory/context — where summary files live.
+func (m *Manager) ContextDir() string {
+	return filepath.Join(m.Workspace, "memory", "context")
+}
 
 // Compact summarizes msgs with the model into
-// context/YYYY-MM-DD_HH-MM-SS.md (date+time only), prunes old files to
+// memory/context/YYYY-MM-DD_HH-MM-SS.md (date+time only), prunes old files to
 // MaxSummaries newest, and returns the workspace-relative path (e.g.
-// "context/2026-09-21_14-05-30.md"). MEMORY.md is never touched.
+// "memory/context/2026-09-21_14-05-30.md"). memory/MEMORY.md is never touched.
 // Returns "" when there is nothing to dump; returns an error (history kept)
 // when no model is set or summarization fails.
 func (m *Manager) Compact(ctx context.Context, msgs []*messages.Message) (string, error) {
@@ -145,13 +147,13 @@ func historyText(msgs []*messages.Message) string {
 	return sb.String()
 }
 
-// Latest returns the content of the newest summary in context/ ("" when
+// Latest returns the content of the newest summary in memory/context/ ("" when
 // none). Injected into the system prompt on every request.
 func (m *Manager) Latest() string { return LatestSummary(m.Workspace) }
 
-// LatestSummary reads the newest *.md summary in <workspace>/context.
+// LatestSummary reads the newest *.md summary in <workspace>/memory/context.
 func LatestSummary(workspace string) string {
-	dir := filepath.Join(workspace, "context")
+	dir := filepath.Join(workspace, "memory", "context")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return ""
@@ -199,7 +201,7 @@ func (m *Manager) saveSummary(summary string) (string, error) {
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(summary), 0o644); err != nil {
 		return "", err
 	}
-	return "context/" + name, nil
+	return "memory/context/" + name, nil
 }
 
 // prune deletes oldest files beyond MaxSummaries newest (best-effort).

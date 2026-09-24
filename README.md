@@ -12,7 +12,8 @@
 
 - ⚡ **Minimalist & Fast** — Single Go binary with a tiny footprint. No heavy runtimes.
 - 🛠️ **Local Tool Intelligence** — Native file operations, shell execution, and web navigation.
-- 🧠 **Smart Context Management** — Long-term memory via `MEMORY.md` and automated history summarization.
+- 🧠 **Smart Context Management** — Long-term memory via `memory/MEMORY.md` and automated history summarization into `memory/context/`.
+- 🧩 **Skills** — Picoclaw-style `skills/*/SKILL.md` catalog with PuruBoy find/install API.
 - 🔄 **Async Process Control** — Manage long-running background tasks with real-time polling and termination.
 - 🔒 **Security First** — Granular workspace restrictions and memory-capped execution.
 - 🐳 **Cloud Ready** — Pre-configured for Docker and GitHub Container Registry (GHCR).
@@ -28,8 +29,24 @@ graph TD
     Engine <--> Workspace[Local Workspace]
     Workspace --- Files[File System]
     Workspace --- Shell[Shell Exec]
-    Engine --- State[Memory & History]
+    Workspace --- Skills[skills/SKILL.md via PuruBoy API]
+    Engine --- State[memory/MEMORY.md + memory/context + History]
 ```
+
+### Workspace layout (picoclaw-style)
+
+```text
+<workspace>/
+  AGENTS.md                  # agent identity (AGENT.md accepted as legacy alias)
+  SOUL.md                    # personality and values
+  USER.md                    # user profile
+  memory/MEMORY.md           # long-term memory, written by the agent
+  memory/context/*.md        # conversation summaries, system-managed (newest 20)
+  skills/<skill>/SKILL.md    # installed skills
+```
+
+Find skills: `curl -X GET "https://puruboy-api.vercel.app/api/agent-tools/find-skills?query=web+design&limit=5"`
+Install: `curl -X GET "https://puruboy-api.vercel.app/api/agent-tools/install-skills?source=vercel-labs/agent-skills&skill=web-design-guidelines"` → save to `skills/<skill>/SKILL.md`.
 
 ---
 

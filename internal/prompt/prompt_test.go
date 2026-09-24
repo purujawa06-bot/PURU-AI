@@ -43,6 +43,11 @@ func TestGetRendersMemory(t *testing.T) {
 		"Working Principles",
 		"Personality",
 		"Values",
+		"## Skills",
+		"find-skills?query=",
+		"install-skills?source=",
+		"memory/MEMORY.md",
+		"memory/context/",
 	} {
 		if !strings.Contains(out, section) {
 			t.Fatalf("section %q missing in prompt", section)

@@ -255,8 +255,8 @@ func fmtPct(p float64) string {
 }
 
 // renderedSystem renders the same system prompt the agent sends on every
-// request (template + MEMORY.md + latest context/*.md summary) so token
-// counting matches reality.
+// request (template + memory/MEMORY.md + latest memory/context/*.md summary)
+// so token counting matches reality.
 func (a *App) renderedSystem() string {
 	mem := ""
 	summary := ""
@@ -276,7 +276,7 @@ func (a *App) renderedSystem() string {
 }
 
 // maybeCompact checks the token trigger BEFORE the new prompt: when hit,
-// the model summarizes full history into context/YYYY-MM-DD_HH-MM-SS.md,
+// the model summarizes full history into memory/context/YYYY-MM-DD_HH-MM-SS.md,
 // history is wiped, and the new summary flows into the system prompt on the
 // next request (see memory.LatestSummary). On summarize failure history is
 // kept as-is and the next message retries.
