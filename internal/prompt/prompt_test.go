@@ -1,12 +1,20 @@
 package prompt
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/purujawa06-bot/PURU-AI/internal/workspace"
 )
 
 func TestGetRendersMemory(t *testing.T) {
-	out, err := Get("memory-x", "summary-y", "/ws")
+	ws := t.TempDir()
+	if err := workspace.Ensure(ws); err != nil {
+		t.Fatal(err)
+	}
+	out, err := Get("memory-x", "summary-y", ws)
 	if err != nil {
 		t.Fatalf("template error: %v", err)
 	}
@@ -16,7 +24,7 @@ func TestGetRendersMemory(t *testing.T) {
 	if !strings.Contains(out, "summary-y") {
 		t.Fatalf("summary not injected")
 	}
-	if !strings.Contains(out, "/ws") {
+	if !strings.Contains(out, ws) {
 		t.Fatalf("workspace not injected")
 	}
 	for _, tool := range []string{"read_file", "write_file", "list_dir", "edit_file_replace_string", "edit_file_replace_line", "edit_file_apply_patch", "append_file", "exec", "telegram_sendfile", "telegram_getuser"} {
@@ -44,8 +52,12 @@ func TestGetRendersMemory(t *testing.T) {
 		"Personality",
 		"Values",
 		"## Skills",
-		"find-skills?query=",
-		"install-skills?source=",
+		"The following skills extend your capabilities.",
+		"read its SKILL.md file using the read_file tool",
+		"<skills>",
+		"<source>workspace</source>",
+		"find-skills",
+		"skill-creator",
 		"memory/MEMORY.md",
 		"memory/context/",
 	} {
@@ -53,7 +65,47 @@ func TestGetRendersMemory(t *testing.T) {
 			t.Fatalf("section %q missing in prompt", section)
 		}
 	}
+	// Skill install tutorial lives in the find-skills SKILL.md now,
+	// never inline in the system prompt (picoclaw 1:1).
+	for _, inline := range []string{
+		"find-skills?query=",
+		"install-skills?source=",
+		"Manage skills",
+		"## Active Skills",
+	} {
+		if strings.Contains(out, inline) {
+			t.Fatalf("inline %q must not be in prompt", inline)
+		}
+	}
 	if strings.Contains(out, "e2b") {
 		t.Fatalf("old tool references must be gone: %s", out)
+	}
+}
+
+func TestGetRendersActiveSkills(t *testing.T) {
+	ws := t.TempDir()
+	if err := workspace.Ensure(ws); err != nil {
+		t.Fatal(err)
+	}
+	agents := "---\nskills: [find-skills]\n---\n\n# Agent\n"
+	if err := os.WriteFile(filepath.Join(ws, workspace.FileAgents), []byte(agents), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := Get("", "", ws)
+	if err != nil {
+		t.Fatalf("template error: %v", err)
+	}
+	for _, section := range []string{
+		"## Active Skills",
+		"active for this request",
+		"### Skill: find-skills",
+		"PuruBoy",
+	} {
+		if !strings.Contains(out, section) {
+			t.Fatalf("active section %q missing in prompt", section)
+		}
+	}
+	if strings.Contains(out, "skills: [find-skills]") {
+		t.Fatalf("frontmatter must not leak into prompt")
 	}
 }

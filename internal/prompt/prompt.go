@@ -18,8 +18,10 @@ var tpl = template.Must(template.New("system").Parse(systemPromptTemplate))
 
 // systemPromptTemplate keeps the picoclaw personality (AGENT.md + SOUL.md)
 // as workspace-seeded defaults; the running prompt loads the workspace files
-// so user edits take effect without a rebuild. The Tools and Skills sections
-// are puru-specific: skill discovery uses the PuruBoy agent-tools API.
+// so user edits take effect without a rebuild. The Skills section mirrors
+// picoclaw: a metadata catalog plus the read-SKILL.md instruction — full
+// skill bodies are only injected for active skills listed in the agent
+// definition frontmatter (skills: [...]).
 const systemPromptTemplate = `# puruClaw
 
 You are puruClaw, a helpful AI assistant.
@@ -60,21 +62,16 @@ Your workspace is at: {{.workspace}}
 (telegram_* only work inside Telegram chat, never in CLI.)
 - Web rules: use web_search when the answer needs facts beyond the workspace (news, docs, versions, prices); then web_fetch to read the most relevant result. Prefer workspace files first; do not fetch local/private URLs.
 
-## Skills
+{{if .skills}}## Skills
 The following skills extend your capabilities. To use a skill, read its SKILL.md file using the read_file tool.
 
 {{.skills}}
-### Manage skills (PuruBoy agent-tools API)
-- Find skills when no installed skill fits the task. Run via exec:
-  curl -X GET "https://puruboy-api.vercel.app/api/agent-tools/find-skills?query=<keywords>&limit=5"
-  Replace <keywords> with URL-encoded task keywords (e.g. web+design). The JSON response lists name, source, and skill fields.
-- Install a skill by fetching its SKILL.md via exec:
-  curl -X GET "https://puruboy-api.vercel.app/api/agent-tools/install-skills?source=<source>&skill=<skill>"
-  Example: curl -X GET "https://puruboy-api.vercel.app/api/agent-tools/install-skills?source=vercel-labs/agent-skills&skill=web-design-guidelines"
-  Save the returned markdown to skills/<skill>/SKILL.md with write_file, then verify with list_dir and read_file.
-- Never invent skill content: always install from the API response, then read the installed SKILL.md before applying it.
+{{end}}{{if .activeSkills}}## Active Skills
 
-## Memory
+The following skills are active for this request. Follow them when relevant.
+
+{{.activeSkills}}
+{{end}}## Memory
 - memory/MEMORY.md below holds lasting user facts (name, hobby, personal info, stable
    preferences). You MAY update it yourself with edit_file_replace_string (or write_file /
    append_file for new files) when you
@@ -108,16 +105,15 @@ func Get(memory string, summary string, workspacePath string) (string, error) {
 		def.User = workspace.DefaultUserMD
 	}
 	skills := workspace.BuildSkillsSummary(workspacePath)
-	if strings.TrimSpace(skills) == "" {
-		skills = "(no skills installed yet — use the Manage skills API below when a task needs one)"
-	}
+	activeSkills := workspace.LoadSkillsForContext(workspacePath, def.FrontmatterSkills)
 	var sb strings.Builder
 	data := map[string]string{
-		"memory":    memory,
-		"summary":   summary,
-		"workspace": workspacePath,
-		"bootstrap": def.Bootstrap(),
-		"skills":    skills,
+		"memory":       memory,
+		"summary":      summary,
+		"workspace":    workspacePath,
+		"bootstrap":    def.Bootstrap(),
+		"skills":       skills,
+		"activeSkills": activeSkills,
 	}
 	if err := tpl.Execute(&sb, data); err != nil {
 		return "", err

@@ -13,7 +13,7 @@
 - ⚡ **Minimalist & Fast** — Single Go binary with a tiny footprint. No heavy runtimes.
 - 🛠️ **Local Tool Intelligence** — Native file operations, shell execution, and web navigation.
 - 🧠 **Smart Context Management** — Long-term memory via `memory/MEMORY.md` and automated history summarization into `memory/context/`.
-- 🧩 **Skills** — Picoclaw-style `skills/*/SKILL.md` catalog with PuruBoy find/install API.
+- 🧩 **Skills** — Picoclaw-style `skills/*/SKILL.md` catalog (metadata only in the prompt; the agent reads bodies via `read_file`). Builtins `find-skills` + `skill-creator` are seeded on first run; list more skills in `AGENTS.md` frontmatter (`skills: [...]`) to inject them as Active Skills.
 - 🔄 **Async Process Control** — Manage long-running background tasks with real-time polling and termination.
 - 🔒 **Security First** — Granular workspace restrictions and memory-capped execution.
 - 🐳 **Cloud Ready** — Pre-configured for Docker and GitHub Container Registry (GHCR).
@@ -29,7 +29,7 @@ graph TD
     Engine <--> Workspace[Local Workspace]
     Workspace --- Files[File System]
     Workspace --- Shell[Shell Exec]
-    Workspace --- Skills[skills/SKILL.md via PuruBoy API]
+    Workspace --- Skills[skills/SKILL.md catalog + Active Skills]
     Engine --- State[memory/MEMORY.md + memory/context + History]
 ```
 
@@ -42,11 +42,18 @@ graph TD
   USER.md                    # user profile
   memory/MEMORY.md           # long-term memory, written by the agent
   memory/context/*.md        # conversation summaries, system-managed (newest 20)
+  skills/find-skills/SKILL.md  # builtin: discover + install new skills via PuruBoy API
+  skills/skill-creator/SKILL.md # builtin: author new skills
   skills/<skill>/SKILL.md    # installed skills
 ```
 
-Find skills: `curl -X GET "https://puruboy-api.vercel.app/api/agent-tools/find-skills?query=web+design&limit=5"`
-Install: `curl -X GET "https://puruboy-api.vercel.app/api/agent-tools/install-skills?source=vercel-labs/agent-skills&skill=web-design-guidelines"` → save to `skills/<skill>/SKILL.md`.
+Activate skills per request with `AGENTS.md` frontmatter (bodies injected as Active Skills):
+
+```yaml
+---
+skills: [find-skills]
+---
+```
 
 ---
 
