@@ -1,17 +1,18 @@
 github.com/purujawa06-bot/PURU-AI/cmd/cli
-github.com/purujawa06-bot/PURU-AI
 github.com/purujawa06-bot/PURU-AI/cmd/puru
+github.com/purujawa06-bot/PURU-AI
 ?   	github.com/purujawa06-bot/PURU-AI	[no test files]
 ?   	github.com/purujawa06-bot/PURU-AI/cmd/cli	[no test files]
 ok  	github.com/purujawa06-bot/PURU-AI/cmd/puru	0.007s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/ai	13.738s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/ai	13.753s
 ok  	github.com/purujawa06-bot/PURU-AI/internal/ai/openai	0.015s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/app	0.028s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/config	0.003s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/health	0.004s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/history	0.016s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/memory	0.006s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/messages	0.005s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/prompt	0.002s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/telegram	0.021s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/tokens	0.015s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/app	0.040s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/config	0.011s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/health	0.006s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/history	0.018s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/memory	0.012s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/messages	0.006s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/prompt	0.009s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/telegram	0.032s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/tokens	0.026s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/workspace	0.017s
