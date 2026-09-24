@@ -26,7 +26,10 @@ func startMemWatch(pgid int, budgetBytes int64, stop <-chan struct{}, killed *at
 			case <-t.C:
 				if groupRSS(pgid) > budgetBytes {
 					killed.Store(true)
-					killGroup(pgid)
+					// TERM-first so the shell reaps its children instead
+					// of orphaning them under PID 1; the timer escalates
+					// to SIGKILL when the group ignores SIGTERM.
+					terminateGroup(pgid)
 					return
 				}
 			}

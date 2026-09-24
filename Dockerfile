@@ -12,7 +12,9 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /app/puru-ai .
 # Runtime stage
 FROM alpine:3.20
 
-RUN apk add --no-cache ca-certificates tzdata
+# tini as PID 1 reaps orphaned exec grandchildren (git, tar, ssl_client)
+# that outlive their shell on timeout/kill so they never pile up as zombies.
+RUN apk add --no-cache ca-certificates tzdata tini
 
 WORKDIR /app
 COPY --from=build /app/puru-ai .
@@ -23,4 +25,5 @@ ENV GOMEMLIMIT=50MiB
 # Config + workspace live here; mount a volume to persist.
 VOLUME ["/root/.puru"]
 
+ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["/app/puru-ai", "--config", "/root/.puru/config.json"]

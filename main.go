@@ -27,6 +27,9 @@ func main() {
 	// Cap heap at 50MB — lightweight profile. Env GOMEMLIMIT wins when set.
 	debug.SetMemoryLimit(50 << 20)
 
+	// Reap orphaned exec grandchildren (PID 1 zombie collector, unix only).
+	ai.StartReaper()
+
 	cfgPath := flag.String("config", "", "path config.json (default ~/.puru/config.json)")
 	flag.Parse()
 

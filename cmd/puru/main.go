@@ -41,6 +41,9 @@ var version = "dev"
 func main() {
 	debug.SetMemoryLimit(50 << 20)
 
+	// Reap orphaned exec grandchildren (PID 1 zombie collector, unix only).
+	ai.StartReaper()
+
 	if len(os.Args) < 2 {
 		usage()
 		os.Exit(2)

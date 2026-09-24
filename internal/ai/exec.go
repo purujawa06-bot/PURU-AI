@@ -28,6 +28,9 @@ type execSession struct {
 	IsRunning     bool
 	TimedOut      bool
 	MemoryLimited bool
+	// killOnce guarantees the TERM-first escalation is scheduled exactly
+	// once even when timeout, parent-cancel and kill race each other.
+	killOnce sync.Once
 }
 
 // Exec timeout policy: default 60s when the agent omits timeout,
@@ -54,6 +57,39 @@ const maxExecFileBlocks = maxExecFileMB * 1024 * 1024 / 512
 // maxExecSessions caps stored exec sessions so blocking/background runs
 // never grow the map (and its 20k output buffers) without bound.
 const maxExecSessions = 20
+
+// terminateGrace is the delay between SIGTERM and the SIGKILL escalation.
+// SIGTERM first lets the shell reap its children (git, tar, ssl_client);
+// an immediate SIGKILL kills the shell too and orphans them under PID 1
+// as zombies. The delayed SIGKILL still guarantees termination when a
+// command traps or ignores SIGTERM.
+const terminateGrace = 500 * time.Millisecond
+
+// terminateGroup asks the process group to exit gracefully, then escalates
+// to SIGKILL after terminateGrace. It never blocks: the timer fires even if
+// the caller already moved on. Killing a dead group is a harmless no-op.
+// Orphaned grandchildren that still end up under PID 1 are collected by the
+// SIGCHLD reaper installed via StartReaper.
+func terminateGroup(pid int) {
+	if pid <= 0 {
+		return
+	}
+	killGroupTerm(pid)
+	time.AfterFunc(terminateGrace, func() {
+		killGroup(pid)
+	})
+}
+
+// requestTerminate schedules the TERM-first escalation exactly once per
+// session so concurrent timeout/cancel/kill paths never stack timers.
+func (s *execSession) requestTerminate(pid int) {
+	if s == nil || pid <= 0 {
+		return
+	}
+	s.killOnce.Do(func() {
+		terminateGroup(pid)
+	})
+}
 
 type execResult struct {
 	Success       bool   `json:"success"`
@@ -222,7 +258,11 @@ func runExec(parent context.Context, dir, command string, timeoutSec, memMB int,
 		timedOut := ctx.Err() == context.DeadlineExceeded
 		sess.finish(timedOut, memKilled.Load())
 		if timedOut {
-			killGroup(pid)
+			// Background runs have no blocking loop watching ctx, so the
+			// group outlives the shell here without this escalation.
+			// TERM-first: the shell (if still alive) reaps its children,
+			// leftovers are SIGKILLed by the timer, orphans by the reaper.
+			sess.requestTerminate(pid)
 		}
 	}()
 
@@ -241,7 +281,7 @@ func runExec(parent context.Context, dir, command string, timeoutSec, memMB int,
 		select {
 		case <-ctx.Done():
 			if sess.Cmd != nil && sess.Cmd.Process != nil {
-				killGroup(sess.Cmd.Process.Pid)
+				sess.requestTerminate(sess.Cmd.Process.Pid)
 			}
 		case <-time.After(100 * time.Millisecond):
 		}
@@ -352,7 +392,7 @@ func killExec(sessionID string) (any, error) {
 	if running {
 		sess.Cancel()
 		if sess.Cmd != nil && sess.Cmd.Process != nil {
-			killGroup(sess.Cmd.Process.Pid)
+			sess.requestTerminate(sess.Cmd.Process.Pid)
 		}
 		// Tandai selesai langsung agar poll/read/list tak lagi lihat
 		// running=true selama jeda sampai watcher cmd.Wait() jalan.

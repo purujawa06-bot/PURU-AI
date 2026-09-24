@@ -9,3 +9,5 @@ import "os/exec"
 func setupKillGroup(cmd *exec.Cmd) {}
 
 func killGroup(pid int) {}
+
+func killGroupTerm(pid int) {}

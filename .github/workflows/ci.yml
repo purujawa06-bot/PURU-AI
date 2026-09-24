@@ -1,0 +1,37 @@
+name: CI
+
+# Verify-only: runs on every push (and PR). No tags, no release, no publish.
+# Any failing step stops the job.
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build
+        run: go build -o /dev/null ./...
+
+      - name: Check npm scripts
+        run: |
+          node --check npm/bin/puru.js
+          node --check npm/scripts/install.js
+          node --check npm/scripts/binary.js

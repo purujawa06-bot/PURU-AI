@@ -25,6 +25,9 @@ import (
 func main() {
 	debug.SetMemoryLimit(50 << 20)
 
+	// Reap orphaned exec grandchildren (PID 1 zombie collector, unix only).
+	ai.StartReaper()
+
 	cfgPath := flag.String("config", "", "path to config.json")
 	chatID := flag.Int64("chat", -777, "debug chat id")
 	reset := flag.Bool("reset", false, "clear history and exit")
