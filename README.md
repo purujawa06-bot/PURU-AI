@@ -55,6 +55,8 @@ skills: [find-skills]
 ---
 ```
 
+Disable skills via `config.json`: `"skills_mode": "off"` drops every skill section from the prompt; `"custom"` with `"skills_allow": [...]` restricts to the allowlist (picoclaw turn-profile-like). Removing a name from frontmatter or deleting `skills/<name>/` also deactivates it.
+
 ---
 
 ## 🚀 Getting Started

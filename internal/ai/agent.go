@@ -556,7 +556,7 @@ func (a *Agent) ProcessMessage(ctx context.Context, userMessage string, history 
 	if a.Config != nil {
 		workspace = a.Config.Workspace
 	}
-	systemPrompt, err := prompt.Get(memoryContent, summary, workspace)
+	systemPrompt, err := prompt.Get(memoryContent, summary, workspace, a.Config.SkillsPolicy())
 	if err != nil {
 		log.Printf("[ai] prompt.Get failed: %v", err)
 		systemPrompt = ""

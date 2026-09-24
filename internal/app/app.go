@@ -268,7 +268,7 @@ func (a *App) renderedSystem() string {
 		summary = memory.LatestSummary(a.cfg.Workspace)
 		workspace = a.cfg.Workspace
 	}
-	s, err := prompt.Get(mem, summary, workspace)
+	s, err := prompt.Get(mem, summary, workspace, a.cfg.SkillsPolicy())
 	if err != nil {
 		return ""
 	}

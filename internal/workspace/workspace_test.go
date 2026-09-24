@@ -140,7 +140,7 @@ func TestSkillsCatalog(t *testing.T) {
 	if err := Ensure(ws); err != nil {
 		t.Fatal(err)
 	}
-	summary := BuildSkillsSummary(ws)
+	summary := BuildSkillsSummary(ws, SkillsPolicy{})
 	for _, want := range []string{"<skills>", "<source>workspace</source>", "find-skills", "skill-creator"} {
 		if !strings.Contains(summary, want) {
 			t.Fatalf("builtin catalog must contain %q, got %q", want, summary)
@@ -167,7 +167,7 @@ func TestSkillsCatalog(t *testing.T) {
 			t.Fatalf("ListSkills missing %q: %+v", want, installed)
 		}
 	}
-	summary = BuildSkillsSummary(ws)
+	summary = BuildSkillsSummary(ws, SkillsPolicy{})
 	if !strings.Contains(summary, "web-design-guidelines") || !strings.Contains(summary, "Review UI code") {
 		t.Fatalf("summary must list skill name and description, got %q", summary)
 	}
@@ -191,14 +191,14 @@ func TestLoadSkillsForContext(t *testing.T) {
 	if _, ok := LoadSkill(ws, "no-such-skill"); ok {
 		t.Fatal("unknown skill must return false")
 	}
-	ctx := LoadSkillsForContext(ws, []string{"find-skills", "no-such-skill"})
+	ctx := LoadSkillsForContext(ws, []string{"find-skills", "no-such-skill"}, SkillsPolicy{})
 	if !strings.Contains(ctx, "### Skill: find-skills") {
 		t.Fatalf("context must render skill section, got %q", ctx)
 	}
 	if strings.Contains(ctx, "no-such-skill") {
 		t.Fatalf("unknown skills must be skipped, got %q", ctx)
 	}
-	if got := LoadSkillsForContext(ws, nil); got != "" {
+	if got := LoadSkillsForContext(ws, nil, SkillsPolicy{}); got != "" {
 		t.Fatalf("empty names must render empty, got %q", got)
 	}
 }
@@ -227,5 +227,47 @@ func TestAgentFrontmatterSkills(t *testing.T) {
 	def = Load(ws)
 	if len(def.FrontmatterSkills) != 2 {
 		t.Fatalf("block-style FrontmatterSkills = %v", def.FrontmatterSkills)
+	}
+}
+
+func TestSkillsPolicyOffSuppressesAll(t *testing.T) {
+	ws := t.TempDir()
+	if err := Ensure(ws); err != nil {
+		t.Fatal(err)
+	}
+	off := SkillsPolicy{Mode: SkillsModeOff}
+	if got := BuildSkillsSummary(ws, off); got != "" {
+		t.Fatalf("off must render empty summary, got %q", got)
+	}
+	if got := LoadSkillsForContext(ws, []string{"find-skills"}, off); got != "" {
+		t.Fatalf("off must render empty context, got %q", got)
+	}
+	if off.Allows("find-skills") {
+		t.Fatal("off must block every skill")
+	}
+}
+
+func TestSkillsPolicyCustomAllowlist(t *testing.T) {
+	ws := t.TempDir()
+	if err := Ensure(ws); err != nil {
+		t.Fatal(err)
+	}
+	custom := SkillsPolicy{Mode: SkillsModeCustom, Allow: []string{"FIND-skills"}}
+	summary := BuildSkillsSummary(ws, custom)
+	if !strings.Contains(summary, "find-skills") {
+		t.Fatalf("allowlisted skill must stay, got %q", summary)
+	}
+	if strings.Contains(summary, "skill-creator") {
+		t.Fatalf("non-allowlisted skill must go, got %q", summary)
+	}
+	ctx := LoadSkillsForContext(ws, []string{"find-skills", "skill-creator"}, custom)
+	if !strings.Contains(ctx, "### Skill: find-skills") {
+		t.Fatalf("allowlisted context must stay, got %q", ctx)
+	}
+	if strings.Contains(ctx, "skill-creator") {
+		t.Fatalf("blocked context must go, got %q", ctx)
+	}
+	if got := BuildSkillsSummary(ws, SkillsPolicy{Mode: SkillsModeCustom}); got != "" {
+		t.Fatalf("custom with empty allow must render empty, got %q", got)
 	}
 }

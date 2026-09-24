@@ -14,7 +14,7 @@ func TestGetRendersMemory(t *testing.T) {
 	if err := workspace.Ensure(ws); err != nil {
 		t.Fatal(err)
 	}
-	out, err := Get("memory-x", "summary-y", ws)
+	out, err := Get("memory-x", "summary-y", ws, workspace.SkillsPolicy{})
 	if err != nil {
 		t.Fatalf("template error: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestGetRendersActiveSkills(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(ws, workspace.FileAgents), []byte(agents), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	out, err := Get("", "", ws)
+	out, err := Get("", "", ws, workspace.SkillsPolicy{})
 	if err != nil {
 		t.Fatalf("template error: %v", err)
 	}
@@ -107,5 +107,47 @@ func TestGetRendersActiveSkills(t *testing.T) {
 	}
 	if strings.Contains(out, "skills: [find-skills]") {
 		t.Fatalf("frontmatter must not leak into prompt")
+	}
+}
+
+func TestGetSkillsOffSuppressesAll(t *testing.T) {
+	ws := t.TempDir()
+	if err := workspace.Ensure(ws); err != nil {
+		t.Fatal(err)
+	}
+	agents := "---\nskills: [find-skills]\n---\n\n# Agent\n"
+	if err := os.WriteFile(filepath.Join(ws, workspace.FileAgents), []byte(agents), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := Get("", "", ws, workspace.SkillsPolicy{Mode: workspace.SkillsModeOff})
+	if err != nil {
+		t.Fatalf("template error: %v", err)
+	}
+	for _, banned := range []string{"## Skills", "## Active Skills", "<skills>", "find-skills"} {
+		if strings.Contains(out, banned) {
+			t.Fatalf("off policy must drop %q", banned)
+		}
+	}
+}
+
+func TestGetSkillsCustomAllowlist(t *testing.T) {
+	ws := t.TempDir()
+	if err := workspace.Ensure(ws); err != nil {
+		t.Fatal(err)
+	}
+	agents := "---\nskills: [find-skills, skill-creator]\n---\n\n# Agent\n"
+	if err := os.WriteFile(filepath.Join(ws, workspace.FileAgents), []byte(agents), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	policy := workspace.SkillsPolicy{Mode: workspace.SkillsModeCustom, Allow: []string{"find-skills"}}
+	out, err := Get("", "", ws, policy)
+	if err != nil {
+		t.Fatalf("template error: %v", err)
+	}
+	if !strings.Contains(out, "### Skill: find-skills") {
+		t.Fatalf("allowlisted active skill must stay")
+	}
+	if strings.Contains(out, "skill-creator") {
+		t.Fatalf("blocked skill must not appear")
 	}
 }

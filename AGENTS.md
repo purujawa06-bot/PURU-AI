@@ -23,7 +23,7 @@ Release is manual only (`.github/workflows/release.yml`, Run workflow with `bump
 - `cmd/puru/main.go`: shipped CLI — `puru setup` (wizard, writes config; non-interactive via `TELEGRAM_BOT_TOKEN`, `PURU_BASE_URL`, `PURU_API_KEY`, `PURU_MODEL`, `PURU_WORKSPACE`; `--force` overwrites) → `puru gateway` (NO web server unless `--health`) → `puru chat` (local debug). npm `puru` bin downloads this binary from GitHub Releases; `PURU_AI_BINARY` env overrides the path.
 - `cmd/cli/main.go`: older debug CLI (`--config --chat` default `-777` `--reset`); wrappers `cli.sh` / `cli.bat`.
 - Config is one JSON (`cp example.config.json config.json`; example defaults to `https://api.openai.com/v1` / `gpt-4o-mini`). Resolution: `--config` > `$PURU_CONFIG` > `~/.puru/config.json`. See `internal/config/config.go:Load`.
-- Required: `telegram_bot_token`, `model.base_url`, `model.model`. Defaults: `workspace` → `<DefaultDir>/workspace`, `max_iterations` 500, `exec_memory_mb` min/clamp 64, `tools_preview` true when unset (pointer), `loop_delay_seconds` 3 (max 60).
+- Required: `telegram_bot_token`, `model.base_url`, `model.model`. Defaults: `workspace` → `<DefaultDir>/workspace`, `max_iterations` 500, `exec_memory_mb` min/clamp 64, `tools_preview` true when unset (pointer), `loop_delay_seconds` 3 (max 60), `skills_mode` default (off = no skill sections in prompt, custom = only `skills_allow`).
 
 ## Architecture (`internal/`)
 

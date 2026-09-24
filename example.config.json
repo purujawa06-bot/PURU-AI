@@ -15,5 +15,7 @@
   "port": 8080,
   "tools_preview": true,
   "loop_delay_seconds": 3,
-  "exec_memory_mb": 64
+  "exec_memory_mb": 64,
+  "skills_mode": "default",
+  "skills_allow": []
 }

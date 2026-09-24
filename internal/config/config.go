@@ -64,8 +64,15 @@ type Config struct {
 	LoopDelaySeconds int `json:"loop_delay_seconds"`
 	// ExecMemoryMB: budget RAM untuk tiap perintah exec (default = min 64).
 	// Grup proses yang lewat budget langsung di-kill (linux).
-	ExecMemoryMB int    `json:"exec_memory_mb"`
-	ConfigDir    string `json:"-"`
+	ExecMemoryMB int `json:"exec_memory_mb"`
+	// SkillsMode controls skill injection into the system prompt,
+	// picoclaw turn_profile.skills-like: "" or "default" = full catalog +
+	// frontmatter active skills; "off" = no skills in prompt; "custom" =
+	// only SkillsAllow entries appear.
+	SkillsMode string `json:"skills_mode"`
+	// SkillsAllow is the skill allowlist used when SkillsMode is "custom".
+	SkillsAllow []string `json:"skills_allow"`
+	ConfigDir   string   `json:"-"`
 }
 
 // DefaultDir returns $HOME/.puru (/root/.puru for root).
@@ -143,6 +150,12 @@ func Load(path string) (*Config, error) {
 	if c.Workspace == "" {
 		c.Workspace = filepath.Join(DefaultDir(), "workspace")
 	}
+	switch workspace.NormalizeSkillsMode(c.SkillsMode) {
+	case workspace.SkillsModeDefault, workspace.SkillsModeOff, workspace.SkillsModeCustom:
+		c.SkillsMode = workspace.NormalizeSkillsMode(c.SkillsMode)
+	default:
+		return nil, fmt.Errorf("config %s: skills_mode must be default, off, or custom", path)
+	}
 	abs, err := filepath.Abs(c.Workspace)
 	if err != nil {
 		return nil, fmt.Errorf("invalid workspace: %w", err)
@@ -186,6 +199,15 @@ func (c *Config) LoopDelay() time.Duration {
 		return time.Duration(DefaultLoopDelaySeconds) * time.Second
 	}
 	return time.Duration(c.LoopDelaySeconds) * time.Second
+}
+
+// SkillsPolicy reports the skill injection policy for the system prompt
+// (picoclaw turn_profile.skills-like).
+func (c *Config) SkillsPolicy() workspace.SkillsPolicy {
+	if c == nil {
+		return workspace.SkillsPolicy{}
+	}
+	return workspace.SkillsPolicy{Mode: c.SkillsMode, Allow: c.SkillsAllow}
 }
 
 // MemoryPath is <workspace>/memory/MEMORY.md — single memory file, local.

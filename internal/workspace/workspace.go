@@ -34,6 +34,65 @@ var builtinSkills embed.FS
 
 var skillNamePattern = regexp.MustCompile(`^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$`)
 
+// Skill injection modes, picoclaw turn_profile.skills-like.
+const (
+	// SkillsModeDefault injects the full catalog plus frontmatter active skills.
+	SkillsModeDefault = "default"
+	// SkillsModeOff suppresses every skill section in the system prompt.
+	SkillsModeOff = "off"
+	// SkillsModeCustom injects only allowlisted skills.
+	SkillsModeCustom = "custom"
+)
+
+// SkillsPolicy controls which skills reach the system prompt.
+type SkillsPolicy struct {
+	Mode  string
+	Allow []string
+}
+
+// NormalizeSkillsMode trims and lowercases a mode, defaulting empty to default.
+func NormalizeSkillsMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "", SkillsModeDefault:
+		return SkillsModeDefault
+	case SkillsModeOff:
+		return SkillsModeOff
+	case SkillsModeCustom:
+		return SkillsModeCustom
+	default:
+		return strings.ToLower(strings.TrimSpace(mode))
+	}
+}
+
+// Allows reports whether a skill may be injected under this policy.
+// Direct file reads (LoadSkill) are never gated, picoclaw-like.
+func (p SkillsPolicy) Allows(name string) bool {
+	switch NormalizeSkillsMode(p.Mode) {
+	case SkillsModeOff:
+		return false
+	case SkillsModeCustom:
+		for _, allowed := range p.Allow {
+			if strings.EqualFold(strings.TrimSpace(allowed), strings.TrimSpace(name)) {
+				return true
+			}
+		}
+		return false
+	default:
+		return true
+	}
+}
+
+// FilterSkills keeps only policy-allowed skills.
+func FilterSkills(skills []SkillInfo, policy SkillsPolicy) []SkillInfo {
+	var out []SkillInfo
+	for _, skill := range skills {
+		if policy.Allows(skill.Name) {
+			out = append(out, skill)
+		}
+	}
+	return out
+}
+
 const (
 	// FileAgents is the primary agent definition file (plural, per PURU convention).
 	FileAgents = "AGENTS.md"
@@ -380,13 +439,17 @@ func LoadSkill(workspace, name string) (string, bool) {
 }
 
 // LoadSkillsForContext renders full skill bodies for active skills
-// (picoclaw-like LoadSkillsForContext).
-func LoadSkillsForContext(workspace string, names []string) string {
+// (picoclaw-like LoadSkillsForContext), skipping policy-blocked and
+// unknown names.
+func LoadSkillsForContext(workspace string, names []string, policy SkillsPolicy) string {
 	if len(names) == 0 {
 		return ""
 	}
 	var parts []string
 	for _, name := range names {
+		if !policy.Allows(name) {
+			continue
+		}
 		content, ok := LoadSkill(workspace, name)
 		if ok {
 			parts = append(parts, "### Skill: "+name+"\n\n"+content)
@@ -396,9 +459,10 @@ func LoadSkillsForContext(workspace string, names []string) string {
 }
 
 // BuildSkillsSummary renders the installed skill catalog like picoclaw
-// BuildSkillsSummary (empty string when no skills are installed).
-func BuildSkillsSummary(workspace string) string {
-	installed := ListSkills(workspace)
+// BuildSkillsSummary (empty string when no skills are installed or the
+// policy blocks them all).
+func BuildSkillsSummary(workspace string, policy SkillsPolicy) string {
+	installed := FilterSkills(ListSkills(workspace), policy)
 	if len(installed) == 0 {
 		return ""
 	}

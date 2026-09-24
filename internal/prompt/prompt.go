@@ -92,7 +92,9 @@ The following skills are active for this request. Follow them when relevant.
 // the latest conversation summary ("" when none). Bootstrap files and the
 // skill catalog are loaded from the workspace; missing files fall back to
 // the seeded defaults so a fresh workspace still renders full identity.
-func Get(memory string, summary string, workspacePath string) (string, error) {
+// The policy gates skill injection (off suppresses every skill section,
+// custom restricts to the allowlist).
+func Get(memory string, summary string, workspacePath string, policy workspace.SkillsPolicy) (string, error) {
 	def := workspace.Load(workspacePath)
 	if strings.TrimSpace(def.AgentsBody) == "" {
 		def.AgentsLabel = workspace.FileAgents
@@ -104,8 +106,8 @@ func Get(memory string, summary string, workspacePath string) (string, error) {
 	if strings.TrimSpace(def.User) == "" {
 		def.User = workspace.DefaultUserMD
 	}
-	skills := workspace.BuildSkillsSummary(workspacePath)
-	activeSkills := workspace.LoadSkillsForContext(workspacePath, def.FrontmatterSkills)
+	skills := workspace.BuildSkillsSummary(workspacePath, policy)
+	activeSkills := workspace.LoadSkillsForContext(workspacePath, def.FrontmatterSkills, policy)
 	var sb strings.Builder
 	data := map[string]string{
 		"memory":       memory,

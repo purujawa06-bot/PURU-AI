@@ -124,3 +124,44 @@ func TestIsUserAllowed(t *testing.T) {
 		t.Errorf("load allowlist salah: %+v", lc.TelegramAllowedUsers)
 	}
 }
+
+func TestSkillsMode(t *testing.T) {
+	p := writeCfg(t, `{"telegram_bot_token":"x","model":{"base_url":"http://m/v1","model":"puru"}}`)
+	c, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.SkillsMode != "default" {
+		t.Errorf("SkillsMode = %q, want default", c.SkillsMode)
+	}
+	if !c.SkillsPolicy().Allows("find-skills") {
+		t.Errorf("default policy must allow all")
+	}
+
+	p = writeCfg(t, `{"telegram_bot_token":"x","model":{"base_url":"http://m/v1","model":"puru"},"skills_mode":" OFF "}`)
+	c, err = Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.SkillsMode != "off" {
+		t.Errorf("SkillsMode = %q, want off", c.SkillsMode)
+	}
+	if c.SkillsPolicy().Allows("find-skills") {
+		t.Errorf("off policy must block all")
+	}
+
+	p = writeCfg(t, `{"telegram_bot_token":"x","model":{"base_url":"http://m/v1","model":"puru"},"skills_mode":"custom","skills_allow":["find-skills"]}`)
+	c, err = Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pol := c.SkillsPolicy()
+	if !pol.Allows("FIND-SKILLS") || pol.Allows("skill-creator") {
+		t.Errorf("custom policy must enforce allowlist")
+	}
+
+	p = writeCfg(t, `{"telegram_bot_token":"x","model":{"base_url":"http://m/v1","model":"puru"},"skills_mode":"sometimes"}`)
+	if _, err := Load(p); err == nil {
+		t.Errorf("unknown skills_mode must be rejected")
+	}
+}
