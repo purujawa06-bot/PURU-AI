@@ -43,7 +43,8 @@ const maxSendFileBytes = 20 << 20
 // edit_file_replace_line, edit_file_apply_patch, append_file, exec)
 // + 2 Telegram tools (telegram_sendfile, telegram_getuser, only usable with
 // a Telegram context) + get_env (environment info) + 2 web tools
-// (web_search via PuruBoy Search API, web_fetch URL to text).
+// (web_search via PuruBoy Search API, web_fetch via PuruBoy web-fetch API
+// with offset + length pagination).
 // opts carries workspace config, current chat/user, and the OnTool preview hook.
 func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 	ws := ""
@@ -319,7 +320,7 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 		"web_search": mk("web_search", "Search the web via PuruBoy Search API. Returns title + URL + snippet per result. Use when you need current/external info beyond the workspace.",
 			objSchema([]string{"query"}, map[string]any{
 				"query": strProp("Search query (required, non-empty)."),
-				"count": intProp("Number of results (default 5, max 10).", defaultSearchN),
+				"limit": intProp("Number of results (default 5, max 10).", defaultSearchLimit),
 				"lang":  strProp("Result language (default \"en\"; pass the language the user writes in, e.g. \"id\" for Indonesian, \"ms\", \"ar\")."),
 			}),
 			func(ctx context.Context, args map[string]any) (any, error) {
@@ -327,20 +328,24 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				if err := validateSearchQuery(q); err != nil {
 					return errVal(err)
 				}
-				n := clampSearchCount(argInt(args, "count"))
+				n := clampSearchLimit(argInt(args, "limit"))
 				text, err := runWebSearch(ctx, q, n, normalizeSearchLang(argStr(args, "lang")))
 				if err != nil {
 					return errVal(err)
 				}
 				return text, nil
 			}),
-		"web_fetch": mk("web_fetch", "Fetch a public http/https URL and return its text content (HTML stripped, truncated). Use to read a page found via web_search or a user-provided link. Local/private hosts are rejected.",
+		"web_fetch": mk("web_fetch", "Fetch a public http/https URL as clean paginated text via PuruBoy web-fetch API. Supports offset + length pagination — loop with has_more. Use to read a page found via web_search or a user-provided link. Local/private hosts are rejected.",
 			objSchema([]string{"url"}, map[string]any{
-				"url":       strProp("Public http/https URL to fetch (required)."),
-				"max_chars": intProp("Max output chars (default 8000, max 20000).", defaultFetchChars),
+				"url":    strProp("Public http/https URL to fetch (required)."),
+				"offset": intProp("Start byte offset (default 0).", 0),
+				"length": intProp("Chunk size, 1-20000 (default 5000).", defaultFetchLength),
 			}),
 			func(ctx context.Context, args map[string]any) (any, error) {
-				text, err := fetchURLText(ctx, argStr(args, "url"), clampFetchChars(argInt(args, "max_chars")))
+				rawURL := argStr(args, "url")
+				offset := clampFetchOffset(argInt(args, "offset"))
+				length := clampFetchLength(argInt(args, "length"))
+				text, err := runWebFetch(ctx, rawURL, offset, length)
 				if err != nil {
 					return errVal(err)
 				}

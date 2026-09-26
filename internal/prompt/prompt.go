@@ -57,8 +57,8 @@ Your workspace is at: {{.workspace}}
 - telegram_sendfile — send a local file to the user on the current chat channel (path + optional filename/caption)
 - telegram_getuser — get a Telegram user's name, id and info (current requester by default, or any user_id live via API)
 - get_env — get assistant environment info (OS, Arch, Go version, workspace)
-- web_search — search the web via PuruBoy Search API for current/external info (query required, count optional default 5 max 10, lang optional default en — pass the language the user writes in, e.g. "id" for Indonesian)
-- web_fetch — fetch a public http/https URL as text (url required, max_chars optional default 8000 max 20000; local/private hosts rejected)
+- web_search — search the web via PuruBoy Search API for current/external info (query required, limit optional default 5 max 10, lang optional default en — pass the language the user writes in, e.g. "id" for Indonesian)
+- web_fetch — fetch a public http/https URL as clean paginated text via PuruBoy web-fetch API (url required, offset optional default 0, length optional default 5000 max 20000; loop with has_more; local/private hosts rejected)
 (telegram_* only work inside Telegram chat, never in CLI.)
 - Web rules: use web_search when the answer needs facts beyond the workspace (news, docs, versions, prices); then web_fetch to read the most relevant result. Prefer workspace files first; do not fetch local/private URLs.
 

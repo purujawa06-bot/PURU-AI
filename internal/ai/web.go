@@ -1,6 +1,9 @@
-// Web tools (stdlib only): web_search via PuruBoy Search API
-// (https://puruboy-api.vercel.app/api/search/web), web_fetch with
-// HTML-to-text stripping. No new dependencies.
+// Web tools via PuruBoy API (stdlib only, no new dependencies):
+//   web_search via https://puruboy-api.vercel.app/api/search/web
+//   web_fetch via https://puruboy-api.vercel.app/api/agent-tools/web-fetch
+// Tool parameters mirror the API query parameters exactly:
+//   search: query, lang, limit
+//   fetch: url, offset, length
 package ai
 
 import (
@@ -18,18 +21,18 @@ import (
 )
 
 const (
-	webSearchTimeout  = 60 * time.Second
-	webFetchTimeout   = 120 * time.Second
-	webFetchMaxBody   = 100 * 1024
-	defaultSearchN    = 5
-	defaultFetchChars = 8000
+	defaultSearchLimit = 5
+	defaultFetchLength = 5000
 	// Default search result language: English (override per call via lang).
 	defaultSearchLang = "en"
 	webBrowserUA      = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
 )
 
-// puruSearchAPIBase is a var (not const) so tests can point it at an httptest server.
-var puruSearchAPIBase = "https://puruboy-api.vercel.app/api/search/web"
+// API bases are vars (not consts) so tests can point them at httptest servers.
+var (
+	puruSearchAPIBase   = "https://puruboy-api.vercel.app/api/search/web"
+	puruWebFetchAPIBase = "https://puruboy-api.vercel.app/api/agent-tools/web-fetch"
+)
 
 type webResult struct {
 	Title   string
@@ -49,16 +52,31 @@ type puruSearchResponse struct {
 	Results []puruSearchResult `json:"results"`
 }
 
+// puruWebFetchResponse mirrors the web-fetch API JSON payload.
+type puruWebFetchResponse struct {
+	Success         bool   `json:"success"`
+	Error           string `json:"error"`
+	URL             string `json:"url"`
+	FinalURL        string `json:"final_url"`
+	ContentType     string `json:"content_type"`
+	TotalLength     int    `json:"total_length"`
+	Offset          int    `json:"offset"`
+	Length          int    `json:"length"`
+	RequestedLength int    `json:"requested_length"`
+	HasMore         bool   `json:"has_more"`
+	Content         string `json:"content"`
+}
+
 var (
 	webScriptRe = regexp.MustCompile(`(?is)<script[^>]*>.*?</script>|<style[^>]*>.*?</style>|<noscript[^>]*>.*?</noscript>`)
 	webTagRe    = regexp.MustCompile(`(?s)<[^>]*>`)
 	webSpaceRe  = regexp.MustCompile(`\s+`)
 )
 
-// clampSearchCount defaults to 5 when unset (0), clamps 1-10.
-func clampSearchCount(n int64) int {
+// clampSearchLimit normalizes the search limit parameter (defaults to 5, clamps 1-10).
+func clampSearchLimit(n int64) int {
 	if n == 0 {
-		return defaultSearchN
+		return defaultSearchLimit
 	}
 	if n < 1 {
 		return 1
@@ -69,9 +87,7 @@ func clampSearchCount(n int64) int {
 	return int(n)
 }
 
-// normalizeSearchLang merapikan kode bahasa: huruf kecil,
-// hanya [a-z] dan strip opsional (mis. "EN" -> "en", "" -> "en").
-// Kode tak valid jatuh ke default "en".
+// normalizeSearchLang normalizes a language code, falling back to "en".
 func normalizeSearchLang(s string) string {
 	l := strings.ToLower(strings.TrimSpace(s))
 	if l == "" {
@@ -99,13 +115,21 @@ func isASCIILetters(s string) bool {
 	return true
 }
 
-// clampFetchChars defaults to 8000 when unset (0), clamps 1000-20000.
-func clampFetchChars(n int64) int {
-	if n == 0 {
-		return defaultFetchChars
+// clampFetchOffset ensures the fetch offset is never negative.
+func clampFetchOffset(n int64) int {
+	if n < 0 {
+		return 0
 	}
-	if n < 1000 {
-		return 1000
+	return int(n)
+}
+
+// clampFetchLength normalizes the fetch length parameter (defaults to 5000, clamps 1-20000).
+func clampFetchLength(n int64) int {
+	if n == 0 {
+		return defaultFetchLength
+	}
+	if n < 1 {
+		return 1
 	}
 	if n > 20000 {
 		return 20000
@@ -176,7 +200,7 @@ func isPrivateHost(host string) bool {
 	return false
 }
 
-// stripHTMLToText removes script/style, tags, unescapes entities,
+// stripHTMLToText removes script/style, strips tags, unescapes entities,
 // and collapses whitespace to single spaces.
 func stripHTMLToText(s string) string {
 	s = webScriptRe.ReplaceAllString(s, " ")
@@ -195,6 +219,16 @@ func puruSearchURL(query, lang string, limit int) string {
 	return strings.TrimRight(puruSearchAPIBase, "/") + "?" + v.Encode()
 }
 
+// puruWebFetchURL builds the PuruBoy web-fetch API URL:
+// GET {base}?url=...&offset=...&length=...
+func puruWebFetchURL(rawURL string, offset, length int) string {
+	v := url.Values{}
+	v.Set("url", strings.TrimSpace(rawURL))
+	v.Set("offset", fmt.Sprintf("%d", offset))
+	v.Set("length", fmt.Sprintf("%d", length))
+	return strings.TrimRight(puruWebFetchAPIBase, "/") + "?" + v.Encode()
+}
+
 // fetchPuruSearch calls the PuruBoy Search API and maps results to webResult.
 // Snippet may be null or contain HTML — it is stripped to plain text.
 func fetchPuruSearch(ctx context.Context, query, lang string, limit int) ([]webResult, error) {
@@ -206,7 +240,7 @@ func fetchPuruSearch(ctx context.Context, query, lang string, limit int) ([]webR
 	}
 	req.Header.Set("User-Agent", webBrowserUA)
 	req.Header.Set("Accept", "application/json")
-	client := &http.Client{} // Timeout via context di atas
+	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -260,18 +294,13 @@ func fetchPuruSearch(ctx context.Context, query, lang string, limit int) ([]webR
 
 // runWebSearch searches via the PuruBoy Search API only.
 // lang is customizable per tool call, e.g. "id" for Indonesian results.
-func runWebSearch(ctx context.Context, query string, count int, lang string) (string, error) {
+func runWebSearch(ctx context.Context, query string, limit int, lang string) (string, error) {
 	if err := validateSearchQuery(query); err != nil {
 		return "", err
 	}
-	if count <= 0 {
-		count = defaultSearchN
-	}
-	if count > 10 {
-		count = 10
-	}
+	limit = clampSearchLimit(int64(limit))
 	lang = normalizeSearchLang(lang)
-	res, err := fetchPuruSearch(ctx, query, lang, count)
+	res, err := fetchPuruSearch(ctx, query, lang, limit)
 	if err != nil {
 		return "", fmt.Errorf("web search failed: %v", err)
 	}
@@ -295,41 +324,67 @@ func formatWebResults(res []webResult) string {
 	return sb.String()
 }
 
-// fetchURLText GETs url, caps body at ~100KB, strips HTML, truncates to maxChars.
-func fetchURLText(ctx context.Context, rawURL string, maxChars int) (string, error) {
+// fetchPuruWebFetch calls the PuruBoy web-fetch API for one page chunk.
+func fetchPuruWebFetch(ctx context.Context, rawURL string, offset, length int) (*puruWebFetchResponse, error) {
+	ectx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ectx, "GET", puruWebFetchURL(rawURL, offset, length), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", webBrowserUA)
+	req.Header.Set("Accept", "application/json")
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4*1024))
+		return nil, fmt.Errorf("web-fetch API HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
+	}
+	b, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, err
+	}
+	var fr puruWebFetchResponse
+	if err := json.Unmarshal(b, &fr); err != nil {
+		return nil, fmt.Errorf("web-fetch API bad JSON: %v", err)
+	}
+	if !fr.Success {
+		msg := strings.TrimSpace(fr.Error)
+		if msg == "" {
+			msg = "web-fetch API returned success=false"
+		}
+		return nil, fmt.Errorf("%s", msg)
+	}
+	return &fr, nil
+}
+
+// runWebFetch fetches a public URL as clean paginated text via the PuruBoy web-fetch API.
+func runWebFetch(ctx context.Context, rawURL string, offset, length int) (string, error) {
 	clean, err := validateFetchURL(rawURL)
 	if err != nil {
 		return "", err
 	}
-	if maxChars <= 0 {
-		maxChars = defaultFetchChars
-	}
-	req, err := http.NewRequestWithContext(ctx, "GET", clean, nil)
+	offset = clampFetchOffset(int64(offset))
+	length = clampFetchLength(int64(length))
+	res, err := fetchPuruWebFetch(ctx, clean, offset, length)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("web fetch failed: %v", err)
 	}
-	req.Header.Set("User-Agent", webBrowserUA)
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,text/plain,*/*")
-	client := &http.Client{} // No hardcoded timeout, let context handle it
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
+	content := strings.TrimSpace(res.Content)
+	if content == "" {
+		return "", fmt.Errorf("page is empty")
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
+	if res.HasMore {
+		next := res.Offset + res.Length
+		if next < 0 {
+			next = offset + length
+		}
+		return fmt.Sprintf("%s\n\n[offset %d length %d total %d has_more=true — fetch next with offset=%d length=%d]",
+			content, res.Offset, res.Length, res.TotalLength, next, length), nil
 	}
-	b, err := io.ReadAll(io.LimitReader(resp.Body, webFetchMaxBody))
-	if err != nil {
-		return "", err
-	}
-	text := stripHTMLToText(string(b))
-	total := len(text)
-	if total > maxChars {
-		text = text[:maxChars] + fmt.Sprintf(" ... [truncated, total %d chars]", total)
-	}
-	if strings.TrimSpace(text) == "" {
-		return "", fmt.Errorf("page is empty after stripping HTML")
-	}
-	return text, nil
+	return content, nil
 }
