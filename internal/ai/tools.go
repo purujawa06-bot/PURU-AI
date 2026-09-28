@@ -320,7 +320,6 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 			objSchema([]string{"query"}, map[string]any{
 				"query": strProp("Search query (required, non-empty)."),
 				"count": intProp("Number of results (default 5, max 10).", defaultSearchN),
-				"lang":  strProp("Result language (default \"en\"; pass the language the user writes in, e.g. \"id\" for Indonesian, \"ms\", \"ar\")."),
 			}),
 			func(ctx context.Context, args map[string]any) (any, error) {
 				q := argStr(args, "query")
@@ -328,19 +327,20 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 					return errVal(err)
 				}
 				n := clampSearchCount(argInt(args, "count"))
-				text, err := runWebSearch(ctx, q, n, normalizeSearchLang(argStr(args, "lang")))
+				text, err := runWebSearch(ctx, q, n)
 				if err != nil {
 					return errVal(err)
 				}
 				return text, nil
 			}),
-		"web_fetch": mk("web_fetch", "Fetch a public http/https URL and return its text content (HTML stripped, truncated). Use to read a page found via web_search or a user-provided link. Local/private hosts are rejected.",
+		"web_fetch": mk("web_fetch", "Fetch a public http/https URL as paginated text via the PuruBoy Fetch API. Use to read a page found via web_search or a user-provided link. Local/private hosts are rejected. Pass offset+length to page through long content when has_more is reported.",
 			objSchema([]string{"url"}, map[string]any{
-				"url":       strProp("Public http/https URL to fetch (required)."),
-				"max_chars": intProp("Max output chars (default 8000, max 20000).", defaultFetchChars),
+				"url":    strProp("Public http/https URL to fetch (required)."),
+				"offset": intProp("Char offset to start reading from (default 0).", 0),
+				"length": intProp("Max output chars (default 5000, max 20000).", defaultFetchLength),
 			}),
 			func(ctx context.Context, args map[string]any) (any, error) {
-				text, err := fetchURLText(ctx, argStr(args, "url"), clampFetchChars(argInt(args, "max_chars")))
+				text, err := runWebFetch(ctx, argStr(args, "url"), int(argInt(args, "offset")), int(argInt(args, "length")))
 				if err != nil {
 					return errVal(err)
 				}

@@ -1,6 +1,7 @@
 // Web tools (stdlib only): web_search via PuruBoy Search API
-// (https://puruboy-api.vercel.app/api/search/web), web_fetch with
-// HTML-to-text stripping. No new dependencies.
+// (https://puruboy-api.vercel.app/api/search/web), web_fetch via PuruBoy
+// Fetch API (https://puruboy-api.vercel.app/api/agent-tools/web-fetch).
+// No new dependencies.
 package ai
 
 import (
@@ -18,18 +19,18 @@ import (
 )
 
 const (
-	webSearchTimeout  = 60 * time.Second
-	webFetchTimeout   = 120 * time.Second
-	webFetchMaxBody   = 100 * 1024
-	defaultSearchN    = 5
-	defaultFetchChars = 8000
-	// Default search result language: English (override per call via lang).
-	defaultSearchLang = "en"
-	webBrowserUA      = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+	webSearchTimeout = 60 * time.Second
+	webFetchTimeout  = 120 * time.Second
+	defaultSearchN   = 5
+	// Default paginated fetch length (PuruBoy Fetch API length param).
+	defaultFetchLength = 5000
+	webBrowserUA       = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
 )
 
-// puruSearchAPIBase is a var (not const) so tests can point it at an httptest server.
+// puruSearchAPIBase and puruFetchAPIBase are vars (not consts) so tests
+// can point them at httptest servers.
 var puruSearchAPIBase = "https://puruboy-api.vercel.app/api/search/web"
+var puruFetchAPIBase = "https://puruboy-api.vercel.app/api/agent-tools/web-fetch"
 
 type webResult struct {
 	Title   string
@@ -47,6 +48,20 @@ type puruSearchResponse struct {
 	Success bool               `json:"success"`
 	Error   string             `json:"error"`
 	Results []puruSearchResult `json:"results"`
+}
+
+type puruFetchResponse struct {
+	Success         bool   `json:"success"`
+	Error           string `json:"error"`
+	URL             string `json:"url"`
+	FinalURL        string `json:"final_url"`
+	ContentType     string `json:"content_type"`
+	TotalLength     int    `json:"total_length"`
+	Offset          int    `json:"offset"`
+	Length          int    `json:"length"`
+	RequestedLength int    `json:"requested_length"`
+	HasMore         bool   `json:"has_more"`
+	Content         string `json:"content"`
 }
 
 var (
@@ -69,40 +84,18 @@ func clampSearchCount(n int64) int {
 	return int(n)
 }
 
-// normalizeSearchLang merapikan kode bahasa: huruf kecil,
-// hanya [a-z] dan strip opsional (mis. "EN" -> "en", "" -> "en").
-// Kode tak valid jatuh ke default "en".
-func normalizeSearchLang(s string) string {
-	l := strings.ToLower(strings.TrimSpace(s))
-	if l == "" {
-		return defaultSearchLang
+// clampFetchOffset floors negative offsets to 0.
+func clampFetchOffset(n int64) int {
+	if n < 0 {
+		return 0
 	}
-	l = strings.ReplaceAll(l, "_", "-")
-	if len(l) == 2 && isASCIILetters(l) {
-		return l
-	}
-	if len(l) == 5 && l[2] == '-' && isASCIILetters(l[:2]) && isASCIILetters(l[3:]) {
-		return l
-	}
-	return defaultSearchLang
+	return int(n)
 }
 
-func isASCIILetters(s string) bool {
-	if s == "" {
-		return false
-	}
-	for i := 0; i < len(s); i++ {
-		if s[i] < 'a' || s[i] > 'z' {
-			return false
-		}
-	}
-	return true
-}
-
-// clampFetchChars defaults to 8000 when unset (0), clamps 1000-20000.
-func clampFetchChars(n int64) int {
+// clampFetchLength defaults to 5000 when unset (0), clamps 1000-20000.
+func clampFetchLength(n int64) int {
 	if n == 0 {
-		return defaultFetchChars
+		return defaultFetchLength
 	}
 	if n < 1000 {
 		return 1000
@@ -186,21 +179,20 @@ func stripHTMLToText(s string) string {
 }
 
 // puruSearchURL builds the PuruBoy Search API URL:
-// GET {base}?query=...&lang=...&limit=...
-func puruSearchURL(query, lang string, limit int) string {
+// GET {base}?query=...&limit=...
+func puruSearchURL(query string, limit int) string {
 	v := url.Values{}
 	v.Set("query", strings.TrimSpace(query))
-	v.Set("lang", normalizeSearchLang(lang))
 	v.Set("limit", fmt.Sprintf("%d", limit))
 	return strings.TrimRight(puruSearchAPIBase, "/") + "?" + v.Encode()
 }
 
 // fetchPuruSearch calls the PuruBoy Search API and maps results to webResult.
 // Snippet may be null or contain HTML — it is stripped to plain text.
-func fetchPuruSearch(ctx context.Context, query, lang string, limit int) ([]webResult, error) {
+func fetchPuruSearch(ctx context.Context, query string, limit int) ([]webResult, error) {
 	ectx, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ectx, "GET", puruSearchURL(query, lang, limit), nil)
+	req, err := http.NewRequestWithContext(ectx, "GET", puruSearchURL(query, limit), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -259,8 +251,7 @@ func fetchPuruSearch(ctx context.Context, query, lang string, limit int) ([]webR
 }
 
 // runWebSearch searches via the PuruBoy Search API only.
-// lang is customizable per tool call, e.g. "id" for Indonesian results.
-func runWebSearch(ctx context.Context, query string, count int, lang string) (string, error) {
+func runWebSearch(ctx context.Context, query string, count int) (string, error) {
 	if err := validateSearchQuery(query); err != nil {
 		return "", err
 	}
@@ -270,8 +261,7 @@ func runWebSearch(ctx context.Context, query string, count int, lang string) (st
 	if count > 10 {
 		count = 10
 	}
-	lang = normalizeSearchLang(lang)
-	res, err := fetchPuruSearch(ctx, query, lang, count)
+	res, err := fetchPuruSearch(ctx, query, count)
 	if err != nil {
 		return "", fmt.Errorf("web search failed: %v", err)
 	}
@@ -295,41 +285,78 @@ func formatWebResults(res []webResult) string {
 	return sb.String()
 }
 
-// fetchURLText GETs url, caps body at ~100KB, strips HTML, truncates to maxChars.
-func fetchURLText(ctx context.Context, rawURL string, maxChars int) (string, error) {
+// puruFetchURL builds the PuruBoy Fetch API URL:
+// GET {base}?url=...&offset=...&length=...
+func puruFetchURL(rawURL string, offset, length int) string {
+	v := url.Values{}
+	v.Set("url", strings.TrimSpace(rawURL))
+	v.Set("offset", fmt.Sprintf("%d", offset))
+	v.Set("length", fmt.Sprintf("%d", length))
+	return strings.TrimRight(puruFetchAPIBase, "/") + "?" + v.Encode()
+}
+
+// fetchPuruFetch calls the PuruBoy Fetch API and returns paginated page text.
+// The API already returns extracted text; HTML is stripped defensively.
+func fetchPuruFetch(ctx context.Context, rawURL string, offset, length int) (string, error) {
 	clean, err := validateFetchURL(rawURL)
 	if err != nil {
 		return "", err
 	}
-	if maxChars <= 0 {
-		maxChars = defaultFetchChars
+	if offset < 0 {
+		offset = 0
 	}
-	req, err := http.NewRequestWithContext(ctx, "GET", clean, nil)
+	if length <= 0 {
+		length = defaultFetchLength
+	}
+	ectx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ectx, "GET", puruFetchURL(clean, offset, length), nil)
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("User-Agent", webBrowserUA)
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,text/plain,*/*")
-	client := &http.Client{} // No hardcoded timeout, let context handle it
+	req.Header.Set("Accept", "application/json")
+	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
+	if resp.StatusCode != 200 {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4*1024))
+		return "", fmt.Errorf("fetch API HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
 	}
-	b, err := io.ReadAll(io.LimitReader(resp.Body, webFetchMaxBody))
+	b, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return "", err
 	}
-	text := stripHTMLToText(string(b))
-	total := len(text)
-	if total > maxChars {
-		text = text[:maxChars] + fmt.Sprintf(" ... [truncated, total %d chars]", total)
+	var fr puruFetchResponse
+	if err := json.Unmarshal(b, &fr); err != nil {
+		return "", fmt.Errorf("fetch API bad JSON: %v", err)
 	}
-	if strings.TrimSpace(text) == "" {
-		return "", fmt.Errorf("page is empty after stripping HTML")
+	if !fr.Success {
+		msg := strings.TrimSpace(fr.Error)
+		if msg == "" {
+			msg = "fetch API returned success=false"
+		}
+		return "", fmt.Errorf("%s", msg)
+	}
+	text := strings.TrimSpace(stripHTMLToText(fr.Content))
+	if text == "" {
+		return "", fmt.Errorf("page is empty")
+	}
+	if fr.HasMore {
+		next := fr.Offset + fr.Length
+		if next <= 0 {
+			next = offset + length
+		}
+		total := fr.TotalLength
+		text += fmt.Sprintf(" ... [truncated, total %d chars, offset %d — call web_fetch again with offset %d for more]", total, fr.Offset, next)
 	}
 	return text, nil
+}
+
+// runWebFetch fetches paginated text via the PuruBoy Fetch API.
+func runWebFetch(ctx context.Context, rawURL string, offset, length int) (string, error) {
+	return fetchPuruFetch(ctx, rawURL, clampFetchOffset(int64(offset)), clampFetchLength(int64(length)))
 }

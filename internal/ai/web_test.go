@@ -61,17 +61,23 @@ func TestClampSearchFetch(t *testing.T) {
 	if got := clampSearchCount(3); got != 3 {
 		t.Errorf("count 3 -> %d", got)
 	}
-	if got := clampFetchChars(0); got != 8000 {
-		t.Errorf("max_chars 0 -> %d, want 8000", got)
+	if got := clampFetchLength(0); got != 5000 {
+		t.Errorf("length 0 -> %d, want 5000", got)
 	}
-	if got := clampFetchChars(999999); got != 20000 {
-		t.Errorf("max_chars huge -> %d, want 20000", got)
+	if got := clampFetchLength(999999); got != 20000 {
+		t.Errorf("length huge -> %d, want 20000", got)
 	}
-	if got := clampFetchChars(10); got != 1000 {
-		t.Errorf("max_chars 10 -> %d, want 1000", got)
+	if got := clampFetchLength(10); got != 1000 {
+		t.Errorf("length 10 -> %d, want 1000", got)
 	}
-	if got := clampFetchChars(5000); got != 5000 {
-		t.Errorf("max_chars 5000 -> %d", got)
+	if got := clampFetchLength(5000); got != 5000 {
+		t.Errorf("length 5000 -> %d, got %d", 5000, got)
+	}
+	if got := clampFetchOffset(-3); got != 0 {
+		t.Errorf("offset -3 -> %d, want 0", got)
+	}
+	if got := clampFetchOffset(120); got != 120 {
+		t.Errorf("offset 120 -> %d, want 120", got)
 	}
 }
 
@@ -115,36 +121,16 @@ func TestWebToolsRegistered(t *testing.T) {
 	}
 }
 
-func TestNormalizeSearchLang(t *testing.T) {
-	for in, want := range map[string]string{
-		"":          "en",
-		"  ":        "en",
-		"id":        "id",
-		"ID":        "id",
-		"en":        "en",
-		"EN":        "en",
-		"en-US":     "en-us",
-		"ms":        "ms",
-		"xyz!!":     "en",
-		"indonesia": "en",
-	} {
-		if got := normalizeSearchLang(in); got != want {
-			t.Errorf("normalizeSearchLang(%q) = %q, want %q", in, got, want)
-		}
-	}
-}
-
 func TestPuruSearchURL(t *testing.T) {
-	u := puruSearchURL("harga emas", "id", 5)
+	u := puruSearchURL("harga emas", 5)
 	if !strings.Contains(u, "query=harga+emas") && !strings.Contains(u, "query=harga%20emas") {
 		t.Fatalf("query tidak ter-encode: %q", u)
 	}
-	if !strings.Contains(u, "lang=id") || !strings.Contains(u, "limit=5") {
-		t.Fatalf("lang/limit hilang: %q", u)
+	if !strings.Contains(u, "limit=5") {
+		t.Fatalf("limit hilang: %q", u)
 	}
-	u = puruSearchURL("go tutorial", "", 3)
-	if !strings.Contains(u, "lang=en") {
-		t.Fatalf("default lang harus en: %q", u)
+	if strings.Contains(u, "lang=") {
+		t.Fatalf("lang harus hilang dari API baru: %q", u)
 	}
 }
 
@@ -166,7 +152,7 @@ func TestFetchPuruSearchMapsResults(t *testing.T) {
 	puruSearchAPIBase = srv.URL
 	defer func() { puruSearchAPIBase = old }()
 
-	res, err := fetchPuruSearch(context.Background(), "golang", "id", 5)
+	res, err := fetchPuruSearch(context.Background(), "golang", 5)
 	if err != nil {
 		t.Fatalf("fetchPuruSearch error: %v", err)
 	}
@@ -194,10 +180,10 @@ func TestFetchPuruSearchAPIFailure(t *testing.T) {
 	puruSearchAPIBase = srv.URL
 	defer func() { puruSearchAPIBase = old }()
 
-	if _, err := fetchPuruSearch(context.Background(), "x", "en", 5); err == nil {
+	if _, err := fetchPuruSearch(context.Background(), "x", 5); err == nil {
 		t.Fatalf("success=false harus jadi error")
 	}
-	if _, err := runWebSearch(context.Background(), "", 5, "en"); err == nil {
+	if _, err := runWebSearch(context.Background(), "", 5); err == nil {
 		t.Fatalf("query kosong harus error")
 	}
 }
@@ -212,7 +198,7 @@ func TestRunWebSearchFormatsOutput(t *testing.T) {
 	puruSearchAPIBase = srv.URL
 	defer func() { puruSearchAPIBase = old }()
 
-	out, err := runWebSearch(context.Background(), "go install", 5, "en")
+	out, err := runWebSearch(context.Background(), "go install", 5)
 	if err != nil {
 		t.Fatalf("runWebSearch error: %v", err)
 	}
@@ -221,16 +207,117 @@ func TestRunWebSearchFormatsOutput(t *testing.T) {
 	}
 }
 
-func TestWebSearchLangParamRegistered(t *testing.T) {
+func TestWebSearchSchemaHasNoLang(t *testing.T) {
 	tools := BuildTools(testAgent(t.TempDir()), nil)
 	ws := tools["web_search"]
 	if ws == nil {
 		t.Fatal("web_search missing")
 	}
-	// lang invalid tidak boleh bikin error validasi — dinormalkan ke en.
+	props, _ := ws.Parameters["properties"].(map[string]any)
+	if props == nil {
+		t.Fatal("web_search properties nil")
+	}
+	if _, ok := props["lang"]; ok {
+		t.Fatalf("web_search lang must be gone (API baru tanpa lang): %v", props)
+	}
+	if props["query"] == nil || props["count"] == nil {
+		t.Fatalf("web_search query/count missing: %v", props)
+	}
+	// Legacy lang arg is ignored — empty query still fails on query validation.
 	out, _ := ws.Run(context.Background(), map[string]any{"query": "", "lang": "en"})
 	m, _ := out.(map[string]any)
 	if m["success"] != false {
 		t.Fatalf("query kosong harus tetap success=false walau lang diisi: %v", out)
+	}
+}
+
+func TestPuruFetchURL(t *testing.T) {
+	u := puruFetchURL("https://example.com", 0, 5000)
+	if !strings.Contains(u, "url=") || !strings.Contains(u, "offset=0") || !strings.Contains(u, "length=5000") {
+		t.Fatalf("offset/length hilang: %q", u)
+	}
+}
+
+func TestFetchPuruFetchMapsResults(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		if q.Get("url") == "" {
+			t.Errorf("url kosong sampai ke API")
+		}
+		if q.Get("offset") == "" || q.Get("length") == "" {
+			t.Errorf("offset/length wajib dikirim: %q", r.URL.RawQuery)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"success":true,"status":"success","url":"https://example.com/","final_url":"https://example.com/","content_type":"text/html","total_length":125,"offset":0,"length":125,"requested_length":5000,"has_more":false,"truncated_body":false,"content":"Example Domain"}`))
+	}))
+	defer srv.Close()
+	old := puruFetchAPIBase
+	puruFetchAPIBase = srv.URL
+	defer func() { puruFetchAPIBase = old }()
+
+	text, err := fetchPuruFetch(context.Background(), "https://example.com", 0, 5000)
+	if err != nil {
+		t.Fatalf("fetchPuruFetch error: %v", err)
+	}
+	if !strings.Contains(text, "Example Domain") {
+		t.Fatalf("content salah: %q", text)
+	}
+	if strings.Contains(text, "has_more") || strings.Contains(text, "call web_fetch again") {
+		t.Fatalf("has_more=false tidak boleh ada penanda lanjutan: %q", text)
+	}
+}
+
+func TestFetchPuruFetchHasMore(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"success":true,"url":"https://example.com/","total_length":5588,"offset":0,"length":5000,"requested_length":5000,"has_more":true,"content":"hello world"}`))
+	}))
+	defer srv.Close()
+	old := puruFetchAPIBase
+	puruFetchAPIBase = srv.URL
+	defer func() { puruFetchAPIBase = old }()
+
+	text, err := runWebFetch(context.Background(), "https://example.com", 0, 5000)
+	if err != nil {
+		t.Fatalf("runWebFetch error: %v", err)
+	}
+	if !strings.Contains(text, "hello world") || !strings.Contains(text, "offset 5000") {
+		t.Fatalf("penanda paginasi salah: %q", text)
+	}
+}
+
+func TestFetchPuruFetchAPIFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"success":false,"error":"url wajib diisi"}`))
+	}))
+	defer srv.Close()
+	old := puruFetchAPIBase
+	puruFetchAPIBase = srv.URL
+	defer func() { puruFetchAPIBase = old }()
+
+	if _, err := fetchPuruFetch(context.Background(), "https://example.com", 0, 5000); err == nil {
+		t.Fatalf("success=false harus jadi error")
+	}
+	if _, err := runWebFetch(context.Background(), "file:///etc/passwd", 0, 5000); err == nil {
+		t.Fatalf("host non-http harus ditolak sebelum ke API")
+	}
+}
+
+func TestWebFetchSchemaUsesOffsetLength(t *testing.T) {
+	tools := BuildTools(testAgent(t.TempDir()), nil)
+	wf := tools["web_fetch"]
+	if wf == nil {
+		t.Fatal("web_fetch missing")
+	}
+	props, _ := wf.Parameters["properties"].(map[string]any)
+	if props == nil {
+		t.Fatal("web_fetch properties nil")
+	}
+	if props["url"] == nil || props["offset"] == nil || props["length"] == nil {
+		t.Fatalf("web_fetch url/offset/length missing: %v", props)
+	}
+	if _, ok := props["max_chars"]; ok {
+		t.Fatalf("web_fetch max_chars must be gone: %v", props)
 	}
 }
