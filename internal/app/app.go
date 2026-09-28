@@ -23,6 +23,13 @@ import (
 
 const maxMessageLength = 4096
 
+// Status texts for the shared thinking message lifecycle:
+// "thinking" -> "compacting" (during summarize) -> "thinking" (agent run).
+const (
+	thinkingText   = "🤔 ..."
+	compactingText = "🗜️ Compacting memory..."
+)
+
 type App struct {
 	cfg   *config.Config
 	tg    *telegram.API
@@ -275,19 +282,22 @@ func (a *App) renderedSystem() string {
 	return s
 }
 
-// maybeCompact checks the token trigger BEFORE the new prompt: when hit,
-// the model summarizes full history into memory/context/YYYY-MM-DD_HH-MM-SS.md,
-// history is wiped, and the new summary flows into the system prompt on the
-// next request (see memory.LatestSummary). On summarize failure history is
-// kept as-is and the next message retries.
-func (a *App) maybeCompact(ctx context.Context, userID int64, stored []*messages.Message) []*messages.Message {
-	limit := a.cfg.HistoryTokenLimit
+// compactNeeded reports whether stored history hits the summarize trigger.
+// Single token-count check shared by maybeCompact and the feedback variant.
+func (a *App) compactNeeded(stored []*messages.Message) bool {
+	limit := 0
+	if a.cfg != nil {
+		limit = a.cfg.HistoryTokenLimit
+	}
 	if limit <= 0 || a.mem == nil || len(stored) == 0 {
-		return stored
+		return false
 	}
-	if history.TokenCountFull(a.renderedSystem(), stored) < limit {
-		return stored
-	}
+	return history.TokenCountFull(a.renderedSystem(), stored) >= limit
+}
+
+// runCompact summarizes history into memory/context, wipes history, and
+// returns the kept messages. On failure history is kept as-is for retry.
+func (a *App) runCompact(ctx context.Context, userID int64, stored []*messages.Message) []*messages.Message {
 	if a.mem.Model == nil && a.agent != nil {
 		a.mem.Model = a.agent.Client
 	}
@@ -307,16 +317,57 @@ func (a *App) maybeCompact(ctx context.Context, userID int64, stored []*messages
 	return kept
 }
 
+// editThinking updates the shared status message, ignoring nil Telegram.
+func (a *App) editThinking(ctx context.Context, chatID, msgID int64, text string) {
+	if a.tg == nil || chatID == 0 || msgID == 0 {
+		return
+	}
+	if err := a.tg.EditMessage(ctx, chatID, msgID, text); err != nil {
+		log.Printf("[app] thinking edit: %v", err)
+	}
+}
+
+// maybeCompact checks the token trigger BEFORE the new prompt: when hit,
+// the model summarizes full history into memory/context/YYYY-MM-DD_HH-MM-SS.md,
+// history is wiped, and the new summary flows into the system prompt on the
+// next request (see memory.LatestSummary). On summarize failure history is
+// kept as-is and the next message retries.
+func (a *App) maybeCompact(ctx context.Context, userID int64, stored []*messages.Message) []*messages.Message {
+	if !a.compactNeeded(stored) {
+		return stored
+	}
+	return a.runCompact(ctx, userID, stored)
+}
+
+// maybeCompactWithFeedback wraps runCompact with Telegram status updates on
+// the shared thinking message: it shows compactingText while the summarize
+// model call runs, then edits the same message back to thinkingText when
+// compaction finishes (success or failure) so the agent run continues from
+// the loading state. When no compaction triggers, stored is returned
+// untouched without any Telegram edit.
+func (a *App) maybeCompactWithFeedback(ctx context.Context, userID int64, stored []*messages.Message, chatID, thinkingID int64) []*messages.Message {
+	if !a.compactNeeded(stored) {
+		return stored
+	}
+	a.editThinking(ctx, chatID, thinkingID, compactingText)
+	kept := a.runCompact(ctx, userID, stored)
+	a.editThinking(ctx, chatID, thinkingID, thinkingText)
+	return kept
+}
+
 func (a *App) processMessage(ctx context.Context, msg *telegram.Message, userMessage string) error {
 	userID := msg.From.ID
 	stored := a.hist.Get(userID)
-	// No pruning/capping — history grows until the compaction trigger.
-	stored = a.maybeCompact(ctx, userID, stored)
 
 	thID, err := a.sendThinking(ctx, msg)
 	if err != nil {
 		return err
 	}
+
+	// No pruning/capping — history grows until the compaction trigger.
+	// The same thinking message shows compacting progress, then flips back
+	// to the loading state when summarize finishes.
+	stored = a.maybeCompactWithFeedback(ctx, userID, stored, msg.Chat.ID, thID)
 
 	opts := &ai.ProcessOptions{ChatID: userID}
 	if msg.From != nil {
@@ -351,12 +402,17 @@ func (a *App) processMessage(ctx context.Context, msg *telegram.Message, userMes
 	if err := a.safeSend(ctx, msg, res.Text); err != nil {
 		log.Printf("[app] send reply failed: %v", err)
 	}
-	_ = a.tg.DeleteMessage(ctx, msg.Chat.ID, thID)
+	if a.tg != nil {
+		_ = a.tg.DeleteMessage(ctx, msg.Chat.ID, thID)
+	}
 	return nil
 }
 
 func (a *App) sendThinking(ctx context.Context, msg *telegram.Message) (int64, error) {
-	return a.tg.SendMessage(ctx, msg.Chat.ID, "🤔 ...", map[string]any{"reply_to_message_id": msg.MessageID})
+	if a.tg == nil {
+		return 0, errors.New("telegram client not configured")
+	}
+	return a.tg.SendMessage(ctx, msg.Chat.ID, thinkingText, map[string]any{"reply_to_message_id": msg.MessageID})
 }
 
 // previewHook returns an OnTool callback that live-edits the thinking message
@@ -376,6 +432,9 @@ func (a *App) previewHook(ctx context.Context, chatID, msgID int64) func(string,
 			return
 		}
 		last = time.Now()
+		if a.tg == nil {
+			return
+		}
 		if err := a.tg.EditMessage(ctx, chatID, msgID, strings.Join(lines, "\n")); err != nil {
 			log.Printf("[app] preview edit: %v", err)
 		}
