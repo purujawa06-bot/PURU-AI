@@ -143,13 +143,14 @@ func (a *API) DeleteWebhook(ctx context.Context, dropPending bool) error {
 	}))
 }
 
-// botCommands is the registered menu: /help, /clear, /token, /stop.
+// botCommands is the registered menu: /help, /clear, /token, /stop, /sched.
 func botCommands() []telego.BotCommand {
 	return []telego.BotCommand{
 		{Command: "help", Description: "Help"},
 		{Command: "clear", Description: "Clear chat history"},
 		{Command: "token", Description: "Memory token usage info"},
 		{Command: "stop", Description: "Stop the running process"},
+		{Command: "sched", Description: "List scheduled jobs"},
 	}
 }
 

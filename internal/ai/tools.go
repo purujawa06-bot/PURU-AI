@@ -38,12 +38,13 @@ type TelegramClient interface {
 // maxSendFileBytes caps telegram_sendfile uploads (Telegram bots allow 50MB).
 const maxSendFileBytes = 20 << 20
 
-// BuildTools returns 13 tools: 8 local workspace tools with picoclaw-mirrored
+// BuildTools returns 14 tools: 8 local workspace tools with picoclaw-mirrored
 // declarations (read_file, write_file, list_dir, edit_file_replace_string,
 // edit_file_replace_line, edit_file_apply_patch, append_file, exec)
 // + 2 Telegram tools (telegram_sendfile, telegram_getuser, only usable with
 // a Telegram context) + get_env (environment info) + 2 web tools
-// (web_search via PuruBoy Search API, web_fetch URL to text).
+// (web_search via PuruBoy Search API, web_fetch URL to text)
+// + schedule (Picoclaw cron-like scheduled tasks).
 // opts carries workspace config, current chat/user, and the OnTool preview hook.
 func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 	ws := ""
@@ -63,7 +64,7 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 	errVal := func(err error) (any, error) {
 		return map[string]any{"success": false, "error": err.Error()}, nil
 	}
-	return map[string]*Tool{
+	tools := map[string]*Tool{
 		"read_file": mk("read_file", "Read the contents of a file. Supports pagination via `offset` and `length`.",
 			objSchema([]string{"path"}, map[string]any{
 				"path":   strProp("Path to the file to read."),
@@ -347,6 +348,8 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				return text, nil
 			}),
 	}
+	tools["schedule"] = buildScheduleTool(a, opts, mk, errVal)
+	return tools
 }
 
 func userInfoMap(u *TelegramUserInfo) map[string]any {

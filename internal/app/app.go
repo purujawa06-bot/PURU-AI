@@ -1,5 +1,6 @@
 // Package app: slim Telegram handler for the lightweight local assistant.
-// Text only. No uploads, no vision, no scheduler, no web, no usage tracking.
+// Text only. No uploads, no vision, no web, no usage tracking.
+// Includes Picoclaw cron-like scheduled tasks via the schedule tool + runner.
 package app
 
 import (
@@ -197,7 +198,8 @@ func isCommand(s string) bool {
 	return strings.HasPrefix(t, "/help") ||
 		strings.HasPrefix(t, "/clear") ||
 		strings.HasPrefix(t, "/token") ||
-		strings.HasPrefix(t, "/stop")
+		strings.HasPrefix(t, "/stop") ||
+		strings.HasPrefix(t, "/sched")
 }
 
 func (a *App) handleCommand(ctx context.Context, msg *telegram.Message) error {
@@ -211,7 +213,9 @@ func (a *App) handleCommand(ctx context.Context, msg *telegram.Message) error {
 	case strings.HasPrefix(t, "/token"):
 		return a.safeReply(ctx, msg, tokenInfo(history.TokenCountFull(a.renderedSystem(), a.hist.Get(msg.From.ID)), a.cfg.HistoryTokenLimit), true)
 	case strings.HasPrefix(t, "/help"):
-		return a.safeReply(ctx, msg, "PURU-AI lightweight — just send any message.\n/clear = clear history.\n/token = memory token usage info.\n/stop = stop the running process.\nIn groups: call via /ai <question> (e.g. /ai explain Raft).", true)
+		return a.safeReply(ctx, msg, "PURU-AI lightweight — just send any message.\n/clear = clear history.\n/token = memory token usage info.\n/stop = stop the running process.\n/sched = list scheduled jobs (ask me to schedule, e.g. \"every day 6am WIB check stocks\").\nIn groups: call via /ai <question> (e.g. /ai explain Raft).", true)
+	case strings.HasPrefix(t, "/sched"):
+		return a.handleSchedCommand(ctx, msg)
 	default: // /clear
 		_ = a.hist.Clear(msg.From.ID)
 		return a.safeReply(ctx, msg, "History cleared.", true)
@@ -502,4 +506,32 @@ func (a *App) withMarkdownFallback(fn func(parseMode string) error) error {
 		}
 		return err
 	}
+}
+
+// handleSchedCommand implements /sched: list jobs, remove one, or show help.
+// Full scheduling is conversational via the schedule AI tool.
+func (a *App) handleSchedCommand(ctx context.Context, msg *telegram.Message) error {
+	text := strings.TrimSpace(msg.Text)
+	fields := strings.Fields(text)
+	if len(fields) >= 3 && (fields[1] == "remove" || fields[1] == "rm" || fields[1] == "del") {
+		id := strings.TrimSpace(fields[2])
+		store := a.ScheduleStore()
+		if store == nil {
+			return a.safeReply(ctx, msg, "Schedule unavailable: workspace not configured.", true)
+		}
+		if err := store.Remove(id); err != nil {
+			return a.safeReply(ctx, msg, "Cannot remove job: "+err.Error(), true)
+		}
+		return a.safeReply(ctx, msg, "Removed job "+id+".", true)
+	}
+	store := a.ScheduleStore()
+	if store == nil {
+		return a.safeReply(ctx, msg, "Schedule unavailable: workspace not configured.", true)
+	}
+	chatID := msg.Chat.ID
+	jobs, err := store.List(chatID)
+	if err != nil {
+		return a.safeReply(ctx, msg, "Cannot list jobs: "+err.Error(), true)
+	}
+	return a.safeReply(ctx, msg, FormatScheduleList(jobs), true)
 }

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/purujawa06-bot/PURU-AI/internal/workspace"
@@ -31,6 +32,9 @@ const (
 	// Lebih dari ini → grup proses di-kill. Wajib di VPS kecil.
 	DefaultExecMemoryMB = 64
 	MinExecMemoryMB     = 64
+	// DefaultTimezone is the IANA name used for wall-clock schedules.
+	// Jobs may override it per job; empty config falls back here.
+	DefaultTimezone = "Asia/Jakarta"
 )
 
 // ModelConfig is the single OpenAI-compatible endpoint. No fallback,
@@ -72,7 +76,10 @@ type Config struct {
 	SkillsMode string `json:"skills_mode"`
 	// SkillsAllow is the skill allowlist used when SkillsMode is "custom".
 	SkillsAllow []string `json:"skills_allow"`
-	ConfigDir   string   `json:"-"`
+	// Timezone is the IANA name for wall-clock schedules (default Asia/Jakarta).
+	// Jobs may override it per job. Empty means the default.
+	Timezone string `json:"timezone"`
+	ConfigDir string `json:"-"`
 }
 
 // DefaultDir returns $HOME/.puru (/root/.puru for root).
@@ -156,6 +163,13 @@ func Load(path string) (*Config, error) {
 	default:
 		return nil, fmt.Errorf("config %s: skills_mode must be default, off, or custom", path)
 	}
+	if strings.TrimSpace(c.Timezone) == "" {
+		c.Timezone = DefaultTimezone
+	} else if _, err := time.LoadLocation(strings.TrimSpace(c.Timezone)); err != nil {
+		return nil, fmt.Errorf("config %s: unknown timezone %q (use IANA like Asia/Jakarta)", path, c.Timezone)
+	} else {
+		c.Timezone = strings.TrimSpace(c.Timezone)
+	}
 	abs, err := filepath.Abs(c.Workspace)
 	if err != nil {
 		return nil, fmt.Errorf("invalid workspace: %w", err)
@@ -224,3 +238,22 @@ func (c *Config) SkillsDir() string { return workspace.SkillsDir(c.Workspace) }
 
 // HistoryDir is ~/.puru/history (per-chat JSON files).
 func (c *Config) HistoryDir() string { return filepath.Join(DefaultDir(), "history") }
+
+// EffectiveTimezone reports the IANA timezone for wall-clock schedules.
+// Empty or unknown falls back to DefaultTimezone.
+func (c *Config) EffectiveTimezone() string {
+	if c == nil {
+		return DefaultTimezone
+	}
+	tz := strings.TrimSpace(c.Timezone)
+	if tz == "" {
+		return DefaultTimezone
+	}
+	if _, err := time.LoadLocation(tz); err != nil {
+		return DefaultTimezone
+	}
+	return tz
+}
+
+// ScheduleDir is <workspace>/schedule (jobs.json for scheduled tasks).
+func (c *Config) ScheduleDir() string { return filepath.Join(c.Workspace, "schedule") }

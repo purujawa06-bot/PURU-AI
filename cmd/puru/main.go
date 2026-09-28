@@ -32,6 +32,7 @@ import (
 	"github.com/purujawa06-bot/PURU-AI/internal/memory"
 	"github.com/purujawa06-bot/PURU-AI/internal/messages"
 	"github.com/purujawa06-bot/PURU-AI/internal/prompt"
+	"github.com/purujawa06-bot/PURU-AI/internal/schedule"
 	"github.com/purujawa06-bot/PURU-AI/internal/telegram"
 )
 
@@ -308,6 +309,14 @@ func runGateway(args []string) error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// Scheduled tasks runner (Picoclaw cron-like, default Asia/Jakarta).
+	go (&schedule.Runner{
+		Store: schedule.NewStore(cfg.Workspace),
+		Handle: func(runCtx context.Context, job schedule.Job) error {
+			return appSvc.RunScheduledJob(runCtx, job)
+		},
+	}).Start(ctx)
 
 	// Health check HANYA bila --health. Versi CLI/npm default tanpa web server.
 	if o.withHealth {

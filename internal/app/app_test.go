@@ -19,7 +19,7 @@ import (
 )
 
 func TestIsCommandMenu(t *testing.T) {
-	for _, c := range []string{"/help", "/help@bot", "/clear", "/token", "/stop", "/stop@bot"} {
+	for _, c := range []string{"/help", "/help@bot", "/clear", "/token", "/stop", "/stop@bot", "/sched", "/sched remove abc"} {
 		if !isCommand(c) {
 			t.Errorf("%q harus dikenali sebagai command", c)
 		}
