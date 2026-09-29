@@ -181,6 +181,9 @@ func Load(path string) (*Config, error) {
 	if err := os.MkdirAll(filepath.Join(DefaultDir(), "history"), 0o755); err != nil {
 		return nil, fmt.Errorf("create history dir: %w", err)
 	}
+	if err := os.MkdirAll(filepath.Join(DefaultDir(), "skillstate"), 0o755); err != nil {
+		return nil, fmt.Errorf("create skillstate dir: %w", err)
+	}
 	return &c, nil
 }
 
@@ -238,6 +241,9 @@ func (c *Config) SkillsDir() string { return workspace.SkillsDir(c.Workspace) }
 
 // HistoryDir is ~/.puru/history (per-chat JSON files).
 func (c *Config) HistoryDir() string { return filepath.Join(DefaultDir(), "history") }
+
+// SkillStateDir is ~/.puru/skillstate (per-chat active skill names).
+func (c *Config) SkillStateDir() string { return filepath.Join(DefaultDir(), "skillstate") }
 
 // EffectiveTimezone reports the IANA timezone for wall-clock schedules.
 // Empty or unknown falls back to DefaultTimezone.

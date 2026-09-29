@@ -300,6 +300,55 @@ func seedBuiltinSkills(workspace string) error {
 	return nil
 }
 
+// MergeActiveSkills merges frontmatter and runtime skill lists,
+// deduping case-insensitively while preserving first-seen order.
+func MergeActiveSkills(lists ...[]string) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	for _, list := range lists {
+		for _, name := range list {
+			trimmed := strings.TrimSpace(name)
+			if trimmed == "" {
+				continue
+			}
+			folded := strings.ToLower(trimmed)
+			if _, ok := seen[folded]; ok {
+				continue
+			}
+			seen[folded] = struct{}{}
+			out = append(out, trimmed)
+		}
+	}
+	return out
+}
+
+// SkillNameFromPath extracts the skill name when p points inside
+// <workspace>/skills/<name>/... (or the relative skills/<name>/... form).
+// It reports false for paths outside the skills tree.
+func SkillNameFromPath(workspacePath, p string) (string, bool) {
+	trimmed := strings.TrimSpace(p)
+	if trimmed == "" {
+		return "", false
+	}
+	cleaned := filepath.Clean(filepath.FromSlash(trimmed))
+	if filepath.IsAbs(cleaned) && strings.TrimSpace(workspacePath) != "" {
+		rel, err := filepath.Rel(strings.TrimSpace(workspacePath), cleaned)
+		if err != nil {
+			return "", false
+		}
+		cleaned = rel
+	}
+	parts := strings.Split(cleaned, string(os.PathSeparator))
+	if len(parts) < 2 || parts[0] != DirSkills {
+		return "", false
+	}
+	name := strings.TrimSpace(parts[1])
+	if name == "" || name == "." || name == ".." {
+		return "", false
+	}
+	return name, true
+}
+
 // SkillInfo describes one installed skill (picoclaw-like).
 type SkillInfo struct {
 	Name        string
@@ -395,7 +444,30 @@ func LoadSkillsForContext(workspace string, names []string, policy SkillsPolicy)
 // BuildSkillsSummary (empty string when no skills are installed or the
 // policy blocks them all).
 func BuildSkillsSummary(workspace string, policy SkillsPolicy) string {
+	return BuildSkillsSummaryExcluding(workspace, policy, nil)
+}
+
+// BuildSkillsSummaryExcluding renders the catalog without the excluded
+// (already active) skills so the model is not told to load them twice.
+// The catalog stays cheap: name + description only, never skill bodies.
+func BuildSkillsSummaryExcluding(workspace string, policy SkillsPolicy, exclude []string) string {
 	installed := FilterSkills(ListSkills(workspace), policy)
+	if len(exclude) > 0 {
+		skip := map[string]struct{}{}
+		for _, name := range exclude {
+			trimmed := strings.TrimSpace(name)
+			if trimmed != "" {
+				skip[strings.ToLower(trimmed)] = struct{}{}
+			}
+		}
+		kept := make([]SkillInfo, 0, len(installed))
+		for _, skill := range installed {
+			if _, ok := skip[strings.ToLower(skill.Name)]; !ok {
+				kept = append(kept, skill)
+			}
+		}
+		installed = kept
+	}
 	if len(installed) == 0 {
 		return ""
 	}

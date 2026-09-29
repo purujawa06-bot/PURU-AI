@@ -133,7 +133,7 @@ type Request struct {
 	SenderID          string
 	SenderDisplayName string
 
-	// ActiveSkills overrides the frontmatter skills list when non-nil.
+	// ActiveSkills merges with the frontmatter skills list (runtime use_skill state).
 	ActiveSkills []string
 	// Overlays are appended as turn-level parts (subturn profiles, steering).
 	Overlays []PromptPart
@@ -627,10 +627,7 @@ func effectiveSkillsPolicy(req Request) workspace.SkillsPolicy {
 }
 
 func resolveActiveSkills(req Request, frontmatter []string) []string {
-	names := frontmatter
-	if req.ActiveSkills != nil {
-		names = req.ActiveSkills
-	}
+	names := workspace.MergeActiveSkills(frontmatter, req.ActiveSkills)
 	if len(req.AllowedSkills) > 0 {
 		names = filterNamesByAllowed(names, req.AllowedSkills)
 	}
@@ -704,10 +701,11 @@ func Build(req Request) (string, error) {
 	}
 
 	if !req.SuppressSkillContext {
-		if catalog := workspace.BuildSkillsSummary(req.Workspace, policy); catalog != "" {
-			intro := "The following skills extend your capabilities."
-			if includeToolUseRule && promptAllowsTool(req, "read_file") {
-				intro += " To use a skill, read its SKILL.md file using the read_file tool."
+		activeNames := resolveActiveSkills(req, def.FrontmatterSkills)
+		if catalog := workspace.BuildSkillsSummaryExcluding(req.Workspace, policy, activeNames); catalog != "" {
+			intro := "The following skills extend your capabilities. They are NOT loaded: only name and description are shown."
+			if includeToolUseRule && promptAllowsTool(req, "use_skill") {
+				intro += " To use a skill, call use_skill with its exact <name>. Do NOT read its SKILL.md with read_file; the full body loads automatically when active."
 			}
 			add(PromptPart{
 				ID:      "capability.skill_catalog",
@@ -720,7 +718,6 @@ func Build(req Request) (string, error) {
 				Cache:   PromptCacheEphemeral,
 			})
 		}
-		activeNames := resolveActiveSkills(req, def.FrontmatterSkills)
 		if bodies := workspace.LoadSkillsForContext(req.Workspace, activeNames, policy); bodies != "" {
 			add(PromptPart{
 				ID:      "capability.active_skills",
@@ -728,7 +725,7 @@ func Build(req Request) (string, error) {
 				Slot:    PromptSlotActiveSkill,
 				Source:  PromptSource{ID: PromptSourceActiveSkills, Name: "skill:active"},
 				Title:   "active skills",
-				Content: "## Active Skills\n\nThe following skills are active for this request. Follow them when relevant.\n\n" + bodies,
+				Content: "## Active Skills\n\nThe following skills are already loaded and active for this request. Follow them when relevant. Do NOT call read_file for them; the full body is below.\n\nDo NOT create, modify, or delete files under skills/<active-name>/ while it is active — call stop_skill first. For NEW or INACTIVE skills, file tools are allowed following skill-creator.\n\n" + bodies,
 				Stable:  false,
 				Cache:   PromptCacheNone,
 			})

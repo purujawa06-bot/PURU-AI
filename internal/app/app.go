@@ -211,7 +211,7 @@ func (a *App) handleCommand(ctx context.Context, msg *telegram.Message) error {
 		}
 		return a.safeReply(ctx, msg, "No process is running.", true)
 	case strings.HasPrefix(t, "/token"):
-		return a.safeReply(ctx, msg, tokenInfo(history.TokenCountFull(a.renderedSystem(), a.hist.Get(msg.From.ID)), a.cfg.HistoryTokenLimit), true)
+		return a.safeReply(ctx, msg, tokenInfo(history.TokenCountFull(a.renderedSystemFor(msg.From.ID), a.hist.Get(msg.From.ID)), a.cfg.HistoryTokenLimit), true)
 	case strings.HasPrefix(t, "/help"):
 		return a.safeReply(ctx, msg, "PURU-AI lightweight — just send any message.\n/clear = clear history.\n/token = memory token usage info.\n/stop = stop the running process.\n/sched = list scheduled jobs (ask me to schedule, e.g. \"every day 6am WIB check stocks\").\nIn groups: call via /ai <question> (e.g. /ai explain Raft).", true)
 	case strings.HasPrefix(t, "/sched"):
@@ -269,6 +269,13 @@ func fmtPct(p float64) string {
 // request (template + memory/MEMORY.md + latest memory/context/*.md summary)
 // so token counting matches reality.
 func (a *App) renderedSystem() string {
+	return a.renderedSystemFor(0)
+}
+
+// renderedSystemFor renders the prompt exactly like a real request for the
+// given chat: it adds that chat's runtime-active skills so the token count
+// includes the injected skill bodies.
+func (a *App) renderedSystemFor(chatID int64) string {
 	mem := ""
 	summary := ""
 	workspace := ""
@@ -279,7 +286,17 @@ func (a *App) renderedSystem() string {
 		summary = memory.LatestSummary(a.cfg.Workspace)
 		workspace = a.cfg.Workspace
 	}
-	s, err := prompt.Get(mem, summary, workspace, a.cfg.SkillsPolicy())
+	var opts *ai.ProcessOptions
+	if chatID != 0 && a.agent != nil {
+		opts = &ai.ProcessOptions{ChatID: chatID}
+	}
+	s, err := prompt.Build(prompt.Request{
+		Workspace:    workspace,
+		Memory:       mem,
+		Summary:      summary,
+		ActiveSkills: ai.ActiveSkillsFor(a.agent, opts),
+		Policy:       a.cfg.SkillsPolicy(),
+	})
 	if err != nil {
 		return ""
 	}
@@ -289,6 +306,12 @@ func (a *App) renderedSystem() string {
 // compactNeeded reports whether stored history hits the summarize trigger.
 // Single token-count check shared by maybeCompact and the feedback variant.
 func (a *App) compactNeeded(stored []*messages.Message) bool {
+	return a.compactNeededFor(0, stored)
+}
+
+// compactNeededFor is the per-chat variant: the token count includes that
+// chat's runtime-active skills so compaction triggers on the real size.
+func (a *App) compactNeededFor(chatID int64, stored []*messages.Message) bool {
 	limit := 0
 	if a.cfg != nil {
 		limit = a.cfg.HistoryTokenLimit
@@ -296,7 +319,7 @@ func (a *App) compactNeeded(stored []*messages.Message) bool {
 	if limit <= 0 || a.mem == nil || len(stored) == 0 {
 		return false
 	}
-	return history.TokenCountFull(a.renderedSystem(), stored) >= limit
+	return history.TokenCountFull(a.renderedSystemFor(chatID), stored) >= limit
 }
 
 // runCompact summarizes history into memory/context, wipes history, and
@@ -337,7 +360,7 @@ func (a *App) editThinking(ctx context.Context, chatID, msgID int64, text string
 // next request (see memory.LatestSummary). On summarize failure history is
 // kept as-is and the next message retries.
 func (a *App) maybeCompact(ctx context.Context, userID int64, stored []*messages.Message) []*messages.Message {
-	if !a.compactNeeded(stored) {
+	if !a.compactNeededFor(userID, stored) {
 		return stored
 	}
 	return a.runCompact(ctx, userID, stored)
@@ -350,7 +373,7 @@ func (a *App) maybeCompact(ctx context.Context, userID int64, stored []*messages
 // the loading state. When no compaction triggers, stored is returned
 // untouched without any Telegram edit.
 func (a *App) maybeCompactWithFeedback(ctx context.Context, userID int64, stored []*messages.Message, chatID, thinkingID int64) []*messages.Message {
-	if !a.compactNeeded(stored) {
+	if !a.compactNeededFor(userID, stored) {
 		return stored
 	}
 	a.editThinking(ctx, chatID, thinkingID, compactingText)
@@ -450,6 +473,8 @@ func toolArgPreview(name string, args map[string]any) string {
 	switch name {
 	case "read_file", "write_file", "list_dir", "edit_file_replace_string", "edit_file_replace_line", "edit_file_apply_patch", "append_file", "telegram_sendfile":
 		return previewStr(args["path"])
+	case "use_skill", "stop_skill":
+		return previewStr(args["name"])
 	case "exec":
 		return previewStr(args["command"])
 	default:

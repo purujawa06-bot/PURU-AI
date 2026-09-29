@@ -38,10 +38,11 @@ type TelegramClient interface {
 // maxSendFileBytes caps telegram_sendfile uploads (Telegram bots allow 50MB).
 const maxSendFileBytes = 20 << 20
 
-// BuildTools returns 14 tools: file tools (read_file, write_file, list_dir,
+// BuildTools returns 16 tools: file tools (read_file, write_file, list_dir,
 // edit_file_replace_string, edit_file_replace_line, edit_file_apply_patch,
 // append_file) + exec + Telegram tools (telegram_sendfile, telegram_getuser)
-// + get_env + web tools (web_search, web_fetch) + schedule.
+// + get_env + web tools (web_search, web_fetch) + schedule
+// + skill tools (use_skill, stop_skill).
 // opts carries workspace config, current chat/user, and the OnTool preview hook.
 func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 	ws := ""
@@ -90,6 +91,9 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				if !ok {
 					return errVal(fmt.Errorf("content is required"))
 				}
+				if name, ok := isActiveSkillPath(a, opts, argStr(args, "path")); ok {
+					return errVal(fmt.Errorf("skill %q is active; call stop_skill first, then edit", name))
+				}
 				if err := writeLocalFile(ws, restrict, argStr(args, "path"), content, argBool(args, "overwrite")); err != nil {
 					return errVal(err)
 				}
@@ -121,6 +125,9 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				if !ok {
 					return errVal(fmt.Errorf("new_text is required"))
 				}
+				if name, ok := isActiveSkillPath(a, opts, argStr(args, "path")); ok {
+					return errVal(fmt.Errorf("skill %q is active; call stop_skill first, then edit", name))
+				}
 				if err := editLocalFile(ws, restrict, argStr(args, "path"), oldText, newText); err != nil {
 					return errVal(err)
 				}
@@ -143,6 +150,9 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				if end <= 0 {
 					end = start
 				}
+				if name, ok := isActiveSkillPath(a, opts, argStr(args, "path")); ok {
+					return errVal(fmt.Errorf("skill %q is active; call stop_skill first, then edit", name))
+				}
 				if err := editLocalFileByLine(ws, restrict, argStr(args, "path"), start, end, newText); err != nil {
 					return errVal(err)
 				}
@@ -157,6 +167,9 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				patch, ok := args["patch"].(string)
 				if !ok || strings.TrimSpace(patch) == "" {
 					return errVal(fmt.Errorf("patch is required"))
+				}
+				if name, ok := isActiveSkillPath(a, opts, argStr(args, "path")); ok {
+					return errVal(fmt.Errorf("skill %q is active; call stop_skill first, then edit", name))
 				}
 				res, err := editLocalFileApplyPatch(ws, restrict, argStr(args, "path"), patch)
 				if err != nil {
@@ -173,6 +186,9 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				content, ok := args["content"].(string)
 				if !ok {
 					return errVal(fmt.Errorf("content is required"))
+				}
+				if name, ok := isActiveSkillPath(a, opts, argStr(args, "path")); ok {
+					return errVal(fmt.Errorf("skill %q is active; call stop_skill first, then edit", name))
 				}
 				if err := appendLocalFile(ws, restrict, argStr(args, "path"), content); err != nil {
 					return errVal(err)
@@ -227,6 +243,9 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 					command := argStr(args, "command")
 					if command == "" {
 						return errVal(fmt.Errorf("command is required for action \"run\""))
+					}
+					if name, ok := rejectActiveSkillExec(a, opts, command); ok {
+						return errVal(fmt.Errorf("skill %q is active; call stop_skill first, then edit", name))
 					}
 					dir, err := resolveWorkdir(ws, restrict, argStr(args, "cwd"))
 					if err != nil {
@@ -346,6 +365,9 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 			}),
 	}
 	tools["schedule"] = buildScheduleTool(a, opts, mk, errVal)
+	for name, tool := range buildSkillTools(a, opts, mk, errVal) {
+		tools[name] = tool
+	}
 	return tools
 }
 

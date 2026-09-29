@@ -271,3 +271,49 @@ func TestSkillsPolicyCustomAllowlist(t *testing.T) {
 		t.Fatalf("custom with empty allow must render empty, got %q", got)
 	}
 }
+
+func TestMergeActiveSkills(t *testing.T) {
+	got := MergeActiveSkills([]string{"find-skills"}, []string{"FIND-skills", "skill-creator", ""})
+	if len(got) != 2 || got[0] != "find-skills" || got[1] != "skill-creator" {
+		t.Fatalf("merge = %v", got)
+	}
+	if got := MergeActiveSkills(nil, nil); len(got) != 0 {
+		t.Fatalf("empty merge must be empty, got %v", got)
+	}
+}
+
+func TestSkillNameFromPath(t *testing.T) {
+	ws := t.TempDir()
+	for path, want := range map[string]string{
+		"skills/find-skills/SKILL.md": "find-skills",
+		"skills/a/b/c.md":             "a",
+	} {
+		got, ok := SkillNameFromPath(ws, path)
+		if !ok || got != want {
+			t.Fatalf("SkillNameFromPath(%q) = %q,%v want %q,true", path, got, ok, want)
+		}
+	}
+	for _, path := range []string{"", "AGENTS.md", "memory/MEMORY.md", "skills", "other/x.md"} {
+		if _, ok := SkillNameFromPath(ws, path); ok {
+			t.Fatalf("SkillNameFromPath(%q) must be false", path)
+		}
+	}
+}
+
+func TestBuildSkillsSummaryExcluding(t *testing.T) {
+	ws := t.TempDir()
+	if err := Ensure(ws); err != nil {
+		t.Fatal(err)
+	}
+	full := BuildSkillsSummary(ws, SkillsPolicy{})
+	if !strings.Contains(full, "find-skills") {
+		t.Fatalf("full catalog must contain find-skills, got %q", full)
+	}
+	excluded := BuildSkillsSummaryExcluding(ws, SkillsPolicy{}, []string{"find-skills"})
+	if strings.Contains(excluded, "find-skills") {
+		t.Fatalf("excluded catalog must drop find-skills, got %q", excluded)
+	}
+	if !strings.Contains(excluded, "skill-creator") {
+		t.Fatalf("excluded catalog must keep skill-creator, got %q", excluded)
+	}
+}
