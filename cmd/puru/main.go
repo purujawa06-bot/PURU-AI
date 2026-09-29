@@ -257,7 +257,7 @@ func isTerminal(r *bufio.Reader) bool {
 	return fi.Mode()&os.ModeCharDevice != 0
 }
 
-// ---------- gateway (tanpa web server by default) ----------
+// ---------- gateway (no web server by default) ----------
 
 type gatewayOptions struct {
 	configPath string
@@ -318,7 +318,7 @@ func runGateway(args []string) error {
 		},
 	}).Start(ctx)
 
-	// Health check HANYA bila --health. Versi CLI/npm default tanpa web server.
+	// Health check only with --health. CLI/npm default has no web server.
 	if o.withHealth {
 		host, port := cfg.Host, cfg.Port
 		if o.host != "" {
@@ -350,43 +350,7 @@ func runGateway(args []string) error {
 		log.Printf("setMyCommands: %v", err)
 	}
 
-	var offset int64
-	conflicts := 0
-	for {
-		select {
-		case <-ctx.Done():
-			log.Printf("gateway: shutdown")
-			return nil
-		default:
-		}
-		updates, err := tg.GetUpdates(ctx, offset, 40)
-		if err != nil {
-			if ctx.Err() != nil {
-				return nil
-			}
-			var te *telegram.TelegramError
-			if errors.As(err, &te) && te.IsConflict() {
-				conflicts++
-				if conflicts >= 5 {
-					return fmt.Errorf("conflict %dx — another instance is using the token", conflicts)
-				}
-				time.Sleep(10 * time.Second)
-				_ = tg.DeleteWebhook(ctx, true)
-				offset = 0
-				continue
-			}
-			log.Printf("getUpdates: %v", err)
-			time.Sleep(5 * time.Second)
-			continue
-		}
-		conflicts = 0
-		for _, u := range updates {
-			offset = u.UpdateID + 1
-			if err := appSvc.Handle(ctx, &u); err != nil {
-				log.Printf("handle %d: %v", u.UpdateID, err)
-			}
-		}
-	}
+	return app.PollUpdates(ctx, tg, appSvc.Handle)
 }
 
 // ---------- chat (local debug, no Telegram) ----------
@@ -483,7 +447,7 @@ func processChat(ctx context.Context, agent *ai.Agent, hist *history.Store, mem 
 	}
 	res := agent.ProcessMessage(ctx, p, stored, opts)
 	saved := append(append([]*messages.Message{}, stored...), userMsg(p)...)
-	// Simpan apa adanya; tanpa prune — biarkan compact yang bekerja.
+	// Keep as-is; no prune — compaction handles it.
 	saved = append(saved, messages.SanitizeHistoryMessages(res.ResponseMessages)...)
 	_ = hist.Set(chatID, saved)
 	return res.Text
