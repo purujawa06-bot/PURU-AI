@@ -373,7 +373,7 @@ func (a *App) processMessage(ctx context.Context, msg *telegram.Message, userMes
 	// to the loading state when summarize finishes.
 	stored = a.maybeCompactWithFeedback(ctx, userID, stored, msg.Chat.ID, thID)
 
-	opts := &ai.ProcessOptions{ChatID: userID}
+	opts := &ai.ProcessOptions{ChatID: userID, Channel: "telegram"}
 	if msg.From != nil {
 		opts.User = &ai.TelegramUser{
 			ID: msg.From.ID, Username: msg.From.Username,

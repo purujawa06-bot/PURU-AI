@@ -94,7 +94,7 @@ func process(ctx context.Context, agent *ai.Agent, hist *history.Store, mem *mem
 			fmt.Printf("(saved: %s)\n", rel)
 		}
 	}
-	opts := &ai.ProcessOptions{ChatID: chatID}
+	opts := &ai.ProcessOptions{ChatID: chatID, Channel: "cli"}
 	if cfg.ShowToolsPreview() {
 		opts.OnTool = func(name string, args map[string]any) {
 			fmt.Printf("🔧 %s\n", name)

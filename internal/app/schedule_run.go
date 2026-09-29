@@ -42,7 +42,7 @@ func (a *App) RunScheduledJob(ctx context.Context, job schedule.Job) error {
 		label = job.ID
 	}
 	prompt := fmt.Sprintf("[Scheduled task %s]\n%s", label, strings.TrimSpace(job.Prompt))
-	opts := &ai.ProcessOptions{ChatID: job.ChatID}
+	opts := &ai.ProcessOptions{ChatID: job.ChatID, Channel: "schedule"}
 	if job.UserID != 0 {
 		opts.User = &ai.TelegramUser{ID: job.UserID}
 	}
