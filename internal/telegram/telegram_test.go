@@ -113,8 +113,15 @@ func TestSetCommands(t *testing.T) {
 	if err := api.SetCommands(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if cmds := botCommands(); len(cmds) != 4 || cmds[0].Command != "help" || cmds[1].Command != "clear" || cmds[2].Command != "token" || cmds[3].Command != "stop" {
-		t.Fatalf("menu harus tepat /help /clear /token /stop, got %+v", cmds)
+	cmds := botCommands()
+	want := []string{"help", "clear", "token", "stop", "sched"}
+	if len(cmds) != len(want) {
+		t.Fatalf("menu must have %d commands, got %+v", len(want), cmds)
+	}
+	for i, name := range want {
+		if cmds[i].Command != name {
+			t.Fatalf("menu command %d must be %q, got %+v", i, name, cmds)
+		}
 	}
 }
 
