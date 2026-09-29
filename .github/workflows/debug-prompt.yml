@@ -1,0 +1,39 @@
+name: Debug Prompt
+
+# Manual dump of the built system prompt for inspection.
+# Run via: gh workflow run debug-prompt.yml --ref boostrap
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dump:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: boostrap
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+
+      - name: Build system prompt dump
+        run: go run ./cmd/dump-prompt --out SYSTEMPROMPT.md
+
+      - name: Show summary
+        run: |
+          wc -c SYSTEMPROMPT.md
+          grep -c '^' SYSTEMPROMPT.md
+          head -n 60 SYSTEMPROMPT.md
+
+      - name: Upload SYSTEMPROMPT.md
+        uses: actions/upload-artifact@v5
+        with:
+          name: SYSTEMPROMPT
+          path: SYSTEMPROMPT.md
+          if-no-files-found: error
