@@ -58,7 +58,8 @@ func TestGetRendersMemory(t *testing.T) {
 		"Values",
 		"## Skills",
 		"The following skills extend your capabilities.",
-		"read its SKILL.md file using the read_file tool",
+		"They are NOT loaded",
+		"call use_skill",
 		"<skills>",
 		"<source>workspace</source>",
 		"find-skills",
@@ -154,5 +155,192 @@ func TestGetSkillsCustomAllowlist(t *testing.T) {
 	}
 	if strings.Contains(out, "skill-creator") {
 		t.Fatalf("blocked skill must not appear")
+	}
+}
+
+// TestGetSelfHealsMissingFiles ensures every new prompt restores deleted
+// bootstrap files from embedded defaults so physical files always exist.
+func TestGetSelfHealsMissingFiles(t *testing.T) {
+	ws := t.TempDir()
+	if err := workspace.Ensure(ws); err != nil {
+		t.Fatal(err)
+	}
+	deleted := []string{
+		filepath.Join(ws, workspace.FileAgents),
+		filepath.Join(ws, workspace.FileSoul),
+		filepath.Join(ws, workspace.FileUser),
+		workspace.MemoryPath(ws),
+	}
+	for _, path := range deleted {
+		if err := os.Remove(path); err != nil {
+			t.Fatalf("remove %s: %v", path, err)
+		}
+	}
+	if _, err := Get("", "", ws, workspace.SkillsPolicy{}); err != nil {
+		t.Fatalf("template error: %v", err)
+	}
+	for _, path := range deleted {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("expected %s to be restored: %v", path, err)
+		}
+		if strings.TrimSpace(string(data)) == "" {
+			t.Fatalf("%s must not be empty after restore", path)
+		}
+	}
+}
+
+func TestBuildIncludesRuntimeContext(t *testing.T) {
+	ws := t.TempDir()
+	if err := workspace.Ensure(ws); err != nil {
+		t.Fatal(err)
+	}
+	out, err := Build(Request{
+		Workspace:         ws,
+		Channel:           "telegram",
+		ChatID:            "123",
+		SenderID:          "7",
+		SenderDisplayName: "Budi (@budi)",
+	})
+	if err != nil {
+		t.Fatalf("build error: %v", err)
+	}
+	for _, section := range []string{
+		"## Current Time",
+		"## Runtime",
+		"## Current Session",
+		"Channel: telegram",
+		"Chat ID: 123",
+		"Current sender: Budi (@budi) (ID: 7)",
+	} {
+		if !strings.Contains(out, section) {
+			t.Fatalf("runtime section %q missing in prompt", section)
+		}
+	}
+}
+
+func TestBuildOrdersLayersLikePicoclaw(t *testing.T) {
+	ws := t.TempDir()
+	if err := workspace.Ensure(ws); err != nil {
+		t.Fatal(err)
+	}
+	out, err := Build(Request{Workspace: ws, Memory: "memory-x", Summary: "summary-y"})
+	if err != nil {
+		t.Fatalf("build error: %v", err)
+	}
+	order := []string{
+		"# puruClaw",
+		"## " + workspace.FileAgents,
+		"## Skills",
+		"## Memory",
+		"## Current Time",
+		"CONTEXT_SUMMARY:",
+	}
+	last := -1
+	for _, marker := range order {
+		idx := strings.Index(out, marker)
+		if idx < 0 {
+			t.Fatalf("marker %q missing in prompt", marker)
+		}
+		if idx < last {
+			t.Fatalf("marker %q out of order", marker)
+		}
+		last = idx
+	}
+}
+
+func TestBuildSuppressFlags(t *testing.T) {
+	ws := t.TempDir()
+	if err := workspace.Ensure(ws); err != nil {
+		t.Fatal(err)
+	}
+	out, err := Build(Request{Workspace: ws, SuppressSkillContext: true})
+	if err != nil {
+		t.Fatalf("build error: %v", err)
+	}
+	for _, banned := range []string{"## Skills", "## Active Skills", "<skills>"} {
+		if strings.Contains(out, banned) {
+			t.Fatalf("suppressed %q must not appear", banned)
+		}
+	}
+	out, err = Build(Request{Workspace: ws, SuppressToolUseRule: true})
+	if err != nil {
+		t.Fatalf("build error: %v", err)
+	}
+	if strings.Contains(out, "**ALWAYS use tools**") {
+		t.Fatalf("tool use rule must be suppressed")
+	}
+	overlay := PromptPart{
+		ID:      "instruction.subturn_profile",
+		Layer:   PromptLayerInstruction,
+		Slot:    PromptSlotWorkspace,
+		Source:  PromptSource{ID: PromptSourceSubTurnProfile, Name: "subturn.profile"},
+		Title:   "SubTurn System Instructions",
+		Content: "follow the subturn profile",
+	}
+	out, err = Build(Request{SuppressDefaultSystemPrompt: true, Overlays: []PromptPart{overlay}})
+	if err != nil {
+		t.Fatalf("build error: %v", err)
+	}
+	if !strings.Contains(out, "follow the subturn profile") {
+		t.Fatalf("overlay must survive suppressed system prompt")
+	}
+	if strings.Contains(out, "# puruClaw") {
+		t.Fatalf("kernel identity must be suppressed")
+	}
+	out, err = Build(Request{SuppressDefaultSystemPrompt: true, ToolUseFallback: true})
+	if err != nil {
+		t.Fatalf("build error: %v", err)
+	}
+	if !strings.Contains(out, "**ALWAYS use tools**") {
+		t.Fatalf("tool use fallback must render when system prompt is suppressed")
+	}
+}
+
+func TestRegistryValidatesPlacement(t *testing.T) {
+	r := NewPromptRegistry()
+	valid := PromptPart{
+		ID:      "kernel.identity",
+		Layer:   PromptLayerKernel,
+		Slot:    PromptSlotIdentity,
+		Source:  PromptSource{ID: PromptSourceKernel},
+		Content: "x",
+	}
+	if err := r.ValidatePart(valid); err != nil {
+		t.Fatalf("valid part rejected: %v", err)
+	}
+	invalid := PromptPart{
+		ID:      "bad",
+		Layer:   PromptLayerTurn,
+		Slot:    PromptSlotMessage,
+		Source:  PromptSource{ID: PromptSourceKernel},
+		Content: "x",
+	}
+	if err := r.ValidatePart(invalid); err == nil {
+		t.Fatalf("invalid placement must be rejected")
+	}
+	compat := PromptPart{
+		ID:      "compat",
+		Layer:   PromptLayerTurn,
+		Slot:    PromptSlotMessage,
+		Source:  PromptSource{ID: "custom.source"},
+		Content: "x",
+	}
+	if err := r.ValidatePart(compat); err != nil {
+		t.Fatalf("unregistered source must be allowed in compatibility mode: %v", err)
+	}
+	stack := NewPromptStack(r)
+	if err := stack.Add(PromptPart{ID: "empty", Layer: PromptLayerKernel, Slot: PromptSlotIdentity, Source: PromptSource{ID: PromptSourceKernel}}); err != nil {
+		t.Fatalf("empty content must be skipped without error: %v", err)
+	}
+	if len(stack.Parts()) != 0 {
+		t.Fatalf("empty content must not be stored")
+	}
+	if err := stack.Add(valid); err != nil {
+		t.Fatalf("stack add failed: %v", err)
+	}
+	stack.Seal()
+	if err := stack.Add(valid); err == nil {
+		t.Fatalf("sealed stack must reject writes")
 	}
 }

@@ -48,10 +48,10 @@ func TestToolSchemasValid(t *testing.T) {
 
 func TestToolCount(t *testing.T) {
 	tools := BuildTools(testAgent(t.TempDir()), nil)
-	if len(tools) != 13 {
-		t.Fatalf("tools = %d, want exactly 13", len(tools))
+	if len(tools) != 16 {
+		t.Fatalf("tools = %d, want exactly 16", len(tools))
 	}
-	for _, n := range []string{"read_file", "write_file", "list_dir", "edit_file_replace_string", "edit_file_replace_line", "edit_file_apply_patch", "append_file", "exec", "telegram_sendfile", "telegram_getuser", "get_env", "web_search", "web_fetch"} {
+	for _, n := range []string{"read_file", "write_file", "list_dir", "edit_file_replace_string", "edit_file_replace_line", "edit_file_apply_patch", "append_file", "exec", "telegram_sendfile", "telegram_getuser", "get_env", "web_search", "web_fetch", "schedule", "use_skill", "stop_skill"} {
 		if tools[n] == nil {
 			t.Fatalf("tool %s missing", n)
 		}

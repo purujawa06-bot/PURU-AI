@@ -127,6 +127,7 @@ docker run -d \
 | **Web** | `search`, `fetch` | Real-time web search and content extraction. |
 | **Telegram** | `sendfile`, `getuser` | Direct interaction with Telegram's API for file sharing. |
 | **Runtime** | `get_env` | System telemetry (OS, Arch, Go version, Memory). |
+| **Schedule** | `schedule` | Picoclaw cron-like tasks: once, every, daily, cron (default Asia/Jakarta). |
 
 ---
 
@@ -138,6 +139,7 @@ docker run -d \
 | `workspace` | `string` | The root directory for all file operations. |
 | `restrict_workspace` | `bool` | Prevents the AI from accessing files outside the workspace. |
 | `exec_memory_mb` | `int` | Hard RAM limit for executed shell processes. |
+| `timezone` | `string` | IANA timezone for schedules (default `Asia/Jakarta`). |
 
 ---
 
@@ -148,6 +150,15 @@ In Telegram, use the following commands:
 - `/clear` — Reset conversation context.
 - `/token` — Monitor token usage and costs.
 - `/stop` — Force-kill the active background session.
+- `/sched` — List scheduled jobs (`/sched remove <id>` deletes one). Ask in chat to schedule, e.g. "every day 6am WIB check stocks".
+
+### ⏰ Scheduled tasks (Picoclaw cron-like)
+
+- Types: `once` (`run_once_at`, e.g. `18:00`), `every` (`every_seconds`, min 60), `daily` (`daily_time HH:MM` + optional `weekdays mon,tue`), `cron` (`cron_expr`, 5 fields).
+- Timezone defaults to `Asia/Jakarta` (WIB); override per job or via `timezone` in `config.json`.
+- Limits: `end_at` / `days` (run only a few days), `max_runs` (run N times). One-shot jobs auto-delete after firing.
+- Storage: `<workspace>/schedule/jobs.json`. Delivery: agent turn posted back to the originating Telegram chat.
+- Examples: "daily 06:00 WIB stock prices", "once 18:00 check GitHub issues". Use `/sched` to list, or the `schedule` AI tool for full control.
 
 ---
 

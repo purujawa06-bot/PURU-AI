@@ -20,6 +20,7 @@ import (
 	"github.com/purujawa06-bot/PURU-AI/internal/health"
 	"github.com/purujawa06-bot/PURU-AI/internal/history"
 	"github.com/purujawa06-bot/PURU-AI/internal/memory"
+	"github.com/purujawa06-bot/PURU-AI/internal/schedule"
 	"github.com/purujawa06-bot/PURU-AI/internal/telegram"
 )
 
@@ -55,6 +56,13 @@ func main() {
 	appSvc := app.New(cfg, tg, histStore, agentSvc, memSvc)
 
 	ctx := context.Background()
+	// Scheduled tasks runner (Picoclaw cron-like, default Asia/Jakarta).
+	go (&schedule.Runner{
+		Store: schedule.NewStore(cfg.Workspace),
+		Handle: func(runCtx context.Context, job schedule.Job) error {
+			return appSvc.RunScheduledJob(runCtx, job)
+		},
+	}).Start(ctx)
 	// Health check saja (GET /health) — tidak blokir polling Telegram.
 	go func() {
 		addr := health.Addr(cfg.Host, cfg.Port)

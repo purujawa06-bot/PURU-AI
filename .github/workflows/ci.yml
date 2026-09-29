@@ -11,13 +11,13 @@ permissions:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.26'
 
@@ -35,3 +35,56 @@ jobs:
           node --check npm/bin/puru.js
           node --check npm/scripts/install.js
           node --check npm/scripts/binary.js
+
+  # Debug helper: renders one representative system prompt via
+  # cmd/dump-prompt, uploads it as the SYSTEMPROMPT artifact, and pushes
+  # it to the debug-systemprompt branch so it can be inspected without
+  # a local Go toolchain.
+  dump-prompt:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+
+      - name: Build system prompt dump
+        run: go run ./cmd/dump-prompt --out SYSTEMPROMPT.md
+
+      - name: Show summary
+        run: |
+          wc -c SYSTEMPROMPT.md
+          grep -c '^' SYSTEMPROMPT.md
+          head -n 60 SYSTEMPROMPT.md
+
+      - name: Upload SYSTEMPROMPT.md
+        uses: actions/upload-artifact@v5
+        with:
+          name: SYSTEMPROMPT
+          path: SYSTEMPROMPT.md
+          if-no-files-found: error
+
+      - name: Push to debug-systemprompt branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          mkdir -p /tmp/promptdump
+          cp "$GITHUB_WORKSPACE/SYSTEMPROMPT.md" /tmp/promptdump/SYSTEMPROMPT.md
+          rm -f "$GITHUB_WORKSPACE/SYSTEMPROMPT.md"
+          git fetch origin debug-systemprompt || true
+          if git rev-parse --verify origin/debug-systemprompt >/dev/null 2>&1; then
+            git checkout -f debug-systemprompt
+            git reset --hard origin/debug-systemprompt
+          else
+            git checkout --orphan debug-systemprompt
+            git rm -rf . || true
+          fi
+          cp /tmp/promptdump/SYSTEMPROMPT.md ./SYSTEMPROMPT.md
+          git add SYSTEMPROMPT.md
+          git commit -m "Update SYSTEMPROMPT.md from ${GITHUB_SHA:0:7}" || exit 0
+          git push origin debug-systemprompt --force

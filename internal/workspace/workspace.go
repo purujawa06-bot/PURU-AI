@@ -27,10 +27,30 @@ import (
 )
 
 // builtinSkills embeds the skills shipped with the binary, seeded into
-// <workspace>/skills/ on first run (picoclaw-like builtin skills).
+// <workspace>/skills/ on first run.
 //
 //go:embed skills
 var builtinSkills embed.FS
+
+// DefaultAgentsMD is seeded when neither AGENTS.md nor AGENT.md exists.
+//
+//go:embed defaults/AGENTS.md
+var DefaultAgentsMD string
+
+// DefaultSoulMD is seeded when SOUL.md is missing.
+//
+//go:embed defaults/SOUL.md
+var DefaultSoulMD string
+
+// DefaultUserMD is seeded when USER.md is missing.
+//
+//go:embed defaults/USER.md
+var DefaultUserMD string
+
+// DefaultMemoryMD is seeded when MEMORY.md is missing.
+//
+//go:embed defaults/MEMORY.md
+var DefaultMemoryMD string
 
 var skillNamePattern = regexp.MustCompile(`^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$`)
 
@@ -114,93 +134,6 @@ const (
 	// FileSkill is the skill definition file name (picoclaw-like).
 	FileSkill = "SKILL.md"
 )
-
-// DefaultAgentsMD is seeded when neither AGENTS.md nor AGENT.md exists.
-// It mirrors picoclaw workspace/AGENT.md (role, mission, capabilities,
-// working principles, goals), renamed to Puru.
-const DefaultAgentsMD = `# Puru — Default Agent
-
-You are Puru, the default assistant for this workspace.
-Your name is PuruClaw.
-
-## Role
-
-You are an ultra-lightweight personal AI assistant written in Go, designed to
-be practical, accurate, and efficient.
-
-## Mission
-
-- Help with general requests, questions, and problem solving
-- Use available tools when action is required
-- Stay useful even on constrained hardware and minimal environments
-
-## Capabilities
-
-- Web search and content fetching
-- File system operations
-- Shell command execution
-- Skill-based extension
-- Memory and context management
-- Multi-channel messaging integrations when configured
-
-## Working Principles
-
-- Be clear, direct, and accurate
-- Prefer simplicity over unnecessary complexity
-- Be transparent about actions and limits
-- Respect user control, privacy, and safety
-- Aim for fast, efficient help without sacrificing quality
-
-## Goals
-
-- Provide fast and lightweight AI assistance
-- Support customization through skills and workspace files
-- Remain effective on constrained hardware
-- Improve through feedback and continued iteration
-`
-
-// DefaultSoulMD is seeded when SOUL.md is missing.
-// It mirrors picoclaw workspace/SOUL.md, renamed to PuruClaw.
-const DefaultSoulMD = `# Soul
-
-I am PuruClaw: calm, helpful, and practical.
-
-## Personality
-
-- Helpful and friendly
-- Concise and to the point
-- Curious and eager to learn
-- Honest and transparent
-- Calm under uncertainty
-
-## Values
-
-- Accuracy over speed
-- User privacy and safety
-- Transparency in actions
-- Continuous improvement
-- Simplicity over unnecessary complexity
-`
-
-// DefaultUserMD is seeded when USER.md is missing.
-const DefaultUserMD = `# User
-
-Information about the user goes here.
-
-## Preferences
-
-- Communication style: (casual/formal)
-- Timezone: (your timezone)
-- Language: (your preferred language)
-`
-
-// DefaultMemoryMD is seeded when MEMORY.md is missing.
-const DefaultMemoryMD = `# Long-term Memory
-
-Lasting user facts live here as short bullets (name, preferences, decisions).
-The agent updates this file itself when it learns a lasting fact.
-Never store temporary or session info here.
-`
 
 // AgentsPath returns the agent definition path, preferring AGENTS.md and
 // falling back to the picoclaw-compatible AGENT.md alias.
@@ -367,6 +300,55 @@ func seedBuiltinSkills(workspace string) error {
 	return nil
 }
 
+// MergeActiveSkills merges frontmatter and runtime skill lists,
+// deduping case-insensitively while preserving first-seen order.
+func MergeActiveSkills(lists ...[]string) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	for _, list := range lists {
+		for _, name := range list {
+			trimmed := strings.TrimSpace(name)
+			if trimmed == "" {
+				continue
+			}
+			folded := strings.ToLower(trimmed)
+			if _, ok := seen[folded]; ok {
+				continue
+			}
+			seen[folded] = struct{}{}
+			out = append(out, trimmed)
+		}
+	}
+	return out
+}
+
+// SkillNameFromPath extracts the skill name when p points inside
+// <workspace>/skills/<name>/... (or the relative skills/<name>/... form).
+// It reports false for paths outside the skills tree.
+func SkillNameFromPath(workspacePath, p string) (string, bool) {
+	trimmed := strings.TrimSpace(p)
+	if trimmed == "" {
+		return "", false
+	}
+	cleaned := filepath.Clean(filepath.FromSlash(trimmed))
+	if filepath.IsAbs(cleaned) && strings.TrimSpace(workspacePath) != "" {
+		rel, err := filepath.Rel(strings.TrimSpace(workspacePath), cleaned)
+		if err != nil {
+			return "", false
+		}
+		cleaned = rel
+	}
+	parts := strings.Split(cleaned, string(os.PathSeparator))
+	if len(parts) < 2 || parts[0] != DirSkills {
+		return "", false
+	}
+	name := strings.TrimSpace(parts[1])
+	if name == "" || name == "." || name == ".." {
+		return "", false
+	}
+	return name, true
+}
+
 // SkillInfo describes one installed skill (picoclaw-like).
 type SkillInfo struct {
 	Name        string
@@ -462,7 +444,30 @@ func LoadSkillsForContext(workspace string, names []string, policy SkillsPolicy)
 // BuildSkillsSummary (empty string when no skills are installed or the
 // policy blocks them all).
 func BuildSkillsSummary(workspace string, policy SkillsPolicy) string {
+	return BuildSkillsSummaryExcluding(workspace, policy, nil)
+}
+
+// BuildSkillsSummaryExcluding renders the catalog without the excluded
+// (already active) skills so the model is not told to load them twice.
+// The catalog stays cheap: name + description only, never skill bodies.
+func BuildSkillsSummaryExcluding(workspace string, policy SkillsPolicy, exclude []string) string {
 	installed := FilterSkills(ListSkills(workspace), policy)
+	if len(exclude) > 0 {
+		skip := map[string]struct{}{}
+		for _, name := range exclude {
+			trimmed := strings.TrimSpace(name)
+			if trimmed != "" {
+				skip[strings.ToLower(trimmed)] = struct{}{}
+			}
+		}
+		kept := make([]SkillInfo, 0, len(installed))
+		for _, skill := range installed {
+			if _, ok := skip[strings.ToLower(skill.Name)]; !ok {
+				kept = append(kept, skill)
+			}
+		}
+		installed = kept
+	}
 	if len(installed) == 0 {
 		return ""
 	}

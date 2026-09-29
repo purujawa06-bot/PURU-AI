@@ -1,9 +1,9 @@
 // Package ai implements the lightweight local tool-calling agent.
 //
-// Single model from config.json, 13 tools (read_file, write_file, list_dir,
+// Single model from config.json, 16 tools (read_file, write_file, list_dir,
 // edit_file_replace_string, edit_file_replace_line, edit_file_apply_patch,
 // append_file, exec, telegram_sendfile, telegram_getuser, get_env,
-// web_search, web_fetch), no
+// web_search, web_fetch, schedule, use_skill, stop_skill), no
 // fallback: one executor run per request, max iterations from config (default
 // 500), pause between iterations from config (loop_delay_seconds, default 3s).
 // Every model call streams, and API errors are retried up to 5x total (2s
@@ -19,6 +19,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,6 +34,7 @@ import (
 	"github.com/purujawa06-bot/PURU-AI/internal/memory"
 	"github.com/purujawa06-bot/PURU-AI/internal/messages"
 	"github.com/purujawa06-bot/PURU-AI/internal/prompt"
+	"github.com/purujawa06-bot/PURU-AI/internal/workspace"
 )
 
 const (
@@ -90,6 +92,8 @@ type Agent struct {
 
 type ProcessOptions struct {
 	ChatID int64
+	// Channel is the origin channel (telegram, cli, schedule).
+	Channel string
 	// User is the Telegram requester (nil in CLI).
 	User *TelegramUser
 	// OnTool fires synchronously on every tool call (live preview hook).
@@ -542,7 +546,20 @@ func (a *Agent) runOnce(ctx context.Context, system string, history []*messages.
 // injected into the system prompt (see memory.LatestSummary).
 // Single executor run, no provider fallback; API errors are retried per model
 // call (5x total, 2s delay) inside the model wrapper.
+// The system prompt is built picoclaw-style: kernel identity + workspace
+// bootstrap + skill catalog + memory + per-request runtime (time, session,
+// sender) + summary.
 func (a *Agent) ProcessMessage(ctx context.Context, userMessage string, history []*messages.Message, opts *ProcessOptions) *ProcessResult {
+	workspacePath := ""
+	if a.Config != nil {
+		workspacePath = a.Config.Workspace
+	}
+	// Self-heal before reading: recreate missing AGENTS.md, SOUL.md,
+	// USER.md, memory/MEMORY.md from embedded defaults so physical
+	// files always exist on every new prompt. Never overwrites edits.
+	if strings.TrimSpace(workspacePath) != "" {
+		_ = workspace.Ensure(workspacePath)
+	}
 	memoryContent := ""
 	summary := ""
 	if a.Config != nil {
@@ -552,13 +569,19 @@ func (a *Agent) ProcessMessage(ctx context.Context, userMessage string, history 
 		summary = memory.LatestSummary(a.Config.Workspace)
 	}
 
-	workspace := ""
-	if a.Config != nil {
-		workspace = a.Config.Workspace
-	}
-	systemPrompt, err := prompt.Get(memoryContent, summary, workspace, a.Config.SkillsPolicy())
+	systemPrompt, err := prompt.Build(prompt.Request{
+		Workspace:         workspacePath,
+		Memory:            memoryContent,
+		Summary:           summary,
+		Channel:           processChannel(opts),
+		ChatID:            processChatID(opts),
+		SenderID:          processSenderID(opts),
+		SenderDisplayName: processSenderName(opts),
+		ActiveSkills:      ActiveSkillsFor(a, opts),
+		Policy:            a.Config.SkillsPolicy(),
+	})
 	if err != nil {
-		log.Printf("[ai] prompt.Get failed: %v", err)
+		log.Printf("[ai] prompt.Build failed: %v", err)
 		systemPrompt = ""
 	}
 
@@ -592,4 +615,44 @@ func makeResult(text string, resp []*messages.Message, total int, usage Usage, f
 
 func errResult() *ProcessResult {
 	return &ProcessResult{Text: "Sorry, I can't respond right now."}
+}
+
+// processChannel reports the origin channel for the runtime context block.
+func processChannel(opts *ProcessOptions) string {
+	if opts != nil && strings.TrimSpace(opts.Channel) != "" {
+		return strings.TrimSpace(opts.Channel)
+	}
+	return ""
+}
+
+// processChatID renders the chat id for the runtime context block.
+func processChatID(opts *ProcessOptions) string {
+	if opts == nil || opts.ChatID == 0 {
+		return ""
+	}
+	return strconv.FormatInt(opts.ChatID, 10)
+}
+
+// processSenderID reports the Telegram sender id ("" outside Telegram).
+func processSenderID(opts *ProcessOptions) string {
+	if opts == nil || opts.User == nil || opts.User.ID == 0 {
+		return ""
+	}
+	return strconv.FormatInt(opts.User.ID, 10)
+}
+
+// processSenderName renders "First Last (@username)" like picoclaw sender lines.
+func processSenderName(opts *ProcessOptions) string {
+	if opts == nil || opts.User == nil {
+		return ""
+	}
+	name := strings.TrimSpace(strings.TrimSpace(opts.User.FirstName) + " " + strings.TrimSpace(opts.User.LastName))
+	if strings.TrimSpace(opts.User.Username) != "" {
+		if name != "" {
+			name += " (@" + strings.TrimSpace(opts.User.Username) + ")"
+		} else {
+			name = "@" + strings.TrimSpace(opts.User.Username)
+		}
+	}
+	return name
 }
