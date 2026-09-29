@@ -193,28 +193,52 @@ func parseAICommand(s string) (string, bool) {
 	return "", false
 }
 
-func isCommand(s string) bool {
+// commandName extracts the bot command token from message text ("/stop@bot"
+// -> "/stop"). It reads letters/digits/underscore after "/" so trailing
+// punctuation ("/stop.") still matches while longer words ("/stopwatch")
+// do not. Returns "" when the text is not a slash command.
+func commandName(s string) string {
 	t := strings.TrimSpace(s)
-	return strings.HasPrefix(t, "/help") ||
-		strings.HasPrefix(t, "/clear") ||
-		strings.HasPrefix(t, "/token") ||
-		strings.HasPrefix(t, "/stop") ||
-		strings.HasPrefix(t, "/sched")
+	if len(t) < 2 || t[0] != '/' {
+		return ""
+	}
+	i := 1
+	for i < len(t) && isCommandChar(t[i]) {
+		i++
+	}
+	if i == 1 {
+		return ""
+	}
+	return t[:i]
+}
+
+func isCommandChar(c byte) bool {
+	return c == '_' ||
+		(c >= 'a' && c <= 'z') ||
+		(c >= 'A' && c <= 'Z') ||
+		(c >= '0' && c <= '9')
+}
+
+func isCommand(s string) bool {
+	switch commandName(s) {
+	case "/help", "/clear", "/token", "/stop", "/sched":
+		return true
+	}
+	return false
 }
 
 func (a *App) handleCommand(ctx context.Context, msg *telegram.Message) error {
-	t := strings.TrimSpace(msg.Text)
-	switch {
-	case strings.HasPrefix(t, "/stop"):
+	switch commandName(msg.Text) {
+	case "/stop":
 		if a.stopUser(msg.From.ID) {
 			return a.safeReply(ctx, msg, "⏹️ Process stopped.", true)
 		}
 		return a.safeReply(ctx, msg, "No process is running.", true)
-	case strings.HasPrefix(t, "/token"):
+	case "/token":
 		return a.safeReply(ctx, msg, tokenInfo(history.TokenCountFull(a.renderedSystemFor(msg.From.ID), a.hist.Get(msg.From.ID)), a.cfg.HistoryTokenLimit), true)
-	case strings.HasPrefix(t, "/help"):
+	case "/help":
 		return a.safeReply(ctx, msg, "PURU-AI lightweight — just send any message.\n/clear = clear history.\n/token = memory token usage info.\n/stop = stop the running process.\n/sched = list scheduled jobs (ask me to schedule, e.g. \"every day 6am WIB check stocks\").\nIn groups: call via /ai <question> (e.g. /ai explain Raft).", true)
-	case strings.HasPrefix(t, "/sched"):
+	case "/sched":
 		return a.handleSchedCommand(ctx, msg)
 	default: // /clear
 		_ = a.hist.Clear(msg.From.ID)
