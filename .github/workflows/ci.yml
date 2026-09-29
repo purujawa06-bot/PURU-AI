@@ -37,10 +37,13 @@ jobs:
           node --check npm/scripts/binary.js
 
   # Debug helper: renders one representative system prompt via
-  # cmd/dump-prompt and uploads it as the SYSTEMPROMPT artifact so the
-  # built prompt can be inspected without a local Go toolchain.
+  # cmd/dump-prompt, uploads it as the SYSTEMPROMPT artifact, and pushes
+  # it to the debug-systemprompt branch so it can be inspected without
+  # a local Go toolchain.
   dump-prompt:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -65,3 +68,20 @@ jobs:
           name: SYSTEMPROMPT
           path: SYSTEMPROMPT.md
           if-no-files-found: error
+
+      - name: Push to debug-systemprompt branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin debug-systemprompt || true
+          if git rev-parse --verify origin/debug-systemprompt >/dev/null 2>&1; then
+            git checkout debug-systemprompt
+            git reset --hard origin/debug-systemprompt
+          else
+            git checkout --orphan debug-systemprompt
+            git rm -rf . || true
+          fi
+          cp "$GITHUB_WORKSPACE/SYSTEMPROMPT.md" ./SYSTEMPROMPT.md
+          git add SYSTEMPROMPT.md
+          git commit -m "Update SYSTEMPROMPT.md from ${GITHUB_SHA:0:7}" || exit 0
+          git push origin debug-systemprompt --force
