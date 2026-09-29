@@ -38,13 +38,10 @@ type TelegramClient interface {
 // maxSendFileBytes caps telegram_sendfile uploads (Telegram bots allow 50MB).
 const maxSendFileBytes = 20 << 20
 
-// BuildTools returns 14 tools: 8 local workspace tools with picoclaw-mirrored
-// declarations (read_file, write_file, list_dir, edit_file_replace_string,
-// edit_file_replace_line, edit_file_apply_patch, append_file, exec)
-// + 2 Telegram tools (telegram_sendfile, telegram_getuser, only usable with
-// a Telegram context) + get_env (environment info) + 2 web tools
-// (web_search via PuruBoy Search API, web_fetch URL to text)
-// + schedule (Picoclaw cron-like scheduled tasks).
+// BuildTools returns 14 tools: file tools (read_file, write_file, list_dir,
+// edit_file_replace_string, edit_file_replace_line, edit_file_apply_patch,
+// append_file) + exec + Telegram tools (telegram_sendfile, telegram_getuser)
+// + get_env + web tools (web_search, web_fetch) + schedule.
 // opts carries workspace config, current chat/user, and the OnTool preview hook.
 func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 	ws := ""
@@ -65,7 +62,7 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 		return map[string]any{"success": false, "error": err.Error()}, nil
 	}
 	tools := map[string]*Tool{
-		"read_file": mk("read_file", "Read the contents of a file. Supports pagination via `offset` and `length`.",
+		"read_file": mk("read_file", "Read a file.",
 			objSchema([]string{"path"}, map[string]any{
 				"path":   strProp("Path to the file to read."),
 				"offset": intProp("Byte offset to start reading from.", 0),
@@ -82,7 +79,7 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				}
 				return text, nil
 			}),
-		"write_file": mk("write_file", "Write content to a file, replacing any existing content. Content is written byte-for-byte after argument decoding. If the file already exists you must set overwrite=true, which replaces the ENTIRE file. To add to or change part of an existing file without losing its current contents, use append_file, edit_file_replace_string, edit_file_replace_line, or edit_file_apply_patch instead.",
+		"write_file": mk("write_file", "Write content to a file.",
 			objSchema([]string{"path", "content"}, map[string]any{
 				"path":      strProp("Path to the file to write"),
 				"content":   strProp("Content to write to the file."),
@@ -98,7 +95,7 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				}
 				return fmt.Sprintf("File written: %s", argStr(args, "path")), nil
 			}),
-		"list_dir": mk("list_dir", "List files and directories in a path",
+		"list_dir": mk("list_dir", "List files and directories.",
 			objSchema([]string{"path"}, map[string]any{
 				"path": strProp("Path to list"),
 			}),
@@ -109,7 +106,7 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				}
 				return text, nil
 			}),
-		"edit_file_replace_string": mk("edit_file_replace_string", "Edit a file by replacing old_text with new_text. The match must be unique: exact match first, then fuzzy line-based match (ignores indentation).",
+		"edit_file_replace_string": mk("edit_file_replace_string", "Replace text in a file.",
 			objSchema([]string{"path", "old_text", "new_text"}, map[string]any{
 				"path":     strProp("The file path to edit"),
 				"old_text": strProp("The text to find and replace (must occur exactly once)."),
@@ -129,7 +126,7 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				}
 				return fmt.Sprintf("File edited: %s", argStr(args, "path")), nil
 			}),
-		"edit_file_replace_line": mk("edit_file_replace_line", "Replace a line range in a file with new_text. Line numbers are 1-based and inclusive (end_line defaults to start_line for a single line).",
+		"edit_file_replace_line": mk("edit_file_replace_line", "Replace lines in a file.",
 			objSchema([]string{"path", "start_line", "new_text"}, map[string]any{
 				"path":       strProp("The file path to edit"),
 				"start_line": intProp("First line to replace (1-based).", 1),
@@ -151,7 +148,7 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				}
 				return fmt.Sprintf("File edited: %s", argStr(args, "path")), nil
 			}),
-		"edit_file_apply_patch": mk("edit_file_apply_patch", "Edit a file git-commit style: apply a unified-diff patch (git @@ hunks with ' '/'-'/'+' lines) to the file. Context and removal lines must match the file exactly; hunks apply at their original positions.",
+		"edit_file_apply_patch": mk("edit_file_apply_patch", "Apply a unified diff patch to a file.",
 			objSchema([]string{"path", "patch"}, map[string]any{
 				"path":  strProp("The file path to patch"),
 				"patch": strProp("Unified diff text with one or more @@ hunks (file headers like '---'/'+++' are optional)."),
@@ -167,7 +164,7 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				}
 				return res, nil
 			}),
-		"append_file": mk("append_file", "Append content to the end of a file.",
+		"append_file": mk("append_file", "Append content to a file.",
 			objSchema([]string{"path", "content"}, map[string]any{
 				"path":    strProp("The file path to append to"),
 				"content": strProp("The content to append."),
@@ -182,7 +179,7 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				}
 				return fmt.Sprintf("Appended to %s", argStr(args, "path")), nil
 			}),
-		"exec": mk("exec", "Execute shell commands. Actions: run (block/background), list (sessions), poll (status), read (output), kill. Capped: 300s, 64MB RAM, 20k chars.",
+		"exec": mk("exec", "Run shell commands.",
 			objSchema([]string{"action"}, map[string]any{
 				"action":     enumProp("Action: run (execute), list (show sessions), poll (check status), read (get output), kill (terminate)", []string{"run", "list", "poll", "read", "kill"}),
 				"command":    strProp("Shell command (required for run)"),
@@ -245,7 +242,7 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 					return errVal(fmt.Errorf("unsupported action: %s", action))
 				}
 			}),
-		"telegram_sendfile": mk("telegram_sendfile", "Send a local file (image, document, etc.) to the user on the current chat channel. Only works in Telegram chat.",
+		"telegram_sendfile": mk("telegram_sendfile", "Send a file to the current chat.",
 			objSchema([]string{"path"}, map[string]any{
 				"path":     strProp("Path to the local file. Relative paths are resolved from workspace."),
 				"filename": strProp("Optional display filename. Defaults to the basename of path."),
@@ -282,7 +279,7 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				}
 				return map[string]any{"success": true, "path": argStr(args, "path")}, nil
 			}),
-		"telegram_getuser": mk("telegram_getuser", "Get a Telegram user's name, id and info. No args = the user currently asking; pass user_id to look up any user live via the API. Only works in Telegram chat.",
+		"telegram_getuser": mk("telegram_getuser", "Get Telegram user info.",
 			objSchema(nil, map[string]any{
 				"user_id": map[string]any{"type": "number", "description": "Optional Telegram user id to look up (default: current requester)."},
 			}),
@@ -303,7 +300,7 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				u := opts.User
 				return userInfoMap(&TelegramUserInfo{ID: u.ID, Username: u.Username, FirstName: u.FirstName, LastName: u.LastName}), nil
 			}),
-		"get_env": mk("get_env", "Get assistant environment info (OS, Arch, Go version, Workspace status, Memory).",
+		"get_env": mk("get_env", "Get environment info.",
 			objSchema(nil, nil),
 			func(ctx context.Context, args map[string]any) (any, error) {
 				var m runtime.MemStats
@@ -317,7 +314,7 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 					"memory_mb":  m.Alloc / 1024 / 1024,
 				}, nil
 			}),
-		"web_search": mk("web_search", "Search the web via PuruBoy Search API. Returns title + URL + snippet per result. Use when you need current/external info beyond the workspace.",
+		"web_search": mk("web_search", "Search the web.",
 			objSchema([]string{"query"}, map[string]any{
 				"query": strProp("Search query (required, non-empty)."),
 				"count": intProp("Number of results (default 5, max 10).", defaultSearchN),
@@ -334,7 +331,7 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				}
 				return text, nil
 			}),
-		"web_fetch": mk("web_fetch", "Fetch a public http/https URL as paginated text via the PuruBoy Fetch API. Use to read a page found via web_search or a user-provided link. Local/private hosts are rejected. Pass offset+length to page through long content when has_more is reported.",
+		"web_fetch": mk("web_fetch", "Fetch a URL as text.",
 			objSchema([]string{"url"}, map[string]any{
 				"url":    strProp("Public http/https URL to fetch (required)."),
 				"offset": intProp("Char offset to start reading from (default 0).", 0),

@@ -1,4 +1,4 @@
-// Schedule tool exposes Picoclaw cron-like jobs to the agent.
+// Schedule tool exposes scheduled jobs to the agent.
 //
 // One tool named "schedule" with an "action" switch keeps the tool count
 // small: add, list, get, update, remove, enable, disable. Jobs persist in
@@ -34,11 +34,7 @@ func scheduleDefaultTimezone(a *Agent) string {
 
 // buildScheduleTool returns the agent-facing schedule tool.
 func buildScheduleTool(a *Agent, opts *ProcessOptions, mk func(string, string, map[string]any, func(context.Context, map[string]any) (any, error)) *Tool, errVal func(error) (any, error)) *Tool {
-	desc := "Manage scheduled tasks (Picoclaw cron-like). " +
-		"Use to run a prompt later: once, every N seconds, daily HH:MM, or cron. " +
-		"Wall-clock times resolve in timezone (default Asia/Jakarta, WIB). " +
-		"Actions: add (create), list, get, update, remove, enable, disable. " +
-		"Examples: daily 06:00 WIB stock prices, once 18:00 check GitHub issues."
+	desc := "Manage scheduled tasks."
 	return mk("schedule", desc,
 		objSchema([]string{"action"}, map[string]any{
 			"action":        enumProp("Action: add, list, get, update, remove, enable, disable", []string{"add", "list", "get", "update", "remove", "enable", "disable"}),
