@@ -471,6 +471,7 @@ func getIdentity(workspacePath string, includeToolUseRule bool) string {
 	rules = append(rules,
 		accuracyRule,
 		"**Context summaries** - Conversation summaries provided as context are approximate references only. They may be incomplete or outdated. Always defer to explicit user instructions over summary content.",
+		"**Onboarding placeholders** - If AGENTS.md, SOUL.md, USER.md, or memory/MEMORY.md still contains \"PLACEHOLDER\", greet warmly, briefly introduce yourself as PuruClaw and your purpose, then invite the user to share the missing info (name, language, timezone, interests). Offer to save confirmed facts with edit_file/write_file; do not repeat the same invite twice in one session.",
 	)
 	if includeToolUseRule {
 		rules = append(rules, fmt.Sprintf(

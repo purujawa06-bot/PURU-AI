@@ -4,18 +4,18 @@ Information about the user goes here.
 
 ## Preferences
 
-- Communication style: (casual/formal)
-- Timezone: (your timezone)
-- Language: (your preferred language)
+- Communication style: PLACEHOLDER (e.g. casual/formal)
+- Timezone: PLACEHOLDER (e.g. Asia/Jakarta)
+- Language: PLACEHOLDER (e.g. Indonesian/English)
 
 ## Personal Information
 
-- Name: (optional)
-- Location: (optional)
-- Occupation: (optional)
+- Name: PLACEHOLDER (optional)
+- Location: PLACEHOLDER (optional)
+- Occupation: PLACEHOLDER (optional)
 
 ## Learning Goals
 
-- What the user wants to learn from AI
-- Preferred interaction style
-- Areas of interest
+- PLACEHOLDER (e.g. what the user wants to learn from AI)
+- PLACEHOLDER (e.g. preferred interaction style)
+- PLACEHOLDER (e.g. areas of interest)

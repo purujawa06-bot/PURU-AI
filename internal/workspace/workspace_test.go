@@ -112,6 +112,16 @@ func TestLoadBootstrap(t *testing.T) {
 	if !strings.Contains(def.Soul, "PuruClaw") {
 		t.Fatalf("Soul must load, got %q", def.Soul)
 	}
+	if !strings.Contains(def.User, "PLACEHOLDER") {
+		t.Fatalf("User template must use PLACEHOLDER token, got %q", def.User)
+	}
+	memoryData, err := os.ReadFile(MemoryPath(ws))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(memoryData), "PLACEHOLDER") {
+		t.Fatalf("Memory template must use PLACEHOLDER token, got %q", memoryData)
+	}
 	boot := def.Bootstrap()
 	for _, label := range []string{"## " + FileAgents, "## " + FileSoul, "## " + FileUser} {
 		if !strings.Contains(boot, label) {
