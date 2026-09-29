@@ -104,8 +104,12 @@ func TestMaybeCompactSummarizesWipesInjects(t *testing.T) {
 	if !strings.Contains(sys, "## Done") {
 		t.Fatalf("ringkasan terbaru harus di-inject ke system prompt, got %q", sys)
 	}
-	if _, err := os.Stat(filepath.Join(ws, "memory", "MEMORY.md")); !os.IsNotExist(err) {
-		t.Errorf("MEMORY.md tidak boleh disentuh compact")
+	// Self-heal may recreate MEMORY.md from defaults via renderedSystem,
+	// but compact must never write the summary into it.
+	if data, err := os.ReadFile(filepath.Join(ws, "memory", "MEMORY.md")); err == nil {
+		if strings.Contains(string(data), "topik A") {
+			t.Errorf("MEMORY.md tidak boleh disentuh compact")
+		}
 	}
 }
 
