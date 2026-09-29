@@ -54,7 +54,7 @@ func TestGetRendersMemory(t *testing.T) {
 		"Be helpful and accurate",
 		"Context summaries",
 		"Onboarding placeholders",
-		"greet warmly",
+		"Greet warmly",
 		"introduce yourself as PuruClaw",
 		"PLACEHOLDER",
 		"Working Principles",
@@ -346,5 +346,45 @@ func TestRegistryValidatesPlacement(t *testing.T) {
 	stack.Seal()
 	if err := stack.Add(valid); err == nil {
 		t.Fatalf("sealed stack must reject writes")
+	}
+}
+
+func TestBuildHidesOnboardingWhenPlaceholdersFilled(t *testing.T) {
+	ws := t.TempDir()
+	if err := workspace.Ensure(ws); err != nil {
+		t.Fatal(err)
+	}
+	filled := "# User\n\n- Name: Budi\n"
+	if err := os.WriteFile(filepath.Join(ws, workspace.FileUser), []byte(filled), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	memory := "# Long-term Memory\n\n- User is Budi.\n"
+	if err := os.WriteFile(workspace.MemoryPath(ws), []byte(memory), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := Build(Request{Workspace: ws, Memory: memory})
+	if err != nil {
+		t.Fatalf("build error: %v", err)
+	}
+	if strings.Contains(out, "Onboarding placeholders") {
+		t.Fatalf("onboarding rule must be hidden when all placeholders are filled")
+	}
+}
+
+func TestBuildShowsOnboardingWhilePlaceholderRemains(t *testing.T) {
+	ws := t.TempDir()
+	if err := workspace.Ensure(ws); err != nil {
+		t.Fatal(err)
+	}
+	filledMemory := "# Long-term Memory\n\n- User is Budi.\n"
+	if err := os.WriteFile(workspace.MemoryPath(ws), []byte(filledMemory), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := Build(Request{Workspace: ws, Memory: filledMemory})
+	if err != nil {
+		t.Fatalf("build error: %v", err)
+	}
+	if !strings.Contains(out, "Onboarding placeholders") {
+		t.Fatalf("onboarding rule must stay while USER.md still has placeholders")
 	}
 }

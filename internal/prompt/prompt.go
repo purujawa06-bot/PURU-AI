@@ -13,6 +13,7 @@ package prompt
 import (
 	"fmt"
 	"log"
+	"os"
 	"runtime"
 	"slices"
 	"strings"
@@ -459,7 +460,7 @@ func ToolUseRule() string {
 	return "**ALWAYS use tools** - When you need to perform an action (read files, edit files, execute commands, search the web, send messages, etc.), you MUST call the appropriate tool. Do NOT just say you'll do it or pretend to do it."
 }
 
-func getIdentity(workspacePath string, includeToolUseRule bool) string {
+func getIdentity(workspacePath string, includeToolUseRule bool, includeOnboardingRule bool) string {
 	rules := []string{}
 	if includeToolUseRule {
 		rules = append(rules, ToolUseRule())
@@ -471,8 +472,12 @@ func getIdentity(workspacePath string, includeToolUseRule bool) string {
 	rules = append(rules,
 		accuracyRule,
 		"**Context summaries** - Conversation summaries provided as context are approximate references only. They may be incomplete or outdated. Always defer to explicit user instructions over summary content.",
-		"**Onboarding placeholders** - If AGENTS.md, SOUL.md, USER.md, or memory/MEMORY.md still contains \"PLACEHOLDER\", greet warmly, briefly introduce yourself as PuruClaw and your purpose, then invite the user to share the missing info (name, language, timezone, interests). Offer to save confirmed facts with edit_file/write_file; do not repeat the same invite twice in one session.",
 	)
+	if includeOnboardingRule {
+		rules = append(rules,
+			"**Onboarding placeholders** - The workspace profile still contains \"PLACEHOLDER\" entries. Greet warmly, briefly introduce yourself as PuruClaw and your purpose, then invite the user to share the missing info (name, language, timezone, interests). Offer to save confirmed facts with edit_file/write_file; do not repeat the same invite twice in one session.",
+		)
+	}
 	if includeToolUseRule {
 		rules = append(rules, fmt.Sprintf(
 			"**Memory** - When interacting with me if something seems memorable, update %s/memory/MEMORY.md",
@@ -512,6 +517,30 @@ Your workspace is at: %s
 		workspacePath,
 		strings.Join(rules, "\n\n"),
 	)
+}
+
+// onboardingPlaceholderToken marks unfilled profile slots in the workspace
+// bootstrap files (AGENTS.md, SOUL.md, USER.md) and long-term memory.
+const onboardingPlaceholderToken = "PLACEHOLDER"
+
+// hasOnboardingPlaceholders reports whether any profile source still
+// contains the placeholder token, meaning the user has not finished
+// onboarding yet. A blank memory argument falls back to the MEMORY.md
+// file so fresh workspaces are detected even when no memory is passed.
+func hasOnboardingPlaceholders(def workspace.Definition, memory, workspacePath string) bool {
+	for _, source := range []string{def.AgentsBody, def.Soul, def.User, memory} {
+		if strings.Contains(source, onboardingPlaceholderToken) {
+			return true
+		}
+	}
+	if strings.TrimSpace(memory) == "" && strings.TrimSpace(workspacePath) != "" {
+		if data, err := os.ReadFile(workspace.MemoryPath(workspacePath)); err == nil {
+			if strings.Contains(string(data), onboardingPlaceholderToken) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func formatSenderLine(senderID, senderDisplayName string) string {
@@ -668,6 +697,7 @@ func Build(req Request) (string, error) {
 	}
 
 	includeToolUseRule := !req.SuppressToolUseRule
+	includeOnboardingRule := hasOnboardingPlaceholders(def, req.Memory, req.Workspace)
 	policy := effectiveSkillsPolicy(req)
 
 	stack := NewPromptStack(defaultRegistry)
@@ -683,7 +713,7 @@ func Build(req Request) (string, error) {
 		Slot:    PromptSlotIdentity,
 		Source:  PromptSource{ID: PromptSourceKernel, Name: "identity"},
 		Title:   "puruClaw identity",
-		Content: getIdentity(req.Workspace, includeToolUseRule),
+		Content: getIdentity(req.Workspace, includeToolUseRule, includeOnboardingRule),
 		Stable:  true,
 		Cache:   PromptCacheEphemeral,
 	})
