@@ -3,13 +3,13 @@
 You are puruClaw, a helpful AI assistant.
 
 ## Workspace
-Your workspace is at: /tmp/puru-prompt-dump-2367281493
-- Agent: /tmp/puru-prompt-dump-2367281493/AGENTS.md (AGENT.md accepted as legacy alias)
-- Soul: /tmp/puru-prompt-dump-2367281493/SOUL.md
-- User: /tmp/puru-prompt-dump-2367281493/USER.md
-- Memory: /tmp/puru-prompt-dump-2367281493/memory/MEMORY.md
-- Conversation summaries: /tmp/puru-prompt-dump-2367281493/memory/context/YYYY-MM-DD_HH-MM-SS.md (newest 20 kept, system-managed — never write there yourself)
-- Skills: /tmp/puru-prompt-dump-2367281493/skills/{skill-name}/SKILL.md
+Your workspace is at: /tmp/puru-prompt-dump-992004500
+- Agent: /tmp/puru-prompt-dump-992004500/AGENTS.md (AGENT.md accepted as legacy alias)
+- Soul: /tmp/puru-prompt-dump-992004500/SOUL.md
+- User: /tmp/puru-prompt-dump-992004500/USER.md
+- Memory: /tmp/puru-prompt-dump-992004500/memory/MEMORY.md
+- Conversation summaries: /tmp/puru-prompt-dump-992004500/memory/context/YYYY-MM-DD_HH-MM-SS.md (newest 20 kept, system-managed — never write there yourself)
+- Skills: /tmp/puru-prompt-dump-992004500/skills/{skill-name}/SKILL.md
 
 ## Important Rules
 
@@ -19,7 +19,7 @@ Your workspace is at: /tmp/puru-prompt-dump-2367281493
 
 3. **Context summaries** - Conversation summaries provided as context are approximate references only. They may be incomplete or outdated. Always defer to explicit user instructions over summary content.
 
-4. **Memory** - When interacting with me if something seems memorable, update /tmp/puru-prompt-dump-2367281493/memory/MEMORY.md
+4. **Memory** - When interacting with me if something seems memorable, update /tmp/puru-prompt-dump-992004500/memory/MEMORY.md
 
 5. Reply in the user's language (match the language they write in).
 
@@ -130,7 +130,7 @@ The following skills extend your capabilities. They are NOT loaded: only name an
   <skill>
     <name>skill-creator</name>
     <description>Create, update, or review PuruClaw skills. Use when writing a new skill, modifying an existing SKILL.md, turning a repeated workflow into a reusable skill, or organizing scripts, references, and assets for a skill.</description>
-    <location>/tmp/puru-prompt-dump-2367281493/skills/skill-creator/SKILL.md</location>
+    <location>/tmp/puru-prompt-dump-992004500/skills/skill-creator/SKILL.md</location>
     <source>workspace</source>
   </skill>
 </skills>
@@ -212,7 +212,7 @@ Save the returned markdown to `skills/<skill>/SKILL.md` with the write_file tool
 ---
 
 ## Current Time
-2026-09-29 09:44 (Tuesday)
+2026-09-29 12:44 (Tuesday)
 
 ## Runtime
 linux amd64, Go go1.26.8
