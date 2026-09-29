@@ -39,9 +39,11 @@ const MaxSummaries = 20
 // English system prompt.
 const summarizePrompt = `Summarize the conversation below into concise markdown (max ~400 words). ` +
 	`Focus on extracting lasting facts, task progress, and pending items. ` +
-	`Sections: ## Key facts (stable user info, preferences, decisions), ` +
-	`## Done (tasks completed + specific outcomes), ## Pending (open tasks, unanswered questions), ` +
-	`## Notes (technical details or context for future turns). Skip empty sections. No preamble, just the markdown.\n\n`
+	`Sections: ## Key facts (stable user info, preferences, decisions with reasons), ` +
+	`## Done (tasks completed + specific outcomes), ` +
+	`## Pending (open tasks, unanswered questions, ending with Next: immediate next step), ` +
+	`## Notes (gotchas, env quirks, tool limits for future turns). ` +
+	`Skip empty sections. No preamble, just the markdown.\n\n`
 
 type Manager struct {
 	Workspace string
@@ -82,7 +84,7 @@ func (m *Manager) Compact(ctx context.Context, msgs []*messages.Message) (string
 	if err != nil {
 		return "", err
 	}
-	rel, err := m.saveSummary(summary)
+	rel, err := m.saveSummary(summary, len(live))
 	if err != nil {
 		return "", err
 	}
@@ -185,12 +187,15 @@ func LatestSummary(workspace string) string {
 
 // saveSummary writes the file (deduping name collisions on same-second
 // compactions) and returns the workspace-relative path with forward slashes.
-func (m *Manager) saveSummary(summary string) (string, error) {
+// It prepends a machine-generated HTML comment with creation time and
+// message count, so the model reading the summary knows its scope.
+func (m *Manager) saveSummary(summary string, msgCount int) (string, error) {
 	dir := m.ContextDir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
-	stamp := time.Now().Format("2006-01-02_15-04-05")
+	now := time.Now()
+	stamp := now.Format("2006-01-02_15-04-05")
 	name := stamp + ".md"
 	for i := 2; ; i++ {
 		if _, err := os.Stat(filepath.Join(dir, name)); os.IsNotExist(err) {
@@ -198,7 +203,9 @@ func (m *Manager) saveSummary(summary string) (string, error) {
 		}
 		name = stamp + "-" + strconv.Itoa(i) + ".md"
 	}
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(summary), 0o644); err != nil {
+	header := "<!-- Created: " + now.Format("2006-01-02 15:04:05") +
+		", covers ~" + strconv.Itoa(msgCount) + " msgs -->\n"
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(header+summary), 0o644); err != nil {
 		return "", err
 	}
 	return "memory/context/" + name, nil
