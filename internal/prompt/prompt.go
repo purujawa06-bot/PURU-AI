@@ -72,12 +72,16 @@ The following skills are active for this request. Follow them when relevant.
 {{.memory}}`
 
 // Get renders the system prompt with the workspace path, the memory file and
-// the latest conversation summary ("" when none). Bootstrap files and the
-// skill catalog are loaded from the workspace; missing files fall back to
-// the seeded defaults so a fresh workspace still renders full identity.
+// the latest conversation summary ("" when none). It self-heals first:
+// missing bootstrap files are recreated from embedded defaults so the
+// physical files always exist, then bootstrap and skill catalog are loaded.
 // The policy gates skill injection (off suppresses every skill section,
 // custom restricts to the allowlist).
 func Get(memory string, summary string, workspacePath string, policy workspace.SkillsPolicy) (string, error) {
+	if strings.TrimSpace(workspacePath) != "" {
+		// Best-effort restore: never overwrites existing user edits.
+		_ = workspace.Ensure(workspacePath)
+	}
 	def := workspace.Load(workspacePath)
 	if strings.TrimSpace(def.AgentsBody) == "" {
 		def.AgentsLabel = workspace.FileAgents

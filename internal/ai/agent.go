@@ -33,6 +33,7 @@ import (
 	"github.com/purujawa06-bot/PURU-AI/internal/memory"
 	"github.com/purujawa06-bot/PURU-AI/internal/messages"
 	"github.com/purujawa06-bot/PURU-AI/internal/prompt"
+	"github.com/purujawa06-bot/PURU-AI/internal/workspace"
 )
 
 const (
@@ -543,6 +544,16 @@ func (a *Agent) runOnce(ctx context.Context, system string, history []*messages.
 // Single executor run, no provider fallback; API errors are retried per model
 // call (5x total, 2s delay) inside the model wrapper.
 func (a *Agent) ProcessMessage(ctx context.Context, userMessage string, history []*messages.Message, opts *ProcessOptions) *ProcessResult {
+	workspacePath := ""
+	if a.Config != nil {
+		workspacePath = a.Config.Workspace
+	}
+	// Self-heal before reading: recreate missing AGENTS.md, SOUL.md,
+	// USER.md, memory/MEMORY.md from embedded defaults so physical
+	// files always exist on every new prompt. Never overwrites edits.
+	if strings.TrimSpace(workspacePath) != "" {
+		_ = workspace.Ensure(workspacePath)
+	}
 	memoryContent := ""
 	summary := ""
 	if a.Config != nil {
@@ -552,11 +563,7 @@ func (a *Agent) ProcessMessage(ctx context.Context, userMessage string, history 
 		summary = memory.LatestSummary(a.Config.Workspace)
 	}
 
-	workspace := ""
-	if a.Config != nil {
-		workspace = a.Config.Workspace
-	}
-	systemPrompt, err := prompt.Get(memoryContent, summary, workspace, a.Config.SkillsPolicy())
+	systemPrompt, err := prompt.Get(memoryContent, summary, workspacePath, a.Config.SkillsPolicy())
 	if err != nil {
 		log.Printf("[ai] prompt.Get failed: %v", err)
 		systemPrompt = ""

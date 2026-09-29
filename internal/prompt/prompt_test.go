@@ -156,3 +156,35 @@ func TestGetSkillsCustomAllowlist(t *testing.T) {
 		t.Fatalf("blocked skill must not appear")
 	}
 }
+
+// TestGetSelfHealsMissingFiles ensures every new prompt restores deleted
+// bootstrap files from embedded defaults so physical files always exist.
+func TestGetSelfHealsMissingFiles(t *testing.T) {
+	ws := t.TempDir()
+	if err := workspace.Ensure(ws); err != nil {
+		t.Fatal(err)
+	}
+	deleted := []string{
+		filepath.Join(ws, workspace.FileAgents),
+		filepath.Join(ws, workspace.FileSoul),
+		filepath.Join(ws, workspace.FileUser),
+		workspace.MemoryPath(ws),
+	}
+	for _, path := range deleted {
+		if err := os.Remove(path); err != nil {
+			t.Fatalf("remove %s: %v", path, err)
+		}
+	}
+	if _, err := Get("", "", ws, workspace.SkillsPolicy{}); err != nil {
+		t.Fatalf("template error: %v", err)
+	}
+	for _, path := range deleted {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("expected %s to be restored: %v", path, err)
+		}
+		if strings.TrimSpace(string(data)) == "" {
+			t.Fatalf("%s must not be empty after restore", path)
+		}
+	}
+}
