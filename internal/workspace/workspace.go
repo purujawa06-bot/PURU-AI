@@ -27,10 +27,30 @@ import (
 )
 
 // builtinSkills embeds the skills shipped with the binary, seeded into
-// <workspace>/skills/ on first run (picoclaw-like builtin skills).
+// <workspace>/skills/ on first run.
 //
 //go:embed skills
 var builtinSkills embed.FS
+
+// DefaultAgentsMD is seeded when neither AGENTS.md nor AGENT.md exists.
+//
+//go:embed defaults/AGENTS.md
+var DefaultAgentsMD string
+
+// DefaultSoulMD is seeded when SOUL.md is missing.
+//
+//go:embed defaults/SOUL.md
+var DefaultSoulMD string
+
+// DefaultUserMD is seeded when USER.md is missing.
+//
+//go:embed defaults/USER.md
+var DefaultUserMD string
+
+// DefaultMemoryMD is seeded when MEMORY.md is missing.
+//
+//go:embed defaults/MEMORY.md
+var DefaultMemoryMD string
 
 var skillNamePattern = regexp.MustCompile(`^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$`)
 
@@ -114,93 +134,6 @@ const (
 	// FileSkill is the skill definition file name (picoclaw-like).
 	FileSkill = "SKILL.md"
 )
-
-// DefaultAgentsMD is seeded when neither AGENTS.md nor AGENT.md exists.
-// It mirrors picoclaw workspace/AGENT.md (role, mission, capabilities,
-// working principles, goals), renamed to Puru.
-const DefaultAgentsMD = `# Puru — Default Agent
-
-You are Puru, the default assistant for this workspace.
-Your name is PuruClaw.
-
-## Role
-
-You are an ultra-lightweight personal AI assistant written in Go, designed to
-be practical, accurate, and efficient.
-
-## Mission
-
-- Help with general requests, questions, and problem solving
-- Use available tools when action is required
-- Stay useful even on constrained hardware and minimal environments
-
-## Capabilities
-
-- Web search and content fetching
-- File system operations
-- Shell command execution
-- Skill-based extension
-- Memory and context management
-- Multi-channel messaging integrations when configured
-
-## Working Principles
-
-- Be clear, direct, and accurate
-- Prefer simplicity over unnecessary complexity
-- Be transparent about actions and limits
-- Respect user control, privacy, and safety
-- Aim for fast, efficient help without sacrificing quality
-
-## Goals
-
-- Provide fast and lightweight AI assistance
-- Support customization through skills and workspace files
-- Remain effective on constrained hardware
-- Improve through feedback and continued iteration
-`
-
-// DefaultSoulMD is seeded when SOUL.md is missing.
-// It mirrors picoclaw workspace/SOUL.md, renamed to PuruClaw.
-const DefaultSoulMD = `# Soul
-
-I am PuruClaw: calm, helpful, and practical.
-
-## Personality
-
-- Helpful and friendly
-- Concise and to the point
-- Curious and eager to learn
-- Honest and transparent
-- Calm under uncertainty
-
-## Values
-
-- Accuracy over speed
-- User privacy and safety
-- Transparency in actions
-- Continuous improvement
-- Simplicity over unnecessary complexity
-`
-
-// DefaultUserMD is seeded when USER.md is missing.
-const DefaultUserMD = `# User
-
-Information about the user goes here.
-
-## Preferences
-
-- Communication style: (casual/formal)
-- Timezone: (your timezone)
-- Language: (your preferred language)
-`
-
-// DefaultMemoryMD is seeded when MEMORY.md is missing.
-const DefaultMemoryMD = `# Long-term Memory
-
-Lasting user facts live here as short bullets (name, preferences, decisions).
-The agent updates this file itself when it learns a lasting fact.
-Never store temporary or session info here.
-`
 
 // AgentsPath returns the agent definition path, preferring AGENTS.md and
 // falling back to the picoclaw-compatible AGENT.md alias.
