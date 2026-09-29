@@ -20,16 +20,16 @@ const (
 	DefaultHistoryTokLimit = 30000
 	DefaultExecTimeoutSec  = 60
 	MaxExecTimeoutSec      = 300
-	// DefaultHealthHost/Port: health check HTTP saja (GET /healthz).
+	// DefaultHealthHost/Port: HTTP health check only (GET /health).
 	DefaultHealthHost = "0.0.0.0"
 	DefaultHealthPort = 8080
-	// DefaultToolsPreview: tampilkan tools yang dipakai AI secara live.
+	// DefaultToolsPreview: show live tool calls via message edits.
 	DefaultToolsPreview = true
-	// DefaultLoopDelaySeconds: jeda antar loop/iterasi agent.
+	// DefaultLoopDelaySeconds: pause between agent loop iterations.
 	DefaultLoopDelaySeconds = 3
 	MaxLoopDelaySeconds     = 60
-	// DefaultExecMemoryMB: budget RAM grup proses exec (default = minimal 64MB).
-	// Lebih dari ini → grup proses di-kill. Wajib di VPS kecil.
+	// DefaultExecMemoryMB: RAM budget per exec process group (default = minimum 64MB).
+	// Over-budget groups are killed. Required on small VPS.
 	DefaultExecMemoryMB = 64
 	MinExecMemoryMB     = 64
 	// DefaultTimezone is the IANA name used for wall-clock schedules.
@@ -48,7 +48,7 @@ type ModelConfig struct {
 
 type Config struct {
 	TelegramBotToken string `json:"telegram_bot_token"`
-	// TelegramAllowedUsers: allowlist ID user Telegram. Kosong = semua boleh.
+	// TelegramAllowedUsers: Telegram user ID allowlist. Empty = everyone allowed.
 	TelegramAllowedUsers []int64     `json:"telegram_allowed_users"`
 	Model                ModelConfig `json:"model"`
 	Workspace            string      `json:"workspace"`
@@ -58,16 +58,16 @@ type Config struct {
 	RestrictWorkspace bool `json:"restrict_workspace"`
 	MaxIterations     int  `json:"max_iterations"`
 	HistoryTokenLimit int  `json:"history_token_limit"`
-	// Host/Port hanya untuk health check HTTP (GET /healthz).
+	// Host/Port for the HTTP health check only (GET /health).
 	Host string `json:"host"`
 	Port int    `json:"port"`
-	// ToolsPreview: bila true (default), bot menampilkan live tools apa yang
-	// dipakai AI via edit message. Pointer agar "tidak diisi" = true.
+	// ToolsPreview: when true (default), the bot live-displays tool calls
+	// via message edits. Pointer so unset means true.
 	ToolsPreview *bool `json:"tools_preview"`
-	// LoopDelaySeconds: jeda antar loop/iterasi agent (default 3, maks 60).
+	// LoopDelaySeconds: pause between agent loop iterations (default 3, max 60).
 	LoopDelaySeconds int `json:"loop_delay_seconds"`
-	// ExecMemoryMB: budget RAM untuk tiap perintah exec (default = min 64).
-	// Grup proses yang lewat budget langsung di-kill (linux).
+	// ExecMemoryMB: RAM budget per exec command (default = min 64).
+	// Over-budget process groups are killed (linux).
 	ExecMemoryMB int `json:"exec_memory_mb"`
 	// SkillsMode controls skill injection into the system prompt,
 	// picoclaw turn_profile.skills-like: "" or "default" = full catalog +

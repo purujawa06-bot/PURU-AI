@@ -39,9 +39,11 @@ const MaxSummaries = 20
 // English system prompt.
 const summarizePrompt = `Summarize the conversation below into concise markdown (max ~400 words). ` +
 	`Focus on extracting lasting facts, task progress, and pending items. ` +
-	`Sections: ## Key facts (stable user info, preferences, decisions), ` +
-	`## Done (tasks completed + specific outcomes), ## Pending (open tasks, unanswered questions), ` +
-	`## Notes (technical details or context for future turns). Skip empty sections. No preamble, just the markdown.\n\n`
+	`Sections: ## Key facts (stable user info, preferences, decisions with reasons), ` +
+	`## Done (tasks completed + specific outcomes), ` +
+	`## Pending (open tasks, unanswered questions, ending with Next: immediate next step), ` +
+	`## Notes (gotchas, env quirks, tool limits for future turns). ` +
+	`Skip empty sections. No preamble, just the markdown.\n\n`
 
 type Manager struct {
 	Workspace string
@@ -82,7 +84,7 @@ func (m *Manager) Compact(ctx context.Context, msgs []*messages.Message) (string
 	if err != nil {
 		return "", err
 	}
-	rel, err := m.saveSummary(summary)
+	rel, err := m.saveSummary(summary, len(live))
 	if err != nil {
 		return "", err
 	}
@@ -152,6 +154,9 @@ func historyText(msgs []*messages.Message) string {
 func (m *Manager) Latest() string { return LatestSummary(m.Workspace) }
 
 // LatestSummary reads the newest *.md summary in <workspace>/memory/context.
+// Newest means highest filename (YYYY-MM-DD_HH-MM-SS sort lexicographically),
+// not ModTime, so copies and clock skew cannot reorder history. The machine
+// header prepended by saveSummary is stripped to save prompt tokens.
 func LatestSummary(workspace string) string {
 	dir := filepath.Join(workspace, "memory", "context")
 	entries, err := os.ReadDir(dir)
@@ -159,18 +164,13 @@ func LatestSummary(workspace string) string {
 		return ""
 	}
 	best := ""
-	var bestMod time.Time
 	for _, e := range entries {
 		n := e.Name()
 		if e.IsDir() || !strings.HasSuffix(n, ".md") {
 			continue
 		}
-		info, err := e.Info()
-		if err != nil {
-			continue
-		}
-		if best == "" || info.ModTime().After(bestMod) {
-			best, bestMod = n, info.ModTime()
+		if n > best {
+			best = n
 		}
 	}
 	if best == "" {
@@ -180,17 +180,33 @@ func LatestSummary(workspace string) string {
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(string(b))
+	return strings.TrimSpace(stripSummaryHeader(string(b)))
+}
+
+// stripSummaryHeader drops the machine-generated "<!-- Created: ... -->" first
+// line prepended by saveSummary so it never wastes prompt tokens.
+func stripSummaryHeader(s string) string {
+	s = strings.TrimSpace(s)
+	if !strings.HasPrefix(s, "<!-- Created:") {
+		return s
+	}
+	if i := strings.Index(s, "-->"); i >= 0 {
+		return strings.TrimSpace(s[i+3:])
+	}
+	return s
 }
 
 // saveSummary writes the file (deduping name collisions on same-second
 // compactions) and returns the workspace-relative path with forward slashes.
-func (m *Manager) saveSummary(summary string) (string, error) {
+// It prepends a machine-generated HTML comment with creation time and
+// message count, so the model reading the summary knows its scope.
+func (m *Manager) saveSummary(summary string, msgCount int) (string, error) {
 	dir := m.ContextDir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
-	stamp := time.Now().Format("2006-01-02_15-04-05")
+	now := time.Now()
+	stamp := now.Format("2006-01-02_15-04-05")
 	name := stamp + ".md"
 	for i := 2; ; i++ {
 		if _, err := os.Stat(filepath.Join(dir, name)); os.IsNotExist(err) {
@@ -198,7 +214,9 @@ func (m *Manager) saveSummary(summary string) (string, error) {
 		}
 		name = stamp + "-" + strconv.Itoa(i) + ".md"
 	}
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(summary), 0o644); err != nil {
+	header := "<!-- Created: " + now.Format("2006-01-02 15:04:05") +
+		", covers ~" + strconv.Itoa(msgCount) + " msgs -->\n"
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(header+summary), 0o644); err != nil {
 		return "", err
 	}
 	return "memory/context/" + name, nil
@@ -206,40 +224,27 @@ func (m *Manager) saveSummary(summary string) (string, error) {
 
 // prune deletes oldest files beyond MaxSummaries newest (best-effort).
 // Old .json dumps (from before the summarize era) count toward the cap
-// too so they age out naturally.
+// too so they age out naturally. Newest means highest filename, not ModTime.
 func (m *Manager) prune() {
 	entries, err := os.ReadDir(m.ContextDir())
 	if err != nil {
 		return
 	}
-	type fi struct {
-		name string
-		mod  time.Time
-	}
-	var files []fi
+	var files []string
 	for _, e := range entries {
 		n := e.Name()
 		if e.IsDir() || (!strings.HasSuffix(n, ".md") && !strings.HasSuffix(n, ".json")) {
 			continue
 		}
-		info, err := e.Info()
-		if err != nil {
-			continue
-		}
-		files = append(files, fi{n, info.ModTime()})
+		files = append(files, n)
 	}
 	if len(files) <= MaxSummaries {
 		return
 	}
-	sort.Slice(files, func(i, j int) bool {
-		if files[i].mod.Equal(files[j].mod) {
-			return files[i].name > files[j].name
-		}
-		return files[i].mod.After(files[j].mod)
-	})
-	for _, f := range files[MaxSummaries:] {
-		if err := os.Remove(filepath.Join(m.ContextDir(), f.name)); err != nil {
-			log.Printf("[memory] prune %s: %v", f.name, err)
+	sort.Strings(files)
+	for _, name := range files[:len(files)-MaxSummaries] {
+		if err := os.Remove(filepath.Join(m.ContextDir(), name)); err != nil {
+			log.Printf("[memory] prune %s: %v", name, err)
 		}
 	}
 }

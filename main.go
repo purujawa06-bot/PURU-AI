@@ -6,13 +6,13 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"runtime/debug"
-	"time"
+	"syscall"
 
 	"github.com/purujawa06-bot/PURU-AI/internal/ai"
 	"github.com/purujawa06-bot/PURU-AI/internal/app"
@@ -55,7 +55,8 @@ func main() {
 	agentSvc := &ai.Agent{Client: llm, Config: cfg, HTTP: hc, Telegram: tg}
 	appSvc := app.New(cfg, tg, histStore, agentSvc, memSvc)
 
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 	// Scheduled tasks runner (Picoclaw cron-like, default Asia/Jakarta).
 	go (&schedule.Runner{
 		Store: schedule.NewStore(cfg.Workspace),
@@ -63,7 +64,7 @@ func main() {
 			return appSvc.RunScheduledJob(runCtx, job)
 		},
 	}).Start(ctx)
-	// Health check saja (GET /health) — tidak blokir polling Telegram.
+	// Health endpoint only (GET /health) — never blocks Telegram polling.
 	go func() {
 		addr := health.Addr(cfg.Host, cfg.Port)
 		log.Printf("health: %s/health", addr)
@@ -85,33 +86,7 @@ func main() {
 		log.Printf("setMyCommands: %v", err)
 	}
 
-	var offset int64
-	conflicts := 0
-	for {
-		updates, err := tg.GetUpdates(ctx, offset, 40)
-		if err != nil {
-			var te *telegram.TelegramError
-			if errors.As(err, &te) && te.IsConflict() {
-				conflicts++
-				if conflicts >= 5 {
-					log.Printf("Conflict %dx — another instance is using the token. Exit.", conflicts)
-					os.Exit(1)
-				}
-				time.Sleep(10 * time.Second)
-				_ = tg.DeleteWebhook(ctx, true)
-				offset = 0
-				continue
-			}
-			log.Printf("getUpdates: %v", err)
-			time.Sleep(5 * time.Second)
-			continue
-		}
-		conflicts = 0
-		for _, u := range updates {
-			offset = u.UpdateID + 1
-			if err := appSvc.Handle(ctx, &u); err != nil {
-				log.Printf("handle %d: %v", u.UpdateID, err)
-			}
-		}
+	if err := app.PollUpdates(ctx, tg, appSvc.Handle); err != nil {
+		log.Fatalf("gateway: %v", err)
 	}
 }

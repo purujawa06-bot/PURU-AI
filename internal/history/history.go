@@ -64,7 +64,13 @@ func (s *Store) Set(chatID int64, msgs []*messages.Message) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.path(chatID), b, 0o644)
+	// Atomic write (tmp + rename) so a crash never leaves corrupt JSON.
+	path := s.path(chatID)
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, b, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }
 
 // Clear wipes history totally (used after memory compaction).
