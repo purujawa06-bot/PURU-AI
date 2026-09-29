@@ -75,9 +75,10 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           mkdir -p /tmp/promptdump
           cp "$GITHUB_WORKSPACE/SYSTEMPROMPT.md" /tmp/promptdump/SYSTEMPROMPT.md
+          rm -f "$GITHUB_WORKSPACE/SYSTEMPROMPT.md"
           git fetch origin debug-systemprompt || true
           if git rev-parse --verify origin/debug-systemprompt >/dev/null 2>&1; then
-            git checkout debug-systemprompt
+            git checkout -f debug-systemprompt
             git reset --hard origin/debug-systemprompt
           else
             git checkout --orphan debug-systemprompt

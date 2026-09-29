@@ -725,7 +725,7 @@ func Build(req Request) (string, error) {
 				Slot:    PromptSlotActiveSkill,
 				Source:  PromptSource{ID: PromptSourceActiveSkills, Name: "skill:active"},
 				Title:   "active skills",
-				Content: "## Active Skills\n\nThe following skills are already loaded and active for this request. Follow them when relevant. Do NOT call read_file for them; the full body is below.\n\nDo NOT create, modify, or delete files under skills/<active-name>/ while it is active — call stop_skill first. For NEW or INACTIVE skills, file tools are allowed following skill-creator.\n\n" + bodies,
+				Content: "## Active Skills\n\nThe following skills are already loaded and active for this request. Follow them when relevant. Do NOT call read_file for them; the full body is below.\n\nDo NOT create, modify, or delete files under skills/<active-name>/ while it is active — call stop_skill first. For NEW or INACTIVE skills, file tools remain allowed.\n\n" + bodies,
 				Stable:  false,
 				Cache:   PromptCacheNone,
 			})
