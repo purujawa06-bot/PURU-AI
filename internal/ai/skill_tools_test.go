@@ -111,3 +111,38 @@ func TestStopSkillRequiresChatScope(t *testing.T) {
 		t.Fatalf("stop without chat scope must fail, got %v", out)
 	}
 }
+
+func TestActiveSkillDirectEditAllowed(t *testing.T) {
+	ws := t.TempDir()
+	if err := workspace.Ensure(ws); err != nil {
+		t.Fatal(err)
+	}
+	seedFrontmatter(t, ws, "---\nskills: [find-skills]\n---\n\n# Agent\n")
+	a := skillTestAgent(ws)
+	tools := BuildTools(a, &ProcessOptions{ChatID: 42})
+	ctx := context.Background()
+	if out, _ := tools["write_file"].Run(ctx, map[string]any{"path": "skills/find-skills/notes.md", "content": "hi"}); hasErrPicoclaw(out) {
+		t.Fatalf("write to active skill must be allowed, got %v", out)
+	}
+	if out, _ := tools["read_file"].Run(ctx, map[string]any{"path": "skills/find-skills/SKILL.md"}); hasErrPicoclaw(out) {
+		t.Fatalf("read of active SKILL.md must be allowed, got %v", out)
+	}
+}
+
+func TestUseSkillEmptyBody(t *testing.T) {
+	ws := t.TempDir()
+	skillDir := filepath.Join(ws, "skills", "empty-skill")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "---\nname: empty-skill\ndescription: Empty body skill.\nversion: 1.0.0\n---\n"
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a := skillTestAgent(ws)
+	tools := BuildTools(a, &ProcessOptions{ChatID: 42})
+	out, _ := tools["use_skill"].Run(context.Background(), map[string]any{"name": "empty-skill"})
+	if hasErrPicoclaw(out) {
+		t.Fatalf("frontmatter-only skill must activate, got %v", out)
+	}
+}

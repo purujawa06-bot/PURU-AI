@@ -63,13 +63,15 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 		return map[string]any{"success": false, "error": err.Error()}, nil
 	}
 	tools := map[string]*Tool{
-		"read_file": mk("read_file", "Read a file.",
+		"read_file": mk("read_file", "Read a file. Reading skills/<name>/SKILL.md is allowed for debugging, including active skills.",
 			objSchema([]string{"path"}, map[string]any{
 				"path":   strProp("Path to the file to read."),
 				"offset": intProp("Byte offset to start reading from.", 0),
 				"length": intProp("Maximum number of bytes to read.", maxReadFileSize),
 			}),
 			func(ctx context.Context, args map[string]any) (any, error) {
+				// Active skills stay readable: use_skill remains the
+				// preferred loader, read_file is kept for debugging.
 				length := int64(maxReadFileSize)
 				if _, ok := args["length"]; ok {
 					length = argInt(args, "length")
@@ -80,19 +82,16 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				}
 				return text, nil
 			}),
-		"write_file": mk("write_file", "Write content to a file.",
+		"write_file": mk("write_file", "Write content to a file. Fails when the file already exists unless overwrite=true; use edit_file_* or append_file for partial changes.",
 			objSchema([]string{"path", "content"}, map[string]any{
 				"path":      strProp("Path to the file to write"),
 				"content":   strProp("Content to write to the file."),
-				"overwrite": boolProp("Set to true to replace an existing file in full. This discards the file's current contents.", false),
+				"overwrite": boolProp("Set to true to replace an existing file in full, for example {\"path\": \"notes.txt\", \"content\": \"...\", \"overwrite\": true}. This discards the file's current contents.", false),
 			}),
 			func(ctx context.Context, args map[string]any) (any, error) {
 				content, ok := args["content"].(string)
 				if !ok {
 					return errVal(fmt.Errorf("content is required"))
-				}
-				if name, ok := isActiveSkillPath(a, opts, argStr(args, "path")); ok {
-					return errVal(fmt.Errorf("skill %q is active; call stop_skill first, then edit", name))
 				}
 				if err := writeLocalFile(ws, restrict, argStr(args, "path"), content, argBool(args, "overwrite")); err != nil {
 					return errVal(err)
@@ -125,9 +124,6 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				if !ok {
 					return errVal(fmt.Errorf("new_text is required"))
 				}
-				if name, ok := isActiveSkillPath(a, opts, argStr(args, "path")); ok {
-					return errVal(fmt.Errorf("skill %q is active; call stop_skill first, then edit", name))
-				}
 				if err := editLocalFile(ws, restrict, argStr(args, "path"), oldText, newText); err != nil {
 					return errVal(err)
 				}
@@ -150,9 +146,6 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				if end <= 0 {
 					end = start
 				}
-				if name, ok := isActiveSkillPath(a, opts, argStr(args, "path")); ok {
-					return errVal(fmt.Errorf("skill %q is active; call stop_skill first, then edit", name))
-				}
 				if err := editLocalFileByLine(ws, restrict, argStr(args, "path"), start, end, newText); err != nil {
 					return errVal(err)
 				}
@@ -167,9 +160,6 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				patch, ok := args["patch"].(string)
 				if !ok || strings.TrimSpace(patch) == "" {
 					return errVal(fmt.Errorf("patch is required"))
-				}
-				if name, ok := isActiveSkillPath(a, opts, argStr(args, "path")); ok {
-					return errVal(fmt.Errorf("skill %q is active; call stop_skill first, then edit", name))
 				}
 				res, err := editLocalFileApplyPatch(ws, restrict, argStr(args, "path"), patch)
 				if err != nil {
@@ -186,9 +176,6 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				content, ok := args["content"].(string)
 				if !ok {
 					return errVal(fmt.Errorf("content is required"))
-				}
-				if name, ok := isActiveSkillPath(a, opts, argStr(args, "path")); ok {
-					return errVal(fmt.Errorf("skill %q is active; call stop_skill first, then edit", name))
 				}
 				if err := appendLocalFile(ws, restrict, argStr(args, "path"), content); err != nil {
 					return errVal(err)
@@ -243,9 +230,6 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 					command := argStr(args, "command")
 					if command == "" {
 						return errVal(fmt.Errorf("command is required for action \"run\""))
-					}
-					if name, ok := rejectActiveSkillExec(a, opts, command); ok {
-						return errVal(fmt.Errorf("skill %q is active; call stop_skill first, then edit", name))
 					}
 					dir, err := resolveWorkdir(ws, restrict, argStr(args, "cwd"))
 					if err != nil {

@@ -499,7 +499,7 @@ func writeLocalFile(workspace string, restrict bool, p, content string, overwrit
 			return fmt.Errorf("cannot write: %s is a directory. Use list_dir to see its contents", p)
 		}
 		if !overwrite {
-			return fmt.Errorf("file: %s already exists. To add to it or change part of it without losing the current contents, use append_file, edit_file_replace_string, edit_file_replace_line, or edit_file_apply_patch. Only set overwrite=true if you intend to replace the entire file.", p)
+			return fmt.Errorf("file %q already exists with overwrite=false. To replace the whole file pass overwrite=true, for example {\"path\": %q, \"content\": \"...\", \"overwrite\": true}. To keep the current contents, use append_file to add or edit_file_replace_string, edit_file_replace_line, or edit_file_apply_patch for partial changes.", p, p)
 		}
 	}
 	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {

@@ -13,10 +13,10 @@ Use this skill when the task needs specialized knowledge or a workflow that no i
 
 ## Search
 
-Run via the exec tool (URL-encode the query, `+` for spaces):
+Use the web_fetch tool (URL-encode the query, `+` for spaces):
 
-```bash
-curl -X GET "https://puruboy-api.vercel.app/api/agent-tools/find-skills?query=<keywords>&limit=5"
+```
+https://puruboy-api.vercel.app/api/agent-tools/find-skills?query=<keywords>&limit=5
 ```
 
 Replace `<keywords>` with short task keywords (for example `web+design`). The JSON response lists candidate skills with `name`, `source`, and `skill` fields.
@@ -25,19 +25,21 @@ Pick the candidate whose description best matches the task. If none matches, ans
 
 ## Install
 
-Fetch the chosen skill via the exec tool:
+Fetch the chosen skill with the web_fetch tool:
 
-```bash
-curl -X GET "https://puruboy-api.vercel.app/api/agent-tools/install-skills?source=<source>&skill=<skill>"
+```
+https://puruboy-api.vercel.app/api/agent-tools/install-skills?source=<source>&skill=<skill>
 ```
 
 Example:
 
-```bash
-curl -X GET "https://puruboy-api.vercel.app/api/agent-tools/install-skills?source=vercel-labs/agent-skills&skill=web-design-guidelines"
+```
+https://puruboy-api.vercel.app/api/agent-tools/install-skills?source=vercel-labs/agent-skills&skill=web-design-guidelines
 ```
 
 Save the returned markdown to `skills/<skill>/SKILL.md` with the write_file tool, then verify with list_dir and read_file.
+
+Fallback: only when web_fetch is unavailable, the same URLs may be fetched via `exec` with `curl -X GET "<url>"` (curl is not guaranteed in every environment).
 
 ## Rules
 

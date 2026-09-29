@@ -60,6 +60,8 @@ func effectiveActiveSkills(a *Agent, opts *ProcessOptions) []string {
 
 // isActiveSkillPath reports whether p points inside skills/<name>/... where
 // name is currently active (frontmatter or runtime) for this chat.
+// Detection helper only: file tools no longer block these paths since
+// direct edits of active skills are allowed (they take effect next turn).
 func isActiveSkillPath(a *Agent, opts *ProcessOptions, p string) (string, bool) {
 	ws := ""
 	if a != nil && a.Config != nil {
@@ -81,10 +83,10 @@ func isActiveSkillPath(a *Agent, opts *ProcessOptions, p string) (string, bool) 
 	return "", false
 }
 
-// rejectActiveSkillExec blocks shell commands that would modify an active
-// skill tree. Read-only inspection (ls, cat, grep) stays allowed; destructive
-// or write-like commands referencing skills/<active>/ are rejected with a
-// stop_skill hint. This is heuristic, the file-tool guard is authoritative.
+// rejectActiveSkillExec detects shell commands that would modify an active
+// skill tree. Detection helper only: exec no longer blocks these commands
+// since direct edits of active skills are allowed. Read-only inspection
+// (ls, cat, grep) was always allowed.
 func rejectActiveSkillExec(a *Agent, opts *ProcessOptions, command string) (string, bool) {
 	cmd := strings.TrimSpace(command)
 	if cmd == "" {
@@ -141,8 +143,11 @@ func buildSkillTools(a *Agent, opts *ProcessOptions, mk func(string, string, map
 				return errVal(fmt.Errorf("skill %q is blocked by skills policy", canonical))
 			}
 			body, ok := workspace.LoadSkill(ws, canonical)
-			if !ok || strings.TrimSpace(body) == "" {
+			if !ok {
 				return errVal(fmt.Errorf("skill %q has no readable SKILL.md", canonical))
+			}
+			if strings.TrimSpace(body) == "" {
+				body = "(No extended instructions in SKILL.md; name and description from the catalog apply.)"
 			}
 			chatID := int64(0)
 			if opts != nil {

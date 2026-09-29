@@ -705,7 +705,7 @@ func Build(req Request) (string, error) {
 		if catalog := workspace.BuildSkillsSummaryExcluding(req.Workspace, policy, activeNames); catalog != "" {
 			intro := "The following skills extend your capabilities. They are NOT loaded: only name and description are shown."
 			if includeToolUseRule && promptAllowsTool(req, "use_skill") {
-				intro += " To use a skill, call use_skill with its exact <name>. Do NOT read its SKILL.md with read_file; the full body loads automatically when active."
+				intro += " To use a skill, call use_skill with its exact <name>; the full body loads automatically when active. Direct read_file of its SKILL.md is allowed for initial debugging but duplicates the body shown below."
 			}
 			add(PromptPart{
 				ID:      "capability.skill_catalog",
@@ -725,7 +725,7 @@ func Build(req Request) (string, error) {
 				Slot:    PromptSlotActiveSkill,
 				Source:  PromptSource{ID: PromptSourceActiveSkills, Name: "skill:active"},
 				Title:   "active skills",
-				Content: "## Active Skills\n\nThe following skills are already loaded and active for this request. Follow them when relevant. Do NOT call read_file for them; the full body is below.\n\nDo NOT create, modify, or delete files under skills/<active-name>/ while it is active — call stop_skill first. For NEW or INACTIVE skills, file tools remain allowed.\n\n" + bodies,
+				Content: "## Active Skills\n\nThe following skills are already loaded and active for this request. Follow them when relevant. The full body is below; direct read_file stays allowed for debugging.\n\nYou may create, modify, or delete files under skills/<active-name>/ directly; edits take effect from the next turn while this turn keeps the body shown below.\n\n" + bodies,
 				Stable:  false,
 				Cache:   PromptCacheNone,
 			})

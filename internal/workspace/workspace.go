@@ -497,20 +497,29 @@ func escapeXML(s string) string {
 }
 
 // skillMetadata extracts the SKILL.md name and description from YAML
-// frontmatter (name:, description:), falling back to the directory name
+// frontmatter (name: or slug: alias, description:), ignoring all unknown
+// fields (version:, metadata:, etc). It falls back to the directory name
 // and the first body line.
 func skillMetadata(dirName, content string) (name, description string) {
 	frontmatter, body := splitFrontmatter(content)
 	name = dirName
+	slug := ""
 	description = ""
 	for _, line := range strings.Split(frontmatter, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if rest, ok := cutPrefixFold(trimmed, "name:"); ok && strings.TrimSpace(rest) != "" {
 			name = strings.Trim(strings.TrimSpace(rest), `"'`)
 		}
+		if rest, ok := cutPrefixFold(trimmed, "slug:"); ok && strings.TrimSpace(rest) != "" {
+			slug = strings.Trim(strings.TrimSpace(rest), `"'`)
+		}
 		if rest, ok := cutPrefixFold(trimmed, "description:"); ok && strings.TrimSpace(rest) != "" {
 			description = strings.Trim(strings.TrimSpace(rest), `"'`)
 		}
+	}
+	// Clawic-style frontmatter uses slug: instead of name:.
+	if strings.EqualFold(name, dirName) && slug != "" {
+		name = slug
 	}
 	if description != "" {
 		return name, description
@@ -529,7 +538,9 @@ func skillMetadata(dirName, content string) (name, description string) {
 }
 
 // splitFrontmatter splits a leading "---" YAML frontmatter block from the
-// body, returning ("", content) when no block is present.
+// body, returning ("", content) when no block is present. Both "---" and
+// "..." close the block; unknown fields inside are left untouched for the
+// caller to ignore.
 func splitFrontmatter(content string) (frontmatter, body string) {
 	normalized := strings.ReplaceAll(content, "\r\n", "\n")
 	lines := strings.Split(normalized, "\n")
@@ -538,7 +549,8 @@ func splitFrontmatter(content string) (frontmatter, body string) {
 	}
 	end := -1
 	for i := 1; i < len(lines); i++ {
-		if strings.TrimSpace(lines[i]) == "---" {
+		trimmed := strings.TrimSpace(lines[i])
+		if trimmed == "---" || trimmed == "..." {
 			end = i
 			break
 		}
