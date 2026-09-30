@@ -185,4 +185,4 @@ gofmt -s -w .
 Distributed under the **MIT License**. See `LICENSE` for details.
 
 ---
-<p align="center">Made with ❤️ by <b>Ricky</b> & <b>Cia</b></p>
+<p align="center">Made with Ricky & PuruClaw 🦞</p>
