@@ -1,6 +1,6 @@
 go: downloading github.com/tmc/langchaingo v0.1.14
-go: downloading github.com/tiktoken-go/tokenizer v0.8.1
 go: downloading github.com/mymmrac/telego v1.11.0
+go: downloading github.com/tiktoken-go/tokenizer v0.8.1
 go: downloading github.com/pkoukk/tiktoken-go v0.1.6
 go: downloading go.starlark.net v0.0.0-20230302034142-4b1e35fe2254
 go: downloading github.com/Masterminds/sprig/v3 v3.2.3
