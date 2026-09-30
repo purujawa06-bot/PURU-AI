@@ -14,7 +14,7 @@ FROM alpine:3.20
 
 # tini as PID 1 reaps orphaned exec grandchildren (git, tar, ssl_client)
 # that outlive their shell on timeout/kill so they never pile up as zombies.
-RUN apk add --no-cache ca-certificates tzdata tini
+RUN apk add --no-cache ca-certificates tzdata tini git curl github-cli
 
 WORKDIR /app
 COPY --from=build /app/puru-ai .

@@ -48,16 +48,31 @@ func TestToolSchemasValid(t *testing.T) {
 
 func TestToolCount(t *testing.T) {
 	tools := BuildTools(testAgent(t.TempDir()), nil)
-	if len(tools) != 16 {
-		t.Fatalf("tools = %d, want exactly 16", len(tools))
+	if len(tools) != 15 {
+		t.Fatalf("tools = %d, want exactly 15 (web_search opt-in)", len(tools))
 	}
-	for _, n := range []string{"read_file", "write_file", "list_dir", "edit_file_replace_string", "edit_file_replace_line", "edit_file_apply_patch", "append_file", "exec", "telegram_sendfile", "telegram_getuser", "get_env", "web_search", "web_fetch", "schedule", "use_skill", "stop_skill"} {
+	for _, n := range []string{"read_file", "write_file", "list_dir", "edit_file_replace_string", "edit_file_replace_line", "edit_file_apply_patch", "append_file", "exec", "telegram_sendfile", "telegram_getuser", "get_env", "web_fetch", "schedule", "use_skill", "stop_skill"} {
 		if tools[n] == nil {
 			t.Fatalf("tool %s missing", n)
 		}
 	}
+	if tools["web_search"] != nil {
+		t.Fatalf("web_search must be absent by default (opt-in via web_search.aistudio)")
+	}
 	if tools["edit_file"] != nil {
 		t.Fatalf("legacy tool edit_file must be gone")
+	}
+	// Opt-in: active aistudio adds web_search as the 16th tool.
+	searchAgent := testAgent(t.TempDir())
+	searchAgent.Config.WebSearch.AIStudio.Active = true
+	searchAgent.Config.WebSearch.AIStudio.Model = "gemini-2.5-flash"
+	searchAgent.Config.WebSearch.AIStudio.APIKey = "test-key"
+	enabled := BuildTools(searchAgent, nil)
+	if len(enabled) != 16 {
+		t.Fatalf("enabled tools = %d, want 16", len(enabled))
+	}
+	if enabled["web_search"] == nil {
+		t.Fatalf("web_search missing when aistudio active")
 	}
 }
 

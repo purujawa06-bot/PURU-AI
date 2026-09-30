@@ -501,6 +501,10 @@ func toolArgPreview(name string, args map[string]any) string {
 		return previewStr(args["name"])
 	case "exec":
 		return previewStr(args["command"])
+	case "web_search":
+		return previewStr(args["query"])
+	case "web_fetch":
+		return previewStr(args["url"])
 	default:
 		return ""
 	}

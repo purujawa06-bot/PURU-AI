@@ -165,3 +165,50 @@ func TestSkillsMode(t *testing.T) {
 		t.Errorf("unknown skills_mode must be rejected")
 	}
 }
+
+func TestWebSearchDefaultsDisabled(t *testing.T) {
+	p := writeCfg(t, `{"telegram_bot_token":"x","model":{"base_url":"http://m/v1","model":"puru"}}`)
+	c, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.WebSearchEnabled() {
+		t.Errorf("web_search default harus disabled")
+	}
+}
+
+func TestWebSearchAIStudioEnabled(t *testing.T) {
+	p := writeCfg(t, `{"telegram_bot_token":"x","model":{"base_url":"http://m/v1","model":"puru"},"web_search":{"aistudio":{"active":true,"model":"gemini-2.5-flash","api_key":"k123"}}}`)
+	c, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.WebSearchEnabled() {
+		t.Errorf("web_search active dengan model+key harus enabled")
+	}
+	if c.WebSearch.AIStudio.Model != "gemini-2.5-flash" {
+		t.Errorf("model = %q", c.WebSearch.AIStudio.Model)
+	}
+	// Alternate "apikey" spelling must also load.
+	p = writeCfg(t, `{"telegram_bot_token":"x","model":{"base_url":"http://m/v1","model":"puru"},"web_search":{"aistudio":{"active":true,"model":"gemma-4-31b-it","apikey":"k456"}}}`)
+	c, err = Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.WebSearchEnabled() || c.WebSearch.AIStudio.APIKey != "k456" {
+		t.Errorf("apikey spelling harus diterima: %+v", c.WebSearch.AIStudio)
+	}
+	// Missing key stays disabled.
+	p = writeCfg(t, `{"telegram_bot_token":"x","model":{"base_url":"http://m/v1","model":"puru"},"web_search":{"aistudio":{"active":true,"model":"gemini-2.5-flash"}}}`)
+	c, err = Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.WebSearchEnabled() {
+		t.Errorf("tanpa api key harus disabled")
+	}
+	var nilCfg *Config
+	if nilCfg.WebSearchEnabled() {
+		t.Errorf("nil cfg harus disabled")
+	}
+}

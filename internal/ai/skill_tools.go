@@ -119,7 +119,7 @@ func rejectActiveSkillExec(a *Agent, opts *ProcessOptions, command string) (stri
 // buildSkillTools returns the use_skill / stop_skill tools sharing the same
 // mk/errVal helpers as the file tools.
 func buildSkillTools(a *Agent, opts *ProcessOptions, mk func(string, string, map[string]any, func(context.Context, map[string]any) (any, error)) *Tool, errVal func(error) (any, error)) map[string]*Tool {
-	useSkill := mk("use_skill", "Activate an installed skill by name. The full SKILL.md body loads automatically into Active Skills on this and following turns. Use for skills listed in the <skills> catalog; already-active skills need no call.",
+	useSkill := mk("use_skill", "Activate a skill by name.",
 		objSchema([]string{"name"}, map[string]any{
 			"name": strProp("Exact skill <name> from the <skills> catalog (case-insensitive)."),
 		}),
@@ -170,7 +170,7 @@ func buildSkillTools(a *Agent, opts *ProcessOptions, mk func(string, string, map
 			}
 			return fmt.Sprintf("Skill %q activated. Its full body is now injected as Active Skills and stays active until stop_skill.\n\n%s", canonical, body), nil
 		})
-	stopSkill := mk("stop_skill", "Deactivate a runtime-active skill so its body is no longer injected. Frontmatter defaults stay active; only runtime use_skill state is removed.",
+	stopSkill := mk("stop_skill", "Deactivate an active skill.",
 		objSchema([]string{"name"}, map[string]any{
 			"name": strProp("Active skill name to deactivate (case-insensitive)."),
 		}),

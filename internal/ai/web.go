@@ -1,10 +1,13 @@
-// Web tools (stdlib only): web_search via PuruBoy Search API
-// (https://puruboy-api.vercel.app/api/search/web), web_fetch via PuruBoy
-// Fetch API (https://puruboy-api.vercel.app/api/agent-tools/web-fetch).
+// Web tools: web_search via Google AI Studio (Gemini API with googleSearch
+// grounding, third-party, opt-in via config web_search.aistudio),
+// web_fetch direct (stdlib net/http, no external API).
+// web_search is removed from the tool list unless web_search.aistudio.active
+// is true with model + api key set. No PuruBoy API anywhere.
 // No new dependencies.
 package ai
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -16,21 +19,26 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/purujawa06-bot/PURU-AI/internal/config"
 )
 
 const (
 	webSearchTimeout = 60 * time.Second
 	webFetchTimeout  = 120 * time.Second
 	defaultSearchN   = 5
-	// Default paginated fetch length (PuruBoy Fetch API length param).
+	// Default paginated fetch length (chars).
 	defaultFetchLength = 5000
 	webBrowserUA       = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
 )
 
-// puruSearchAPIBase and puruFetchAPIBase are vars (not consts) so tests
-// can point them at httptest servers.
-var puruSearchAPIBase = "https://puruboy-api.vercel.app/api/search/web"
-var puruFetchAPIBase = "https://puruboy-api.vercel.app/api/agent-tools/web-fetch"
+// aistudioAPIBase is a var (not const) so tests
+// can point it at httptest servers.
+var aistudioAPIBase = "https://generativelanguage.googleapis.com/v1beta"
+
+// allowPrivateFetchHost lets tests point direct fetch at httptest servers
+// (127.0.0.1). Always false in production.
+var allowPrivateFetchHost = false
 
 type webResult struct {
 	Title   string
@@ -38,30 +46,47 @@ type webResult struct {
 	Snippet string
 }
 
-type puruSearchResult struct {
-	Title   string  `json:"title"`
-	URL     string  `json:"url"`
-	Snippet *string `json:"snippet"`
+// aistudioContent is one Gemini generateContent message.
+type aistudioContent struct {
+	Role  string         `json:"role"`
+	Parts []aistudioPart `json:"parts"`
 }
 
-type puruSearchResponse struct {
-	Success bool               `json:"success"`
-	Error   string             `json:"error"`
-	Results []puruSearchResult `json:"results"`
+type aistudioPart struct {
+	Text string `json:"text"`
 }
 
-type puruFetchResponse struct {
-	Success         bool   `json:"success"`
-	Error           string `json:"error"`
-	URL             string `json:"url"`
-	FinalURL        string `json:"final_url"`
-	ContentType     string `json:"content_type"`
-	TotalLength     int    `json:"total_length"`
-	Offset          int    `json:"offset"`
-	Length          int    `json:"length"`
-	RequestedLength int    `json:"requested_length"`
-	HasMore         bool   `json:"has_more"`
-	Content         string `json:"content"`
+type aistudioGenerateRequest struct {
+	Contents []aistudioContent `json:"contents"`
+	Tools    []map[string]any `json:"tools"`
+}
+
+type aistudioWebLink struct {
+	URI   string `json:"uri"`
+	Title string `json:"title"`
+}
+
+type aistudioChunk struct {
+	Web *aistudioWebLink `json:"web"`
+}
+
+type aistudioCandidate struct {
+	Content struct {
+		Parts []aistudioPart `json:"parts"`
+		Role  string         `json:"role"`
+	} `json:"content"`
+	GroundingMetadata struct {
+		GroundingChunks []aistudioChunk `json:"groundingChunks"`
+	} `json:"groundingMetadata"`
+}
+
+type aistudioResponse struct {
+	Candidates []aistudioCandidate `json:"candidates"`
+	Error      *struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Status  string `json:"status"`
+	} `json:"error"`
 }
 
 var (
@@ -130,7 +155,7 @@ func validateFetchURL(raw string) (string, error) {
 		return "", fmt.Errorf("url must have a host")
 	}
 	host := u.Hostname()
-	if isPrivateHost(host) {
+	if !allowPrivateFetchHost && isPrivateHost(host) {
 		return "", fmt.Errorf("local/private host rejected: %s", host)
 	}
 	return s, nil
@@ -178,80 +203,149 @@ func stripHTMLToText(s string) string {
 	return webSpaceRe.ReplaceAllString(strings.TrimSpace(s), " ")
 }
 
-// puruSearchURL builds the PuruBoy Search API URL:
-// GET {base}?query=...&limit=...
-func puruSearchURL(query string, limit int) string {
-	v := url.Values{}
-	v.Set("query", strings.TrimSpace(query))
-	v.Set("limit", fmt.Sprintf("%d", limit))
-	return strings.TrimRight(puruSearchAPIBase, "/") + "?" + v.Encode()
+// aistudioSearchURL builds the Gemini generateContent URL for a model:
+// POST {base}/models/{model}:generateContent?key=...
+func aistudioSearchURL(model string) string {
+	base := strings.TrimRight(strings.TrimSpace(aistudioAPIBase), "/")
+	model = strings.TrimSpace(model)
+	if strings.HasPrefix(model, "models/") {
+		model = strings.TrimPrefix(model, "models/")
+	}
+	return base + "/models/" + model + ":generateContent"
 }
 
-// fetchPuruSearch calls the PuruBoy Search API and maps results to webResult.
-// Snippet may be null or contain HTML — it is stripped to plain text.
-func fetchPuruSearch(ctx context.Context, query string, limit int) ([]webResult, error) {
-	ectx, cancel := context.WithTimeout(ctx, 25*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ectx, "GET", puruSearchURL(query, limit), nil)
+// fetchAIStudioSearch calls Google AI Studio (Gemini API) with the
+// googleSearch grounding tool and maps the answer + grounding chunks
+// to webResult. The model name is free-form (any AI Studio model that
+// supports googleSearch, e.g. gemini-2.5-flash or gemma-4-31b-it).
+func fetchAIStudioSearch(ctx context.Context, cfg config.AIStudioSearchConfig, query string, limit int) ([]webResult, error) {
+	model := strings.TrimSpace(cfg.Model)
+	key := strings.TrimSpace(cfg.APIKey)
+	if model == "" || key == "" {
+		return nil, fmt.Errorf("web_search aistudio model/api key is not configured")
+	}
+	payload, err := json.Marshal(aistudioGenerateRequest{
+		Contents: []aistudioContent{{
+			Role:  "user",
+			Parts: []aistudioPart{{Text: strings.TrimSpace(query)}},
+		}},
+		Tools: []map[string]any{{"googleSearch": map[string]any{}}},
+	})
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", webBrowserUA)
+	ectx, cancel := context.WithTimeout(ctx, webSearchTimeout)
+	defer cancel()
+	endpoint := aistudioSearchURL(model) + "?key=" + url.QueryEscape(key)
+	req, err := http.NewRequestWithContext(ectx, "POST", endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	client := &http.Client{} // Timeout via context di atas
+	req.Header.Set("User-Agent", webBrowserUA)
+	client := &http.Client{} // Timeout via context above
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4*1024))
-		return nil, fmt.Errorf("search API HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
-	}
 	b, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return nil, err
 	}
-	var sr puruSearchResponse
+	if resp.StatusCode != 200 {
+		msg := strings.TrimSpace(string(b))
+		if len(msg) > 500 {
+			msg = strings.TrimSpace(msg[:500])
+		}
+		var parsed aistudioResponse
+		if json.Unmarshal(b, &parsed) == nil && parsed.Error != nil && strings.TrimSpace(parsed.Error.Message) != "" {
+			msg = strings.TrimSpace(parsed.Error.Message)
+		}
+		return nil, fmt.Errorf("search API HTTP %d: %s", resp.StatusCode, msg)
+	}
+	var sr aistudioResponse
 	if err := json.Unmarshal(b, &sr); err != nil {
 		return nil, fmt.Errorf("search API bad JSON: %v", err)
 	}
-	if !sr.Success {
-		msg := strings.TrimSpace(sr.Error)
+	if sr.Error != nil {
+		msg := strings.TrimSpace(sr.Error.Message)
 		if msg == "" {
-			msg = "search API returned success=false"
+			msg = "search API error"
 		}
 		return nil, fmt.Errorf("%s", msg)
 	}
+	if len(sr.Candidates) == 0 {
+		return nil, fmt.Errorf("search API returned no candidates")
+	}
+	cand := sr.Candidates[0]
+	var answer strings.Builder
+	for _, p := range cand.Content.Parts {
+		if strings.TrimSpace(p.Text) != "" {
+			if answer.Len() > 0 {
+				answer.WriteString("\n")
+			}
+			answer.WriteString(strings.TrimSpace(p.Text))
+		}
+	}
+	answerText := strings.TrimSpace(answer.String())
 	seen := map[string]bool{}
 	var out []webResult
-	for _, r := range sr.Results {
+	for _, c := range cand.GroundingMetadata.GroundingChunks {
 		if len(out) >= limit {
 			break
 		}
-		title := strings.TrimSpace(r.Title)
-		u := strings.TrimSpace(r.URL)
-		if title == "" || u == "" || seen[u] {
+		if c.Web == nil {
 			continue
 		}
+		u := strings.TrimSpace(c.Web.URI)
+		title := strings.TrimSpace(c.Web.Title)
+		if u == "" || seen[u] {
+			continue
+		}
+		// Grounding redirect links resolve to the real page; keep them
+		// but only when they look like http(s). Titles may be bare
+		// domains — accept them, fall back to the URL.
 		if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
 			continue
 		}
-		seen[u] = true
-		snip := ""
-		if r.Snippet != nil {
-			snip = stripHTMLToText(*r.Snippet)
-			if len(snip) > 600 {
-				snip = strings.TrimSpace(snip[:600])
-			}
+		if title == "" {
+			title = u
 		}
-		out = append(out, webResult{Title: title, URL: u, Snippet: snip})
+		seen[u] = true
+		out = append(out, webResult{Title: title, URL: u})
+	}
+	// When grounding returns no links (e.g. pure knowledge answer),
+	// surface the grounded answer itself as a single result so the
+	// tool still returns something useful.
+	if len(out) == 0 {
+		if answerText == "" {
+			return nil, fmt.Errorf("search API returned no results (check connection/query)")
+		}
+		snip := answerText
+		if len([]rune(snip)) > 1500 {
+			snip = strings.TrimSpace(string([]rune(snip)[:1500]))
+		}
+		return []webResult{{Title: "AI Studio answer", URL: "", Snippet: snip}}, nil
+	}
+	// Attach a short excerpt of the grounded answer to the first result
+	// so the caller gets context even when chunks carry no snippets.
+	if answerText != "" {
+		snip := answerText
+		if len([]rune(snip)) > 600 {
+			snip = strings.TrimSpace(string([]rune(snip)[:600]))
+		}
+		out[0].Snippet = snip
+		if len(out) > limit {
+			out = out[:limit]
+		}
 	}
 	return out, nil
 }
 
-// runWebSearch searches via the PuruBoy Search API only.
-func runWebSearch(ctx context.Context, query string, count int) (string, error) {
+// runWebSearch searches via Google AI Studio (Gemini googleSearch grounding).
+func runWebSearch(ctx context.Context, cfg config.AIStudioSearchConfig, query string, count int) (string, error) {
 	if err := validateSearchQuery(query); err != nil {
 		return "", err
 	}
@@ -261,7 +355,10 @@ func runWebSearch(ctx context.Context, query string, count int) (string, error) 
 	if count > 10 {
 		count = 10
 	}
-	res, err := fetchPuruSearch(ctx, query, count)
+	if !cfg.Active {
+		return "", fmt.Errorf("web_search is disabled (enable web_search.aistudio in config.json)")
+	}
+	res, err := fetchAIStudioSearch(ctx, cfg, query, count)
 	if err != nil {
 		return "", fmt.Errorf("web search failed: %v", err)
 	}
@@ -277,7 +374,11 @@ func formatWebResults(res []webResult) string {
 		if i > 0 {
 			sb.WriteString("\n\n")
 		}
-		fmt.Fprintf(&sb, "%d. %s - %s", i+1, r.Title, r.URL)
+		if strings.TrimSpace(r.URL) == "" {
+			fmt.Fprintf(&sb, "%d. %s", i+1, r.Title)
+		} else {
+			fmt.Fprintf(&sb, "%d. %s - %s", i+1, r.Title, r.URL)
+		}
 		if strings.TrimSpace(r.Snippet) != "" {
 			sb.WriteString("\n" + r.Snippet)
 		}
@@ -285,78 +386,98 @@ func formatWebResults(res []webResult) string {
 	return sb.String()
 }
 
-// puruFetchURL builds the PuruBoy Fetch API URL:
-// GET {base}?url=...&offset=...&length=...
-func puruFetchURL(rawURL string, offset, length int) string {
-	v := url.Values{}
-	v.Set("url", strings.TrimSpace(rawURL))
-	v.Set("offset", fmt.Sprintf("%d", offset))
-	v.Set("length", fmt.Sprintf("%d", length))
-	return strings.TrimRight(puruFetchAPIBase, "/") + "?" + v.Encode()
+// normalizeFetchSection defaults to "text", accepts "html"/"text".
+func normalizeFetchSection(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "html" {
+		return "html"
+	}
+	return "text"
 }
 
-// fetchPuruFetch calls the PuruBoy Fetch API and returns paginated page text.
-// The API already returns extracted text; HTML is stripped defensively.
-func fetchPuruFetch(ctx context.Context, rawURL string, offset, length int) (string, error) {
+// fetchDirectFetch fetches URL directly (no external API) and returns
+// paginated content. section "text" strips HTML to plain text,
+// section "html" returns raw HTML. offset/length operate on runes.
+func fetchDirectFetch(ctx context.Context, rawURL, section string, offset, length int) (string, error) {
 	clean, err := validateFetchURL(rawURL)
 	if err != nil {
 		return "", err
 	}
-	if offset < 0 {
-		offset = 0
-	}
-	if length <= 0 {
-		length = defaultFetchLength
-	}
-	ectx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	offset = clampFetchOffset(int64(offset))
+	length = clampFetchLength(int64(length))
+	section = normalizeFetchSection(section)
+
+	ectx, cancel := context.WithTimeout(ctx, webFetchTimeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ectx, "GET", puruFetchURL(clean, offset, length), nil)
+	req, err := http.NewRequestWithContext(ectx, "GET", clean, nil)
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("User-Agent", webBrowserUA)
-	req.Header.Set("Accept", "application/json")
-	client := &http.Client{}
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	client := &http.Client{
+		Timeout: webFetchTimeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 5 {
+				return fmt.Errorf("too many redirects")
+			}
+			if !allowPrivateFetchHost && isPrivateHost(req.URL.Hostname()) {
+				return fmt.Errorf("redirect to private host rejected: %s", req.URL.Hostname())
+			}
+			return nil
+		},
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4*1024))
-		return "", fmt.Errorf("fetch API HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
+		return "", fmt.Errorf("fetch HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
 	}
-	b, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	b, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 	if err != nil {
 		return "", err
 	}
-	var fr puruFetchResponse
-	if err := json.Unmarshal(b, &fr); err != nil {
-		return "", fmt.Errorf("fetch API bad JSON: %v", err)
-	}
-	if !fr.Success {
-		msg := strings.TrimSpace(fr.Error)
-		if msg == "" {
-			msg = "fetch API returned success=false"
-		}
-		return "", fmt.Errorf("%s", msg)
-	}
-	text := strings.TrimSpace(stripHTMLToText(fr.Content))
-	if text == "" {
+	raw := strings.TrimSpace(string(b))
+	if raw == "" {
 		return "", fmt.Errorf("page is empty")
 	}
-	if fr.HasMore {
-		next := fr.Offset + fr.Length
-		if next <= 0 {
-			next = offset + length
+	var full string
+	ct := strings.ToLower(resp.Header.Get("Content-Type"))
+	if section == "html" {
+		full = raw
+	} else {
+		if strings.Contains(ct, "html") || strings.Contains(raw, "<") {
+			full = strings.TrimSpace(stripHTMLToText(raw))
+		} else {
+			full = strings.TrimSpace(webSpaceRe.ReplaceAllString(raw, " "))
 		}
-		total := fr.TotalLength
-		text += fmt.Sprintf(" ... [truncated, total %d chars, offset %d — call web_fetch again with offset %d for more]", total, fr.Offset, next)
+		if full == "" {
+			return "", fmt.Errorf("page is empty")
+		}
 	}
-	return text, nil
+	runes := []rune(full)
+	total := len(runes)
+	if offset >= total {
+		return "", fmt.Errorf("offset %d beyond content length %d", offset, total)
+	}
+	end := offset + length
+	if end > total {
+		end = total
+	}
+	page := strings.TrimSpace(string(runes[offset:end]))
+	if page == "" {
+		return "", fmt.Errorf("page is empty")
+	}
+	if end < total {
+		page += fmt.Sprintf(" ... [truncated, total %d chars, offset %d — call web_fetch again with section %s offset %d length %d for more]", total, offset, section, end, length)
+	}
+	return page, nil
 }
 
-// runWebFetch fetches paginated text via the PuruBoy Fetch API.
-func runWebFetch(ctx context.Context, rawURL string, offset, length int) (string, error) {
-	return fetchPuruFetch(ctx, rawURL, clampFetchOffset(int64(offset)), clampFetchLength(int64(length)))
+// runWebFetch fetches paginated text/html directly (stdlib only).
+func runWebFetch(ctx context.Context, rawURL, section string, offset, length int) (string, error) {
+	return fetchDirectFetch(ctx, rawURL, section, clampFetchOffset(int64(offset)), clampFetchLength(int64(length)))
 }

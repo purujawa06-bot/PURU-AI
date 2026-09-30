@@ -491,9 +491,9 @@ func getIdentity(workspacePath string, includeToolUseRule bool, includeOnboardin
 	for i, rule := range rules {
 		rules[i] = fmt.Sprintf("%d. %s", i+1, rule)
 	}
-	return fmt.Sprintf(`# puruClaw
+	return fmt.Sprintf(`# PuruClaw 🦞
 
-You are puruClaw, a helpful AI assistant.
+A helpful AI assistant
 
 ## Workspace
 Your workspace is at: %s

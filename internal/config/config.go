@@ -46,6 +46,41 @@ type ModelConfig struct {
 	Temperature float64 `json:"temperature"`
 }
 
+// AIStudioSearchConfig is the third-party web_search provider via Google
+// AI Studio (Gemini API with googleSearch grounding). Disabled by default:
+// web_search is removed from the tool list unless active is true.
+type AIStudioSearchConfig struct {
+	Active bool   `json:"active"`
+	Model  string `json:"model"`
+	APIKey string `json:"api_key"`
+}
+
+// UnmarshalJSON accepts both "api_key" and "apikey" spellings.
+func (s *AIStudioSearchConfig) UnmarshalJSON(b []byte) error {
+	type rawAIStudio struct {
+		Active   bool   `json:"active"`
+		Model    string `json:"model"`
+		APIKey   string `json:"api_key"`
+		APIKeyAlt string `json:"apikey"`
+	}
+	var r rawAIStudio
+	if err := json.Unmarshal(b, &r); err != nil {
+		return err
+	}
+	s.Active = r.Active
+	s.Model = r.Model
+	s.APIKey = r.APIKey
+	if strings.TrimSpace(s.APIKey) == "" {
+		s.APIKey = r.APIKeyAlt
+	}
+	return nil
+}
+
+// WebSearchConfig groups web_search providers. Only aistudio exists today.
+type WebSearchConfig struct {
+	AIStudio AIStudioSearchConfig `json:"aistudio"`
+}
+
 type Config struct {
 	TelegramBotToken string `json:"telegram_bot_token"`
 	// TelegramAllowedUsers: Telegram user ID allowlist. Empty = everyone allowed.
@@ -79,6 +114,9 @@ type Config struct {
 	// Timezone is the IANA name for wall-clock schedules (default Asia/Jakarta).
 	// Jobs may override it per job. Empty means the default.
 	Timezone string `json:"timezone"`
+	// WebSearch groups third-party web_search providers. Optional: when
+	// absent or inactive, the web_search tool is removed from the tool list.
+	WebSearch WebSearchConfig `json:"web_search"`
 	ConfigDir string `json:"-"`
 }
 
@@ -225,6 +263,26 @@ func (c *Config) SkillsPolicy() workspace.SkillsPolicy {
 		return workspace.SkillsPolicy{}
 	}
 	return workspace.SkillsPolicy{Mode: c.SkillsMode, Allow: c.SkillsAllow}
+}
+
+// WebSearchEnabled reports whether the third-party web_search provider
+// is active. Default false: web_search is removed from the tool list
+// unless web_search.aistudio.active is true with model + api key set.
+func (c *Config) WebSearchEnabled() bool {
+	if c == nil {
+		return false
+	}
+	s := c.WebSearch.AIStudio
+	if !s.Active {
+		return false
+	}
+	if strings.TrimSpace(s.Model) == "" {
+		return false
+	}
+	if strings.TrimSpace(s.APIKey) == "" {
+		return false
+	}
+	return true
 }
 
 // MemoryPath is <workspace>/memory/MEMORY.md — single memory file, local.
