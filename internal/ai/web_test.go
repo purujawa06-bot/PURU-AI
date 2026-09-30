@@ -231,80 +231,102 @@ func TestWebSearchSchemaHasNoLang(t *testing.T) {
 	}
 }
 
-func TestPuruFetchURL(t *testing.T) {
-	u := puruFetchURL("https://example.com", 0, 5000)
-	if !strings.Contains(u, "url=") || !strings.Contains(u, "offset=0") || !strings.Contains(u, "length=5000") {
-		t.Fatalf("offset/length hilang: %q", u)
+func TestNormalizeFetchSection(t *testing.T) {
+	if normalizeFetchSection("") != "text" {
+		t.Errorf("empty -> text")
+	}
+	if normalizeFetchSection("HTML") != "html" {
+		t.Errorf("HTML -> html")
+	}
+	if normalizeFetchSection("text") != "text" {
+		t.Errorf("text -> text")
+	}
+	if normalizeFetchSection("bogus") != "text" {
+		t.Errorf("bogus -> text")
 	}
 }
 
-func TestFetchPuruFetchMapsResults(t *testing.T) {
+func TestFetchDirectText(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query()
-		if q.Get("url") == "" {
-			t.Errorf("url kosong sampai ke API")
-		}
-		if q.Get("offset") == "" || q.Get("length") == "" {
-			t.Errorf("offset/length wajib dikirim: %q", r.URL.RawQuery)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"success":true,"status":"success","url":"https://example.com/","final_url":"https://example.com/","content_type":"text/html","total_length":125,"offset":0,"length":125,"requested_length":5000,"has_more":false,"truncated_body":false,"content":"Example Domain"}`))
+		w.Header().Set("Content-Type", "text/html")
+		w.Write([]byte(`<html><head><style>a{}</style></head><body><h1>Halo &amp; Hai</h1><p>foo bar Example Domain</p></body></html>`))
 	}))
 	defer srv.Close()
-	old := puruFetchAPIBase
-	puruFetchAPIBase = srv.URL
-	defer func() { puruFetchAPIBase = old }()
+	old := allowPrivateFetchHost
+	allowPrivateFetchHost = true
+	defer func() { allowPrivateFetchHost = old }()
 
-	text, err := fetchPuruFetch(context.Background(), "https://example.com", 0, 5000)
+	text, err := fetchDirectFetch(context.Background(), srv.URL, "text", 0, 5000)
 	if err != nil {
-		t.Fatalf("fetchPuruFetch error: %v", err)
+		t.Fatalf("fetchDirectFetch error: %v", err)
 	}
-	if !strings.Contains(text, "Example Domain") {
+	if !strings.Contains(text, "Halo & Hai") || !strings.Contains(text, "foo bar") {
 		t.Fatalf("content salah: %q", text)
 	}
-	if strings.Contains(text, "has_more") || strings.Contains(text, "call web_fetch again") {
-		t.Fatalf("has_more=false tidak boleh ada penanda lanjutan: %q", text)
+	if strings.Contains(text, "<h1>") || strings.Contains(text, "call web_fetch again") {
+		t.Fatalf("html/truncate marker tidak boleh ada: %q", text)
 	}
 }
 
-func TestFetchPuruFetchHasMore(t *testing.T) {
+func TestFetchDirectHTML(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"success":true,"url":"https://example.com/","total_length":5588,"offset":0,"length":5000,"requested_length":5000,"has_more":true,"content":"hello world"}`))
+		w.Header().Set("Content-Type", "text/html")
+		w.Write([]byte(`<html><body><h1>Hi</h1></body></html>`))
 	}))
 	defer srv.Close()
-	old := puruFetchAPIBase
-	puruFetchAPIBase = srv.URL
-	defer func() { puruFetchAPIBase = old }()
+	old := allowPrivateFetchHost
+	allowPrivateFetchHost = true
+	defer func() { allowPrivateFetchHost = old }()
 
-	text, err := runWebFetch(context.Background(), "https://example.com", 0, 5000)
+	text, err := runWebFetch(context.Background(), srv.URL, "html", 0, 5000)
+	if err != nil {
+		t.Fatalf("runWebFetch html error: %v", err)
+	}
+	if !strings.Contains(text, "<h1>Hi</h1>") {
+		t.Fatalf("html mentah hilang: %q", text)
+	}
+}
+
+func TestFetchDirectPagination(t *testing.T) {
+	long := strings.Repeat("a", 8000)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.Write([]byte(long))
+	}))
+	defer srv.Close()
+	old := allowPrivateFetchHost
+	allowPrivateFetchHost = true
+	defer func() { allowPrivateFetchHost = old }()
+
+	text, err := runWebFetch(context.Background(), srv.URL, "text", 0, 5000)
 	if err != nil {
 		t.Fatalf("runWebFetch error: %v", err)
 	}
-	if !strings.Contains(text, "hello world") || !strings.Contains(text, "offset 5000") {
-		t.Fatalf("penanda paginasi salah: %q", text)
+	if !strings.Contains(text, "call web_fetch again with section text offset 5000") {
+		t.Fatalf("penanda paginasi salah: %q", text[len(text)-200:])
+	}
+	text2, err := runWebFetch(context.Background(), srv.URL, "text", 5000, 5000)
+	if err != nil {
+		t.Fatalf("page 2 error: %v", err)
+	}
+	if len([]rune(text2)) != 3000 {
+		t.Fatalf("page 2 len = %d, want 3000", len([]rune(text2)))
+	}
+	if _, err := runWebFetch(context.Background(), srv.URL, "text", 99999, 5000); err == nil {
+		t.Fatalf("offset lewat harus error")
 	}
 }
 
-func TestFetchPuruFetchAPIFailure(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"success":false,"error":"url wajib diisi"}`))
-	}))
-	defer srv.Close()
-	old := puruFetchAPIBase
-	puruFetchAPIBase = srv.URL
-	defer func() { puruFetchAPIBase = old }()
-
-	if _, err := fetchPuruFetch(context.Background(), "https://example.com", 0, 5000); err == nil {
-		t.Fatalf("success=false harus jadi error")
+func TestFetchDirectRejects(t *testing.T) {
+	if _, err := fetchDirectFetch(context.Background(), "file:///etc/passwd", "text", 0, 5000); err == nil {
+		t.Fatalf("file:// harus ditolak")
 	}
-	if _, err := runWebFetch(context.Background(), "file:///etc/passwd", 0, 5000); err == nil {
-		t.Fatalf("host non-http harus ditolak sebelum ke API")
+	if _, err := runWebFetch(context.Background(), "file:///etc/passwd", "text", 0, 5000); err == nil {
+		t.Fatalf("host non-http harus ditolak")
 	}
 }
 
-func TestWebFetchSchemaUsesOffsetLength(t *testing.T) {
+func TestWebFetchSchemaUsesSectionOffsetLength(t *testing.T) {
 	tools := BuildTools(testAgent(t.TempDir()), nil)
 	wf := tools["web_fetch"]
 	if wf == nil {
@@ -314,8 +336,8 @@ func TestWebFetchSchemaUsesOffsetLength(t *testing.T) {
 	if props == nil {
 		t.Fatal("web_fetch properties nil")
 	}
-	if props["url"] == nil || props["offset"] == nil || props["length"] == nil {
-		t.Fatalf("web_fetch url/offset/length missing: %v", props)
+	if props["url"] == nil || props["section"] == nil || props["offset"] == nil || props["length"] == nil {
+		t.Fatalf("web_fetch url/section/offset/length missing: %v", props)
 	}
 	if _, ok := props["max_chars"]; ok {
 		t.Fatalf("web_fetch max_chars must be gone: %v", props)
