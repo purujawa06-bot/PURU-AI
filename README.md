@@ -90,12 +90,23 @@ puru gateway
 ### Deploy with Docker (Recommended)
 
 ```bash
+# Option A: inline JSON via CONFIG env (no volume needed for config)
+docker run -d \
+  --name puru-ai \
+  -e CONFIG='{"telegram_bot_token":"your_token_here","model":{"base_url":"https://api.openai.com/v1","api_key":"sk-...","model":"gpt-4o-mini"},"workspace":"/root/.puru/workspace"}' \
+  -v puru-data:/root/.puru \
+  ghcr.io/purujawa06-bot/puru-ai:latest
+
+# Option B: classic file / single envs
 docker run -d \
   --name puru-ai \
   -e TELEGRAM_BOT_TOKEN="your_token_here" \
   -v puru-data:/root/.puru \
   ghcr.io/purujawa06-bot/puru-ai:latest
 ```
+
+> `CONFIG` = full `config.json` as inline JSON (same shape as `example.config.json`).
+> Precedence: `CONFIG` > `--config` file > `PURU_CONFIG` > default `~/.puru/config.json`.
 
 ### Local Build
 

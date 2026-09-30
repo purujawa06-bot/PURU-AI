@@ -98,6 +98,8 @@ Usage:
 
 Global flags:
   --config PATH   path to config.json (default ~/.puru/config.json)
+  CONFIG env      inline JSON config, e.g. CONFIG='{"telegram_bot_token":"..."}'
+                  (takes precedence over --config / file, for Docker/PaaS)
 
 Examples:
   puru setup
@@ -254,6 +256,12 @@ func runSetup(args []string) error {
 		return err
 	}
 	// Validate by loading (also creates workspace + history dirs).
+	// CONFIG env takes precedence in Load, so unset it briefly to
+	// validate the file we just wrote, then restore.
+	if inline, hadCONFIG := os.LookupEnv("CONFIG"); hadCONFIG {
+		_ = os.Unsetenv("CONFIG")
+		defer func() { _ = os.Setenv("CONFIG", inline) }()
+	}
 	if _, err := config.Load(path); err != nil {
 		return fmt.Errorf("config written but invalid: %w", err)
 	}
