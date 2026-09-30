@@ -334,14 +334,15 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				}
 				return text, nil
 			}),
-		"web_fetch": mk("web_fetch", "Fetch a URL as text.",
+		"web_fetch": mk("web_fetch", "Fetch a URL as text or HTML.",
 			objSchema([]string{"url"}, map[string]any{
-				"url":    strProp("Public http/https URL to fetch (required)."),
-				"offset": intProp("Char offset to start reading from (default 0).", 0),
-				"length": intProp("Max output chars (default 5000, max 20000).", defaultFetchLength),
+				"url":     strProp("Public http/https URL to fetch (required)."),
+				"section": enumProp("Content section: text (default, stripped) or html (raw).", []string{"text", "html"}),
+				"offset":  intProp("Char offset to start reading from (default 0).", 0),
+				"length":  intProp("Max output chars (default 5000, max 20000).", defaultFetchLength),
 			}),
 			func(ctx context.Context, args map[string]any) (any, error) {
-				text, err := runWebFetch(ctx, argStr(args, "url"), int(argInt(args, "offset")), int(argInt(args, "length")))
+				text, err := runWebFetch(ctx, argStr(args, "url"), argStr(args, "section"), int(argInt(args, "offset")), int(argInt(args, "length")))
 				if err != nil {
 					return errVal(err)
 				}
