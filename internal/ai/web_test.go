@@ -6,7 +6,19 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/purujawa06-bot/PURU-AI/internal/config"
 )
+
+func testSearchConfig() config.AIStudioSearchConfig {
+	return config.AIStudioSearchConfig{Active: true, Model: "gemini-2.5-flash", APIKey: "test-key"}
+}
+
+func testSearchAgent(ws string) *Agent {
+	a := testAgent(ws)
+	a.Config.WebSearch.AIStudio = testSearchConfig()
+	return a
+}
 
 func TestWebSearchRejectsEmptyQuery(t *testing.T) {
 	if err := validateSearchQuery(""); err == nil {
@@ -18,7 +30,10 @@ func TestWebSearchRejectsEmptyQuery(t *testing.T) {
 	if err := validateSearchQuery("golang"); err != nil {
 		t.Fatalf("query valid ditolak: %v", err)
 	}
-	tools := BuildTools(testAgent(t.TempDir()), nil)
+	if _, err := runWebSearch(context.Background(), testSearchConfig(), "", 5); err == nil {
+		t.Fatalf("query kosong harus error")
+	}
+	tools := BuildTools(testSearchAgent(t.TempDir()), nil)
 	out, _ := tools["web_search"].Run(context.Background(), map[string]any{"query": ""})
 	m, _ := out.(map[string]any)
 	if m["success"] != false {
@@ -99,12 +114,17 @@ func TestFormatWebResults(t *testing.T) {
 	if !strings.Contains(formatWebResults(res), "Contoh Judul A - https://example.com/a") {
 		t.Fatalf("format salah: %q", formatWebResults(res))
 	}
+	// URL-empty answer result renders without dash.
+	single := []webResult{{Title: "AI Studio answer", Snippet: "Jawaban."}}
+	if got := formatWebResults(single); !strings.Contains(got, "1. AI Studio answer") || !strings.Contains(got, "Jawaban.") {
+		t.Fatalf("format answer-only salah: %q", got)
+	}
 }
 
 func TestWebToolsOnToolHook(t *testing.T) {
 	fired := map[string]bool{}
 	opts := &ProcessOptions{OnTool: func(name string, args map[string]any) { fired[name] = true }}
-	tools := BuildTools(testAgent(t.TempDir()), opts)
+	tools := BuildTools(testSearchAgent(t.TempDir()), opts)
 	tools["web_search"].Run(context.Background(), map[string]any{"query": ""})
 	tools["web_fetch"].Run(context.Background(), map[string]any{"url": "file:///x"})
 	if !fired["web_search"] || !fired["web_fetch"] {
@@ -112,93 +132,145 @@ func TestWebToolsOnToolHook(t *testing.T) {
 	}
 }
 
-func TestWebToolsRegistered(t *testing.T) {
-	tools := BuildTools(testAgent(t.TempDir()), nil)
-	for _, n := range []string{"web_search", "web_fetch"} {
-		if tools[n] == nil {
-			t.Fatalf("tool %s missing", n)
+func TestWebSearchDisabledByDefault(t *testing.T) {
+	def := BuildTools(testAgent(t.TempDir()), nil)
+	if def["web_search"] != nil {
+		t.Fatalf("web_search default harus mati (tidak ada di tool list)")
+	}
+	if def["web_fetch"] == nil {
+		t.Fatalf("web_fetch harus tetap ada")
+	}
+	if len(def) != 15 {
+		t.Fatalf("default tools = %d, want 15 (web_search opt-in)", len(def))
+	}
+	en := BuildTools(testSearchAgent(t.TempDir()), nil)
+	if en["web_search"] == nil {
+		t.Fatalf("web_search harus ada saat aistudio active")
+	}
+	if len(en) != 16 {
+		t.Fatalf("enabled tools = %d, want 16", len(en))
+	}
+	off := testAgent(t.TempDir())
+	off.Config.WebSearch.AIStudio = config.AIStudioSearchConfig{Active: true, Model: "gemini-2.5-flash"}
+	if BuildTools(off, nil)["web_search"] != nil {
+		t.Fatalf("web_search tanpa api key harus tetap mati")
+	}
+	off2 := testAgent(t.TempDir())
+	off2.Config.WebSearch.AIStudio = config.AIStudioSearchConfig{Active: false, Model: "m", APIKey: "k"}
+	if BuildTools(off2, nil)["web_search"] != nil {
+		t.Fatalf("web_search active=false harus mati")
+	}
+}
+
+func TestAistudioSearchURL(t *testing.T) {
+	u := aistudioSearchURL("gemini-2.5-flash")
+	if !strings.Contains(u, "/models/gemini-2.5-flash:generateContent") {
+		t.Fatalf("url salah: %q", u)
+	}
+	u2 := aistudioSearchURL("models/gemma-4-31b-it")
+	if !strings.Contains(u2, "/models/gemma-4-31b-it:generateContent") || strings.Contains(u2, "models/models/") {
+		t.Fatalf("models/ prefix harus di-strip: %q", u2)
+	}
+}
+
+func aistudioTestServer(t *testing.T, body string, check func(r *http.Request)) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Errorf("method = %s, want POST", r.Method)
 		}
-	}
-}
-
-func TestPuruSearchURL(t *testing.T) {
-	u := puruSearchURL("harga emas", 5)
-	if !strings.Contains(u, "query=harga+emas") && !strings.Contains(u, "query=harga%20emas") {
-		t.Fatalf("query tidak ter-encode: %q", u)
-	}
-	if !strings.Contains(u, "limit=5") {
-		t.Fatalf("limit hilang: %q", u)
-	}
-	if strings.Contains(u, "lang=") {
-		t.Fatalf("lang harus hilang dari API baru: %q", u)
-	}
-}
-
-func TestFetchPuruSearchMapsResults(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query()
-		if q.Get("query") == "" {
-			t.Errorf("query kosong sampai ke API")
+		if !strings.Contains(r.URL.Path, ":generateContent") {
+			t.Errorf("path harus :generateContent, got %s", r.URL.Path)
+		}
+		if check != nil {
+			check(r)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"success":true,"query":"golang","count":3,"results":[` +
-			`{"title":"Judul A","url":"https://example.com/a","snippet":"<p>Snippet A</p>"},` +
-			`{"title":"Judul B","url":"https://example.com/b","snippet":null},` +
-			`{"title":"","url":"https://example.com/empty","snippet":"x"}` +
-			`]}`))
+		w.Write([]byte(body))
 	}))
-	defer srv.Close()
-	old := puruSearchAPIBase
-	puruSearchAPIBase = srv.URL
-	defer func() { puruSearchAPIBase = old }()
+}
 
-	res, err := fetchPuruSearch(context.Background(), "golang", 5)
+func TestFetchAIStudioSearchMapsResults(t *testing.T) {
+	srv := aistudioTestServer(t, `{"candidates":[{"content":{"parts":[{"text":"Harga emas Rp2.595.000"}],"role":"model"},"groundingMetadata":{"groundingChunks":[{"web":{"uri":"https://example.com/a","title":"logammulia.com"}},{"web":{"uri":"https://example.com/b","title":"galeri24.co.id"}}]}}]}`, func(r *http.Request) {
+		if r.URL.Query().Get("key") == "" {
+			t.Errorf("key kosong sampai ke API")
+		}
+	})
+	defer srv.Close()
+	old := aistudioAPIBase
+	aistudioAPIBase = srv.URL
+	defer func() { aistudioAPIBase = old }()
+
+	res, err := fetchAIStudioSearch(context.Background(), testSearchConfig(), "harga emas", 5)
 	if err != nil {
-		t.Fatalf("fetchPuruSearch error: %v", err)
+		t.Fatalf("fetchAIStudioSearch error: %v", err)
 	}
 	if len(res) != 2 {
 		t.Fatalf("hasil = %d, want 2: %+v", len(res), res)
 	}
-	if res[0].Title != "Judul A" || res[0].URL != "https://example.com/a" {
+	if res[0].Title != "logammulia.com" || res[0].URL != "https://example.com/a" {
 		t.Fatalf("hasil pertama salah: %+v", res[0])
 	}
-	if res[0].Snippet != "Snippet A" {
-		t.Fatalf("snippet HTML harus di-strip: %+v", res[0])
+	if !strings.Contains(res[0].Snippet, "Rp2.595.000") {
+		t.Fatalf("jawaban grounded harus jadi snippet: %+v", res[0])
 	}
 	if res[1].Snippet != "" {
-		t.Fatalf("snippet null harus kosong: %+v", res[1])
+		t.Fatalf("chunk kedua harus tanpa snippet: %+v", res[1])
 	}
 }
 
-func TestFetchPuruSearchAPIFailure(t *testing.T) {
+func TestFetchAIStudioSearchAPIFailure(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"success":false,"error":"Parameter query wajib diisi"}`))
+		w.WriteHeader(400)
+		w.Write([]byte(`{"error":{"code":400,"message":"API key not valid","status":"INVALID_ARGUMENT"}}`))
 	}))
 	defer srv.Close()
-	old := puruSearchAPIBase
-	puruSearchAPIBase = srv.URL
-	defer func() { puruSearchAPIBase = old }()
+	old := aistudioAPIBase
+	aistudioAPIBase = srv.URL
+	defer func() { aistudioAPIBase = old }()
 
-	if _, err := fetchPuruSearch(context.Background(), "x", 5); err == nil {
-		t.Fatalf("success=false harus jadi error")
+	if _, err := fetchAIStudioSearch(context.Background(), testSearchConfig(), "x", 5); err == nil {
+		t.Fatalf("HTTP 400 harus jadi error")
+	} else if !strings.Contains(err.Error(), "API key not valid") {
+		t.Fatalf("pesan API harus diteruskan: %v", err)
 	}
-	if _, err := runWebSearch(context.Background(), "", 5); err == nil {
+	if _, err := runWebSearch(context.Background(), testSearchConfig(), "", 5); err == nil {
 		t.Fatalf("query kosong harus error")
+	}
+	off := config.AIStudioSearchConfig{Active: false, Model: "m", APIKey: "k"}
+	if _, err := runWebSearch(context.Background(), off, "x", 5); err == nil {
+		t.Fatalf("inactive harus error")
+	}
+}
+
+func TestFetchAIStudioAnswerWithoutChunks(t *testing.T) {
+	srv := aistudioTestServer(t, `{"candidates":[{"content":{"parts":[{"text":"Emas naik hari ini."}],"role":"model"},"groundingMetadata":{}}]}`, nil)
+	defer srv.Close()
+	old := aistudioAPIBase
+	aistudioAPIBase = srv.URL
+	defer func() { aistudioAPIBase = old }()
+
+	res, err := fetchAIStudioSearch(context.Background(), testSearchConfig(), "emas", 5)
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if len(res) != 1 || res[0].Title != "AI Studio answer" {
+		t.Fatalf("tanpa chunk harus 1 answer: %+v", res)
+	}
+	if !strings.Contains(res[0].Snippet, "Emas naik") {
+		t.Fatalf("snippet hilang: %+v", res[0])
 	}
 }
 
 func TestRunWebSearchFormatsOutput(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"success":true,"results":[{"title":"Go Dev","url":"https://go.dev/doc/install","snippet":"Install Go quickly"}]}`))
-	}))
+	srv := aistudioTestServer(t, `{"candidates":[{"content":{"parts":[{"text":"Install Go quickly"}],"role":"model"},"groundingMetadata":{"groundingChunks":[{"web":{"uri":"https://go.dev/doc/install","title":"Go Dev"}}]}}]}`, nil)
 	defer srv.Close()
-	old := puruSearchAPIBase
-	puruSearchAPIBase = srv.URL
-	defer func() { puruSearchAPIBase = old }()
+	old := aistudioAPIBase
+	aistudioAPIBase = srv.URL
+	defer func() { aistudioAPIBase = old }()
 
-	out, err := runWebSearch(context.Background(), "go install", 5)
+	out, err := runWebSearch(context.Background(), testSearchConfig(), "go install", 5)
 	if err != nil {
 		t.Fatalf("runWebSearch error: %v", err)
 	}
@@ -208,7 +280,7 @@ func TestRunWebSearchFormatsOutput(t *testing.T) {
 }
 
 func TestWebSearchSchemaHasNoLang(t *testing.T) {
-	tools := BuildTools(testAgent(t.TempDir()), nil)
+	tools := BuildTools(testSearchAgent(t.TempDir()), nil)
 	ws := tools["web_search"]
 	if ws == nil {
 		t.Fatal("web_search missing")

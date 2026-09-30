@@ -38,11 +38,14 @@ type TelegramClient interface {
 // maxSendFileBytes caps telegram_sendfile uploads (Telegram bots allow 50MB).
 const maxSendFileBytes = 20 << 20
 
-// BuildTools returns 16 tools: file tools (read_file, write_file, list_dir,
-// edit_file_replace_string, edit_file_replace_line, edit_file_apply_patch,
-// append_file) + exec + Telegram tools (telegram_sendfile, telegram_getuser)
-// + get_env + web tools (web_search, web_fetch) + schedule
-// + skill tools (use_skill, stop_skill).
+// BuildTools returns 15 tools by default: file tools (read_file, write_file,
+// list_dir, edit_file_replace_string, edit_file_replace_line,
+// edit_file_apply_patch, append_file) + exec + Telegram tools
+// (telegram_sendfile, telegram_getuser) + get_env + web_fetch + schedule
+// + skill tools (use_skill, stop_skill). web_search (third-party Google
+// AI Studio with googleSearch grounding) is added as the 16th tool only
+// when web_search.aistudio.active is true with model + api key set in
+// config.json. No PuruBoy API anywhere.
 // opts carries workspace config, current chat/user, and the OnTool preview hook.
 func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 	ws := ""
@@ -317,23 +320,6 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 					"memory_mb":  m.Alloc / 1024 / 1024,
 				}, nil
 			}),
-		"web_search": mk("web_search", "Search the web.",
-			objSchema([]string{"query"}, map[string]any{
-				"query": strProp("Search query (required, non-empty)."),
-				"count": intProp("Number of results (default 5, max 10).", defaultSearchN),
-			}),
-			func(ctx context.Context, args map[string]any) (any, error) {
-				q := argStr(args, "query")
-				if err := validateSearchQuery(q); err != nil {
-					return errVal(err)
-				}
-				n := clampSearchCount(argInt(args, "count"))
-				text, err := runWebSearch(ctx, q, n)
-				if err != nil {
-					return errVal(err)
-				}
-				return text, nil
-			}),
 		"web_fetch": mk("web_fetch", "Fetch a URL as text or HTML.",
 			objSchema([]string{"url"}, map[string]any{
 				"url":     strProp("Public http/https URL to fetch (required)."),
@@ -348,6 +334,28 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				}
 				return text, nil
 			}),
+	}
+	// web_search is opt-in only: registered when web_search.aistudio is
+	// active with model + api key. Default builds exclude it entirely.
+	if a != nil && a.Config != nil && a.Config.WebSearchEnabled() {
+		searchCfg := a.Config.WebSearch.AIStudio
+		tools["web_search"] = mk("web_search", "Search the web via Google AI Studio (grounded).",
+			objSchema([]string{"query"}, map[string]any{
+				"query": strProp("Search query (required, non-empty)."),
+				"count": intProp("Number of results (default 5, max 10).", defaultSearchN),
+			}),
+			func(ctx context.Context, args map[string]any) (any, error) {
+				q := argStr(args, "query")
+				if err := validateSearchQuery(q); err != nil {
+					return errVal(err)
+				}
+				n := clampSearchCount(argInt(args, "count"))
+				text, err := runWebSearch(ctx, searchCfg, q, n)
+				if err != nil {
+					return errVal(err)
+				}
+				return text, nil
+			})
 	}
 	tools["schedule"] = buildScheduleTool(a, opts, mk, errVal)
 	for name, tool := range buildSkillTools(a, opts, mk, errVal) {

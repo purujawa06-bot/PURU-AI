@@ -18,5 +18,12 @@
   "exec_memory_mb": 64,
   "skills_mode": "default",
   "skills_allow": [],
-  "timezone": "Asia/Jakarta"
+  "timezone": "Asia/Jakarta",
+  "web_search": {
+    "aistudio": {
+      "active": false,
+      "model": "gemini-2.5-flash",
+      "api_key": "replace-with-aistudio-key"
+    }
+  }
 }
