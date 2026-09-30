@@ -42,6 +42,9 @@ jobs:
   # a local Go toolchain.
   dump-prompt:
     runs-on: ubuntu-24.04
+    concurrency:
+      group: dump-prompt-debug-systemprompt
+      cancel-in-progress: false
     permissions:
       contents: write
     steps:
@@ -76,15 +79,20 @@ jobs:
           mkdir -p /tmp/promptdump
           cp "$GITHUB_WORKSPACE/SYSTEMPROMPT.md" /tmp/promptdump/SYSTEMPROMPT.md
           rm -f "$GITHUB_WORKSPACE/SYSTEMPROMPT.md"
-          git fetch origin debug-systemprompt || true
-          if git rev-parse --verify origin/debug-systemprompt >/dev/null 2>&1; then
-            git checkout -f debug-systemprompt
-            git reset --hard origin/debug-systemprompt
-          else
-            git checkout --orphan debug-systemprompt
-            git rm -rf . || true
-          fi
-          cp /tmp/promptdump/SYSTEMPROMPT.md ./SYSTEMPROMPT.md
-          git add SYSTEMPROMPT.md
-          git commit -m "Update SYSTEMPROMPT.md from ${GITHUB_SHA:0:7}" || exit 0
-          git push origin debug-systemprompt --force
+          for i in 1 2 3 4 5; do
+            git fetch origin debug-systemprompt || true
+            if git rev-parse --verify origin/debug-systemprompt >/dev/null 2>&1; then
+              git checkout -B debug-systemprompt origin/debug-systemprompt
+            else
+              git checkout --orphan debug-systemprompt
+              git rm -rf . || true
+            fi
+            cp /tmp/promptdump/SYSTEMPROMPT.md ./SYSTEMPROMPT.md
+            git add SYSTEMPROMPT.md
+            git commit -m "Update SYSTEMPROMPT.md from ${GITHUB_SHA:0:7}" || break
+            if git push origin debug-systemprompt; then
+              break
+            fi
+            echo "push race, retry $i..."
+            sleep 5
+          done
