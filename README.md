@@ -13,7 +13,7 @@
 - ⚡ **Minimalist & Fast** — Single Go binary with a tiny footprint. No heavy runtimes.
 - 🛠️ **Local Tool Intelligence** — Native file operations, shell execution, and web navigation.
 - 🧠 **Smart Context Management** — Long-term memory via `memory/MEMORY.md` and automated history summarization into `memory/context/`.
-- 🧩 **Skills** — Picoclaw-style `skills/*/SKILL.md` catalog (metadata only in the prompt; the agent reads bodies via `read_file`). Builtins `find-skills` + `skill-creator` are seeded on first run; list more skills in `AGENTS.md` frontmatter (`skills: [...]`) to inject them as Active Skills.
+- 🧩 **Skills** — Picoclaw-style `skills/*/SKILL.md` catalog (metadata only in the prompt; the agent reads bodies via `read_file`). Builtins `find-skills` + `skill-creator` + `puruclaw-configure` are seeded on first run; list more skills in `AGENTS.md` frontmatter (`skills: [...]`) to inject them as Active Skills.
 - 🔄 **Async Process Control** — Manage long-running background tasks with real-time polling and termination.
 - 🔒 **Security First** — Granular workspace restrictions and memory-capped execution.
 - 🐳 **Cloud Ready** — Pre-configured for Docker and GitHub Container Registry (GHCR).
@@ -42,8 +42,9 @@ graph TD
   USER.md                    # user profile
   memory/MEMORY.md           # long-term memory, written by the agent
   memory/context/*.md        # conversation summaries, system-managed (newest 20)
-  skills/find-skills/SKILL.md  # builtin: discover + install new skills via PuruBoy API
+  skills/find-skills/SKILL.md  # builtin: discover + install new skills via skills.sh directory
   skills/skill-creator/SKILL.md # builtin: author new skills
+  skills/puruclaw-configure/SKILL.md # builtin: answer config questions from example.config.json on main
   skills/<skill>/SKILL.md    # installed skills
 ```
 
@@ -89,12 +90,23 @@ puru gateway
 ### Deploy with Docker (Recommended)
 
 ```bash
+# Option A: inline JSON via CONFIG env (no volume needed for config)
+docker run -d \
+  --name puru-ai \
+  -e CONFIG='{"telegram_bot_token":"your_token_here","model":{"base_url":"https://api.openai.com/v1","api_key":"sk-...","model":"gpt-4o-mini"},"workspace":"/root/.puru/workspace"}' \
+  -v puru-data:/root/.puru \
+  ghcr.io/purujawa06-bot/puru-ai:latest
+
+# Option B: classic file / single envs
 docker run -d \
   --name puru-ai \
   -e TELEGRAM_BOT_TOKEN="your_token_here" \
   -v puru-data:/root/.puru \
   ghcr.io/purujawa06-bot/puru-ai:latest
 ```
+
+> `CONFIG` = full `config.json` as inline JSON (same shape as `example.config.json`).
+> Precedence: `CONFIG` > `--config` file > `PURU_CONFIG` > default `~/.puru/config.json`.
 
 ### Local Build
 
@@ -184,4 +196,4 @@ gofmt -s -w .
 Distributed under the **MIT License**. See `LICENSE` for details.
 
 ---
-<p align="center">Made with ❤️ by <b>Ricky</b> & <b>Cia</b></p>
+<p align="center">Made with Ricky & PuruClaw 🦞</p>
