@@ -94,11 +94,6 @@ func DefaultDir() string {
 // DefaultPath returns the default config.json path.
 func DefaultPath() string { return filepath.Join(DefaultDir(), "config.json") }
 
-// DefaultBuildPromptPath returns the default build-prompt.md path.
-// The file lives outside the workspace, beside config.json, so workspace
-// restrictions never block prompt edits.
-func DefaultBuildPromptPath() string { return filepath.Join(DefaultDir(), "build-prompt.md") }
-
 // ResolvePath applies flag > env > default precedence.
 func ResolvePath(flagPath string) string {
 	if flagPath != "" {
@@ -243,9 +238,6 @@ func (c *Config) ContextDir() string { return workspace.ContextDir(c.Workspace) 
 
 // SkillsDir is <workspace>/skills (one SKILL.md per installed skill).
 func (c *Config) SkillsDir() string { return workspace.SkillsDir(c.Workspace) }
-
-// BuildPromptPath is ~/.puru/build-prompt.md (editable prompt structure).
-func (c *Config) BuildPromptPath() string { return DefaultBuildPromptPath() }
 
 // HistoryDir is ~/.puru/history (per-chat JSON files).
 func (c *Config) HistoryDir() string { return filepath.Join(DefaultDir(), "history") }

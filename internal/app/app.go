@@ -303,14 +303,12 @@ func (a *App) renderedSystemFor(chatID int64) string {
 	mem := ""
 	summary := ""
 	workspace := ""
-	templatePath := ""
 	if a.cfg != nil {
 		if b, err := os.ReadFile(a.cfg.MemoryPath()); err == nil {
 			mem = string(b)
 		}
 		summary = memory.LatestSummary(a.cfg.Workspace)
 		workspace = a.cfg.Workspace
-		templatePath = a.cfg.BuildPromptPath()
 	}
 	var opts *ai.ProcessOptions
 	if chatID != 0 && a.agent != nil {
@@ -320,7 +318,6 @@ func (a *App) renderedSystemFor(chatID int64) string {
 		Workspace:    workspace,
 		Memory:       mem,
 		Summary:      summary,
-		TemplatePath: templatePath,
 		ActiveSkills: ai.ActiveSkillsFor(a.agent, opts),
 		Policy:       a.cfg.SkillsPolicy(),
 	})

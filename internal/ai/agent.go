@@ -562,20 +562,17 @@ func (a *Agent) ProcessMessage(ctx context.Context, userMessage string, history 
 	}
 	memoryContent := ""
 	summary := ""
-	templatePath := ""
 	if a.Config != nil {
 		if b, err := os.ReadFile(a.Config.MemoryPath()); err == nil {
 			memoryContent = string(b)
 		}
 		summary = memory.LatestSummary(a.Config.Workspace)
-		templatePath = a.Config.BuildPromptPath()
 	}
 
 	systemPrompt, err := prompt.Build(prompt.Request{
 		Workspace:         workspacePath,
 		Memory:            memoryContent,
 		Summary:           summary,
-		TemplatePath:      templatePath,
 		Channel:           processChannel(opts),
 		ChatID:            processChatID(opts),
 		SenderID:          processSenderID(opts),
