@@ -48,6 +48,13 @@ func TestParseSetupArgs(t *testing.T) {
 	if !o.force {
 		t.Fatal("expected force true")
 	}
+	o2, err := parseSetupArgs([]string{"--full"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !o2.full {
+		t.Fatal("expected full true")
+	}
 	if _, err := parseSetupArgs([]string{"extra"}); err == nil {
 		t.Fatal("expected error on extra arg")
 	}
