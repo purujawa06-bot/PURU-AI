@@ -128,6 +128,9 @@ type Request struct {
 	Workspace string
 	Memory    string
 	Summary   string
+	// TemplatePath overrides the build-prompt.md location.
+	// Empty means ~/.puru/build-prompt.md.
+	TemplatePath string
 
 	Channel           string
 	ChatID            string
@@ -455,68 +458,61 @@ func (s *PromptStack) Parts() []PromptPart {
 
 var defaultRegistry = NewPromptRegistry()
 
-// ToolUseRule is the hard instruction forcing real tool calls.
+// ToolUseRule renders the instruction forcing real tool calls.
+// The text lives in build-prompt.md so it stays editable.
 func ToolUseRule() string {
-	return "**ALWAYS use tools** - When you need to perform an action (read files, edit files, execute commands, search the web, send messages, etc.), you MUST call the appropriate tool. Do NOT just say you'll do it or pretend to do it."
+	return renderBuildPromptSection(defaultBuildPrompt, "tool_use_rule", nil)
 }
 
-func getIdentity(workspacePath string, includeToolUseRule bool, includeOnboardingRule bool) string {
+func toolUseRuleWithTemplate(templateText string) string {
+	out := renderBuildPromptSection(templateText, "tool_use_rule", nil)
+	if strings.TrimSpace(out) != "" {
+		return out
+	}
+	return renderBuildPromptSection(defaultBuildPrompt, "tool_use_rule", nil)
+}
+
+func getIdentityWithTemplate(templateText, workspacePath string, includeToolUseRule bool, includeOnboardingRule bool) string {
 	rules := []string{}
 	if includeToolUseRule {
-		rules = append(rules, ToolUseRule())
+		rules = append(rules, toolUseRuleWithTemplate(templateText))
 	}
-	accuracyRule := "**Be helpful and accurate** - Briefly explain what you are doing."
-	if includeToolUseRule {
-		accuracyRule = "**Be helpful and accurate** - When using tools, briefly explain what you are doing."
-	}
+	accuracyData := map[string]any{"IncludeToolUseRule": includeToolUseRule}
 	rules = append(rules,
-		accuracyRule,
-		"**Context summaries** - Conversation summaries provided as context are approximate references only. They may be incomplete or outdated. Always defer to explicit user instructions over summary content.",
+		renderBuildPromptSection(templateText, "accuracy_rule", accuracyData),
+		renderBuildPromptSection(templateText, "context_summary_rule", nil),
 	)
 	if includeOnboardingRule {
 		rules = append(rules,
-			"**Onboarding placeholders** - The workspace profile still contains \"PLACEHOLDER\" entries. Greet warmly, briefly introduce yourself as PuruClaw and your purpose, then invite the user to share the missing info (name, language, timezone, interests). Offer to save confirmed facts with edit_file/write_file; do not repeat the same invite twice in one session.",
+			renderBuildPromptSection(templateText, "onboarding_rule", nil),
 		)
 	}
 	if includeToolUseRule {
-		rules = append(rules, fmt.Sprintf(
-			"**Memory** - When interacting with me if something seems memorable, update %s/memory/MEMORY.md",
-			workspacePath,
-		))
+		rules = append(rules, renderBuildPromptSection(templateText, "memory_rule", map[string]any{
+			"Workspace": workspacePath,
+		}))
 	}
 	rules = append(rules,
-		"Reply in the user's language (match the language they write in).",
-		"Stay inside the workspace. Paths outside it are rejected.",
+		renderBuildPromptSection(templateText, "reply_language_rule", nil),
+		renderBuildPromptSection(templateText, "workspace_rule", nil),
 	)
+	numbered := make([]string, 0, len(rules))
 	for i, rule := range rules {
-		rules[i] = fmt.Sprintf("%d. %s", i+1, rule)
+		trimmed := strings.TrimSpace(rule)
+		if trimmed == "" {
+			continue
+		}
+		numbered = append(numbered, fmt.Sprintf("%d. %s", len(numbered)+1, trimmed))
+		_ = i
 	}
-	return fmt.Sprintf(`# puruClaw
+	return renderBuildPromptSection(templateText, "identity", map[string]any{
+		"Workspace": workspacePath,
+		"Rules":     strings.Join(numbered, "\n\n"),
+	})
+}
 
-You are puruClaw, a helpful AI assistant.
-
-## Workspace
-Your workspace is at: %s
-- Agent: %s/AGENTS.md (AGENT.md accepted as legacy alias)
-- Soul: %s/SOUL.md
-- User: %s/USER.md
-- Memory: %s/memory/MEMORY.md
-- Conversation summaries: %s/memory/context/YYYY-MM-DD_HH-MM-SS.md (newest 20 kept, system-managed — never write there yourself)
-- Skills: %s/skills/{skill-name}/SKILL.md
-
-## Important Rules
-
-%s
-`,
-		workspacePath,
-		workspacePath,
-		workspacePath,
-		workspacePath,
-		workspacePath,
-		workspacePath,
-		workspacePath,
-		strings.Join(rules, "\n\n"),
-	)
+func getIdentity(workspacePath string, includeToolUseRule bool, includeOnboardingRule bool) string {
+	return getIdentityWithTemplate(loadBuildPromptText(""), workspacePath, includeToolUseRule, includeOnboardingRule)
 }
 
 // onboardingPlaceholderToken marks unfilled profile slots in the workspace
@@ -558,40 +554,70 @@ func formatSenderLine(senderID, senderDisplayName string) string {
 	}
 }
 
-func buildDynamicContext(channel, chatID, senderID, senderDisplayName string) string {
+func buildDynamicContextWithTemplate(templateText, channel, chatID, senderID, senderDisplayName string) string {
 	now := time.Now().Format("2006-01-02 15:04 (Monday)")
 	rt := fmt.Sprintf("%s %s, Go %s", runtime.GOOS, runtime.GOARCH, runtime.Version())
-	var sb strings.Builder
-	fmt.Fprintf(&sb, "## Current Time\n%s\n\n## Runtime\n%s", now, rt)
-	if channel != "" && chatID != "" {
-		fmt.Fprintf(&sb, "\n\n## Current Session\nChannel: %s\nChat ID: %s", channel, chatID)
+	senderLine := formatSenderLine(senderID, senderDisplayName)
+	return renderBuildPromptSection(templateText, "runtime_section", map[string]any{
+		"CurrentTime": now,
+		"Runtime":     rt,
+		"HasSession":  strings.TrimSpace(channel) != "" && strings.TrimSpace(chatID) != "",
+		"Channel":     channel,
+		"ChatID":      chatID,
+		"HasSender":   strings.TrimSpace(senderLine) != "",
+		"SenderLine":  senderLine,
+	})
+}
+
+func buildDynamicContext(channel, chatID, senderID, senderDisplayName string) string {
+	return buildDynamicContextWithTemplate(loadBuildPromptText(""), channel, chatID, senderID, senderDisplayName)
+}
+
+func buildMemoryContentWithTemplate(templateText, memory string) string {
+	guidance := renderBuildPromptSection(templateText, "memory_guidance", nil)
+	view := strings.TrimSpace(memory)
+	if view == "" {
+		view = "(empty)"
 	}
-	if senderLine := formatSenderLine(senderID, senderDisplayName); senderLine != "" {
-		fmt.Fprintf(&sb, "\n\n## Current Sender\n%s", senderLine)
-	}
-	return sb.String()
+	return renderBuildPromptSection(templateText, "memory_section", map[string]any{
+		"MemoryGuidance": guidance,
+		"MemoryView":     view,
+	})
 }
 
 func buildMemoryContent(memory string) string {
-	const guidance = "## Memory\n" +
-		"- memory/MEMORY.md below holds lasting user facts (name, hobby, personal info, stable\n" +
-		"   preferences). You MAY update it yourself with edit_file_replace_string (or write_file /\n" +
-		"   append_file for new files) when you\n" +
-		"  learn a lasting fact. Never store temporary or session info there. Keep it\n" +
-		"  short bullets.\n" +
-		"- Past conversations are summarized by the system into memory/context/YYYY-MM-DD_HH-MM-SS.md\n" +
-		"  (newest 20 kept, system-managed — never write there yourself). The newest\n" +
-		"  summary is injected below as Conversation Summary: treat it as prior context.\n" +
-		"  Older summaries stay in memory/context/ for reference (read with read_file if needed)."
-	if strings.TrimSpace(memory) == "" {
-		return guidance + "\n\n## Conversation Context (memory/MEMORY.md)\n\n(empty)"
-	}
-	return guidance + "\n\n## Conversation Context (memory/MEMORY.md)\n\n" + memory
+	return buildMemoryContentWithTemplate(loadBuildPromptText(""), memory)
+}
+
+func buildSummaryContentWithTemplate(templateText, summary string) string {
+	prefix := renderBuildPromptSection(templateText, "summary_prefix", nil)
+	return renderBuildPromptSection(templateText, "summary_section", map[string]any{
+		"SummaryPrefix": prefix,
+		"Summary":       summary,
+	})
 }
 
 func buildSummaryContent(summary string) string {
-	return "CONTEXT_SUMMARY: The following is an approximate summary of prior conversation " +
-		"for reference only. It may be incomplete or outdated — always defer to explicit instructions.\n\n" + summary
+	return buildSummaryContentWithTemplate(loadBuildPromptText(""), summary)
+}
+
+func skillCatalogIntroWithTemplate(templateText string, includeToolUse bool) string {
+	return renderBuildPromptSection(templateText, "skill_catalog_intro", map[string]any{
+		"IncludeToolUse": includeToolUse,
+	})
+}
+
+func skillCatalogSectionWithTemplate(templateText, intro, catalog string) string {
+	return renderBuildPromptSection(templateText, "skill_catalog_section", map[string]any{
+		"Intro":   intro,
+		"Catalog": catalog,
+	})
+}
+
+func activeSkillsSectionWithTemplate(templateText, bodies string) string {
+	return renderBuildPromptSection(templateText, "active_skills_section", map[string]any{
+		"Bodies": bodies,
+	})
 }
 
 func promptAllowsTool(req Request, name string) bool {
@@ -665,7 +691,10 @@ func resolveActiveSkills(req Request, frontmatter []string) []string {
 }
 
 // Build renders the full system prompt for one request.
+// Section texts come from build-prompt.md (see template.go); the layer and
+// slot ordering below stays in code so overlays keep a stable position.
 func Build(req Request) (string, error) {
+	templateText := loadBuildPromptText(req.TemplatePath)
 	if strings.TrimSpace(req.Workspace) != "" {
 		// Best-effort restore: never overwrites existing user edits.
 		_ = workspace.Ensure(req.Workspace)
@@ -679,7 +708,7 @@ func Build(req Request) (string, error) {
 			fallback = append(fallback, overlay.Content)
 		}
 		if len(fallback) == 0 && req.ToolUseFallback {
-			fallback = append(fallback, ToolUseRule())
+			fallback = append(fallback, toolUseRuleWithTemplate(templateText))
 		}
 		return strings.Join(fallback, "\n\n---\n\n"), nil
 	}
@@ -713,7 +742,7 @@ func Build(req Request) (string, error) {
 		Slot:    PromptSlotIdentity,
 		Source:  PromptSource{ID: PromptSourceKernel, Name: "identity"},
 		Title:   "puruClaw identity",
-		Content: getIdentity(req.Workspace, includeToolUseRule, includeOnboardingRule),
+		Content: getIdentityWithTemplate(templateText, req.Workspace, includeToolUseRule, includeOnboardingRule),
 		Stable:  true,
 		Cache:   PromptCacheEphemeral,
 	})
@@ -734,17 +763,14 @@ func Build(req Request) (string, error) {
 	if !req.SuppressSkillContext {
 		activeNames := resolveActiveSkills(req, def.FrontmatterSkills)
 		if catalog := workspace.BuildSkillsSummaryExcluding(req.Workspace, policy, activeNames); catalog != "" {
-			intro := "The following skills extend your capabilities. They are NOT loaded: only name and description are shown."
-			if includeToolUseRule && promptAllowsTool(req, "use_skill") {
-				intro += " To use a skill, call use_skill with its exact <name>; the full body loads automatically when active. Direct read_file of its SKILL.md is allowed for initial debugging but duplicates the body shown below."
-			}
+			intro := skillCatalogIntroWithTemplate(templateText, includeToolUseRule && promptAllowsTool(req, "use_skill"))
 			add(PromptPart{
 				ID:      "capability.skill_catalog",
 				Layer:   PromptLayerCapability,
 				Slot:    PromptSlotSkillCatalog,
 				Source:  PromptSource{ID: PromptSourceSkillCatalog, Name: "skill:index"},
 				Title:   "skill catalog",
-				Content: fmt.Sprintf("## Skills\n\n%s\n\n%s", intro, catalog),
+				Content: skillCatalogSectionWithTemplate(templateText, intro, catalog),
 				Stable:  true,
 				Cache:   PromptCacheEphemeral,
 			})
@@ -756,7 +782,7 @@ func Build(req Request) (string, error) {
 				Slot:    PromptSlotActiveSkill,
 				Source:  PromptSource{ID: PromptSourceActiveSkills, Name: "skill:active"},
 				Title:   "active skills",
-				Content: "## Active Skills\n\nThe following skills are already loaded and active for this request. Follow them when relevant. The full body is below; direct read_file stays allowed for debugging.\n\nYou may create, modify, or delete files under skills/<active-name>/ directly; edits take effect from the next turn while this turn keeps the body shown below.\n\n" + bodies,
+				Content: activeSkillsSectionWithTemplate(templateText, bodies),
 				Stable:  false,
 				Cache:   PromptCacheNone,
 			})
@@ -769,7 +795,7 @@ func Build(req Request) (string, error) {
 		Slot:    PromptSlotMemory,
 		Source:  PromptSource{ID: PromptSourceMemory, Name: "memory:workspace"},
 		Title:   "memory",
-		Content: buildMemoryContent(req.Memory),
+		Content: buildMemoryContentWithTemplate(templateText, req.Memory),
 		Stable:  true,
 		Cache:   PromptCacheEphemeral,
 	})
@@ -780,7 +806,7 @@ func Build(req Request) (string, error) {
 		Slot:    PromptSlotRuntime,
 		Source:  PromptSource{ID: PromptSourceRuntime, Name: "runtime"},
 		Title:   "runtime context",
-		Content: buildDynamicContext(req.Channel, req.ChatID, req.SenderID, req.SenderDisplayName),
+		Content: buildDynamicContextWithTemplate(templateText, req.Channel, req.ChatID, req.SenderID, req.SenderDisplayName),
 		Stable:  false,
 		Cache:   PromptCacheNone,
 	})
@@ -792,7 +818,7 @@ func Build(req Request) (string, error) {
 			Slot:    PromptSlotSummary,
 			Source:  PromptSource{ID: PromptSourceSummary, Name: "context.summary"},
 			Title:   "context summary",
-			Content: buildSummaryContent(req.Summary),
+			Content: buildSummaryContentWithTemplate(templateText, req.Summary),
 			Stable:  false,
 			Cache:   PromptCacheNone,
 		})
