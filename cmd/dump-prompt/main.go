@@ -61,7 +61,7 @@ func main() {
 	fmt.Printf("out=%s chars=%d parts=%d time=%s\n", *outPath, len(rendered), len(parts), time.Now().Format(time.RFC3339))
 	fmt.Printf("markers:\n")
 	for _, marker := range []string{
-		"# puruClaw",
+		"# PuruClaw 🦞",
 		"## " + workspace.FileAgents,
 		"## " + workspace.FileSoul,
 		"## " + workspace.FileUser,
