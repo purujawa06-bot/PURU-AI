@@ -66,7 +66,7 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 		return map[string]any{"success": false, "error": err.Error()}, nil
 	}
 	tools := map[string]*Tool{
-		"read_file": mk("read_file", "Read a file. Reading skills/<name>/SKILL.md is allowed for debugging, including active skills.",
+		"read_file": mk("read_file", "Read a file.",
 			objSchema([]string{"path"}, map[string]any{
 				"path":   strProp("Path to the file to read."),
 				"offset": intProp("Byte offset to start reading from.", 0),
@@ -320,7 +320,7 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 					"memory_mb":  m.Alloc / 1024 / 1024,
 				}, nil
 			}),
-		"web_fetch": mk("web_fetch", "Fetch a URL as text or HTML.",
+		"web_fetch": mk("web_fetch", "Fetch a URL.",
 			objSchema([]string{"url"}, map[string]any{
 				"url":     strProp("Public http/https URL to fetch (required)."),
 				"section": enumProp("Content section: text (default, stripped) or html (raw).", []string{"text", "html"}),
@@ -339,7 +339,7 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 	// active with model + api key. Default builds exclude it entirely.
 	if a != nil && a.Config != nil && a.Config.WebSearchEnabled() {
 		searchCfg := a.Config.WebSearch.AIStudio
-		tools["web_search"] = mk("web_search", "Search the web via Google AI Studio (grounded).",
+		tools["web_search"] = mk("web_search", "Search the web.",
 			objSchema([]string{"query"}, map[string]any{
 				"query": strProp("Search query (required, non-empty)."),
 				"count": intProp("Number of results (default 5, max 10).", defaultSearchN),
