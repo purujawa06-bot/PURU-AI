@@ -1,6 +1,6 @@
 // Web tools (stdlib only): web_search via PuruBoy Search API
-// (https://puruboy-api.vercel.app/api/search/web), web_fetch via PuruBoy
-// Fetch API (https://puruboy-api.vercel.app/api/agent-tools/web-fetch).
+// (https://puruboy-api.vercel.app/api/search/web), web_fetch direct
+// (stdlib net/http, no external API).
 // No new dependencies.
 package ai
 
@@ -22,15 +22,18 @@ const (
 	webSearchTimeout = 60 * time.Second
 	webFetchTimeout  = 120 * time.Second
 	defaultSearchN   = 5
-	// Default paginated fetch length (PuruBoy Fetch API length param).
+	// Default paginated fetch length (chars).
 	defaultFetchLength = 5000
 	webBrowserUA       = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
 )
 
-// puruSearchAPIBase and puruFetchAPIBase are vars (not consts) so tests
-// can point them at httptest servers.
+// puruSearchAPIBase is a var (not const) so tests
+// can point it at httptest servers.
 var puruSearchAPIBase = "https://puruboy-api.vercel.app/api/search/web"
-var puruFetchAPIBase = "https://puruboy-api.vercel.app/api/agent-tools/web-fetch"
+
+// allowPrivateFetchHost lets tests point direct fetch at httptest servers
+// (127.0.0.1). Always false in production.
+var allowPrivateFetchHost = false
 
 type webResult struct {
 	Title   string
@@ -48,20 +51,6 @@ type puruSearchResponse struct {
 	Success bool               `json:"success"`
 	Error   string             `json:"error"`
 	Results []puruSearchResult `json:"results"`
-}
-
-type puruFetchResponse struct {
-	Success         bool   `json:"success"`
-	Error           string `json:"error"`
-	URL             string `json:"url"`
-	FinalURL        string `json:"final_url"`
-	ContentType     string `json:"content_type"`
-	TotalLength     int    `json:"total_length"`
-	Offset          int    `json:"offset"`
-	Length          int    `json:"length"`
-	RequestedLength int    `json:"requested_length"`
-	HasMore         bool   `json:"has_more"`
-	Content         string `json:"content"`
 }
 
 var (
@@ -130,7 +119,7 @@ func validateFetchURL(raw string) (string, error) {
 		return "", fmt.Errorf("url must have a host")
 	}
 	host := u.Hostname()
-	if isPrivateHost(host) {
+	if !allowPrivateFetchHost && isPrivateHost(host) {
 		return "", fmt.Errorf("local/private host rejected: %s", host)
 	}
 	return s, nil
@@ -285,78 +274,98 @@ func formatWebResults(res []webResult) string {
 	return sb.String()
 }
 
-// puruFetchURL builds the PuruBoy Fetch API URL:
-// GET {base}?url=...&offset=...&length=...
-func puruFetchURL(rawURL string, offset, length int) string {
-	v := url.Values{}
-	v.Set("url", strings.TrimSpace(rawURL))
-	v.Set("offset", fmt.Sprintf("%d", offset))
-	v.Set("length", fmt.Sprintf("%d", length))
-	return strings.TrimRight(puruFetchAPIBase, "/") + "?" + v.Encode()
+// normalizeFetchSection defaults to "text", accepts "html"/"text".
+func normalizeFetchSection(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "html" {
+		return "html"
+	}
+	return "text"
 }
 
-// fetchPuruFetch calls the PuruBoy Fetch API and returns paginated page text.
-// The API already returns extracted text; HTML is stripped defensively.
-func fetchPuruFetch(ctx context.Context, rawURL string, offset, length int) (string, error) {
+// fetchDirectFetch fetches URL directly (no external API) and returns
+// paginated content. section "text" strips HTML to plain text,
+// section "html" returns raw HTML. offset/length operate on runes.
+func fetchDirectFetch(ctx context.Context, rawURL, section string, offset, length int) (string, error) {
 	clean, err := validateFetchURL(rawURL)
 	if err != nil {
 		return "", err
 	}
-	if offset < 0 {
-		offset = 0
-	}
-	if length <= 0 {
-		length = defaultFetchLength
-	}
-	ectx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	offset = clampFetchOffset(int64(offset))
+	length = clampFetchLength(int64(length))
+	section = normalizeFetchSection(section)
+
+	ectx, cancel := context.WithTimeout(ctx, webFetchTimeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ectx, "GET", puruFetchURL(clean, offset, length), nil)
+	req, err := http.NewRequestWithContext(ectx, "GET", clean, nil)
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("User-Agent", webBrowserUA)
-	req.Header.Set("Accept", "application/json")
-	client := &http.Client{}
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	client := &http.Client{
+		Timeout: webFetchTimeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 5 {
+				return fmt.Errorf("too many redirects")
+			}
+			if !allowPrivateFetchHost && isPrivateHost(req.URL.Hostname()) {
+				return fmt.Errorf("redirect to private host rejected: %s", req.URL.Hostname())
+			}
+			return nil
+		},
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4*1024))
-		return "", fmt.Errorf("fetch API HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
+		return "", fmt.Errorf("fetch HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
 	}
-	b, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	b, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 	if err != nil {
 		return "", err
 	}
-	var fr puruFetchResponse
-	if err := json.Unmarshal(b, &fr); err != nil {
-		return "", fmt.Errorf("fetch API bad JSON: %v", err)
-	}
-	if !fr.Success {
-		msg := strings.TrimSpace(fr.Error)
-		if msg == "" {
-			msg = "fetch API returned success=false"
-		}
-		return "", fmt.Errorf("%s", msg)
-	}
-	text := strings.TrimSpace(stripHTMLToText(fr.Content))
-	if text == "" {
+	raw := strings.TrimSpace(string(b))
+	if raw == "" {
 		return "", fmt.Errorf("page is empty")
 	}
-	if fr.HasMore {
-		next := fr.Offset + fr.Length
-		if next <= 0 {
-			next = offset + length
+	var full string
+	ct := strings.ToLower(resp.Header.Get("Content-Type"))
+	if section == "html" {
+		full = raw
+	} else {
+		if strings.Contains(ct, "html") || strings.Contains(raw, "<") {
+			full = strings.TrimSpace(stripHTMLToText(raw))
+		} else {
+			full = strings.TrimSpace(webSpaceRe.ReplaceAllString(raw, " "))
 		}
-		total := fr.TotalLength
-		text += fmt.Sprintf(" ... [truncated, total %d chars, offset %d — call web_fetch again with offset %d for more]", total, fr.Offset, next)
+		if full == "" {
+			return "", fmt.Errorf("page is empty")
+		}
 	}
-	return text, nil
+	runes := []rune(full)
+	total := len(runes)
+	if offset >= total {
+		return "", fmt.Errorf("offset %d beyond content length %d", offset, total)
+	}
+	end := offset + length
+	if end > total {
+		end = total
+	}
+	page := strings.TrimSpace(string(runes[offset:end]))
+	if page == "" {
+		return "", fmt.Errorf("page is empty")
+	}
+	if end < total {
+		page += fmt.Sprintf(" ... [truncated, total %d chars, offset %d — call web_fetch again with section %s offset %d length %d for more]", total, offset, section, end, length)
+	}
+	return page, nil
 }
 
-// runWebFetch fetches paginated text via the PuruBoy Fetch API.
-func runWebFetch(ctx context.Context, rawURL string, offset, length int) (string, error) {
-	return fetchPuruFetch(ctx, rawURL, clampFetchOffset(int64(offset)), clampFetchLength(int64(length)))
+// runWebFetch fetches paginated text/html directly (stdlib only).
+func runWebFetch(ctx context.Context, rawURL, section string, offset, length int) (string, error) {
+	return fetchDirectFetch(ctx, rawURL, section, clampFetchOffset(int64(offset)), clampFetchLength(int64(length)))
 }
