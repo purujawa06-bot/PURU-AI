@@ -109,7 +109,7 @@ func TestGetRendersActiveSkills(t *testing.T) {
 		"## Active Skills",
 		"active for this request",
 		"### Skill: find-skills",
-		"PuruBoy",
+		"skills.sh",
 	} {
 		if !strings.Contains(out, section) {
 			t.Fatalf("active section %q missing in prompt", section)

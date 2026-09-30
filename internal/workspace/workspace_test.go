@@ -195,7 +195,7 @@ func TestLoadSkillsForContext(t *testing.T) {
 	if strings.Contains(body, "name: find-skills") {
 		t.Fatal("LoadSkill must strip frontmatter")
 	}
-	if !strings.Contains(body, "PuruBoy") {
+	if !strings.Contains(body, "skills.sh") {
 		t.Fatalf("find-skills body must load, got %q", body[:120])
 	}
 	if _, ok := LoadSkill(ws, "no-such-skill"); ok {
