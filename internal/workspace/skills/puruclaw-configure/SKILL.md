@@ -1,6 +1,6 @@
 ---
 name: puruclaw-configure
-description: PuruClaw PURU-AI configuration help. Use when user asks about config, config.json, example.config.json, setup, installation, env, tokens, model, Telegram bot, workspace, or any config field.
+description: PuruClaw configuration help. Use when user asks about config, config.json, example.config.json, setup, installation, env, tokens, model, Telegram bot, workspace, or any config field.
 ---
 
 # PuruClaw Configure
