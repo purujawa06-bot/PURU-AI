@@ -3,13 +3,13 @@
 A helpful AI assistant
 
 ## Workspace
-Your workspace is at: /tmp/puru-prompt-dump-3268776916
-- Agent: /tmp/puru-prompt-dump-3268776916/AGENTS.md (AGENT.md accepted as legacy alias)
-- Soul: /tmp/puru-prompt-dump-3268776916/SOUL.md
-- User: /tmp/puru-prompt-dump-3268776916/USER.md
-- Memory: /tmp/puru-prompt-dump-3268776916/memory/MEMORY.md
-- Conversation summaries: /tmp/puru-prompt-dump-3268776916/memory/context/YYYY-MM-DD_HH-MM-SS.md (newest 20 kept, system-managed — never write there yourself)
-- Skills: /tmp/puru-prompt-dump-3268776916/skills/{skill-name}/SKILL.md
+Your workspace is at: /tmp/puru-prompt-dump-3555302624
+- Agent: /tmp/puru-prompt-dump-3555302624/AGENTS.md (AGENT.md accepted as legacy alias)
+- Soul: /tmp/puru-prompt-dump-3555302624/SOUL.md
+- User: /tmp/puru-prompt-dump-3555302624/USER.md
+- Memory: /tmp/puru-prompt-dump-3555302624/memory/MEMORY.md
+- Conversation summaries: /tmp/puru-prompt-dump-3555302624/memory/context/YYYY-MM-DD_HH-MM-SS.md (newest 20 kept, system-managed — never write there yourself)
+- Skills: /tmp/puru-prompt-dump-3555302624/skills/{skill-name}/SKILL.md
 
 ## Important Rules
 
@@ -21,7 +21,7 @@ Your workspace is at: /tmp/puru-prompt-dump-3268776916
 
 4. **Onboarding placeholders** - The workspace profile still contains "PLACEHOLDER" entries. Greet warmly, briefly introduce yourself as PuruClaw and your purpose, then invite the user to share the missing info (name, language, timezone, interests). Offer to save confirmed facts with edit_file/write_file; do not repeat the same invite twice in one session.
 
-5. **Memory** - When interacting with me if something seems memorable, update /tmp/puru-prompt-dump-3268776916/memory/MEMORY.md
+5. **Memory** - When interacting with me if something seems memorable, update /tmp/puru-prompt-dump-3555302624/memory/MEMORY.md
 
 6. Reply in the user's language (match the language they write in).
 
@@ -132,7 +132,7 @@ The following skills extend your capabilities. They are NOT loaded: only name an
   <skill>
     <name>skill-creator</name>
     <description>Create, update, or review PuruClaw skills. Use when writing a new skill, modifying an existing SKILL.md, turning a repeated workflow into a reusable skill, or organizing scripts, references, and assets for a skill.</description>
-    <location>/tmp/puru-prompt-dump-3268776916/skills/skill-creator/SKILL.md</location>
+    <location>/tmp/puru-prompt-dump-3555302624/skills/skill-creator/SKILL.md</location>
     <source>workspace</source>
   </skill>
 </skills>
@@ -216,7 +216,7 @@ Fallback: only when web_fetch is unavailable, the same URLs may be fetched via `
 ---
 
 ## Current Time
-2026-09-30 10:50 (Wednesday)
+2026-09-30 10:51 (Wednesday)
 
 ## Runtime
 linux amd64, Go go1.26.8
