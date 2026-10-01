@@ -1,9 +1,11 @@
 // Web tools: web_search via Google AI Studio (Gemini API with googleSearch
-// grounding, third-party, opt-in via config web_search.aistudio),
+// grounding, third-party, opt-in via config web_search.aistudio) with Exa
+// fallback (POST /search, opt-in via config web_search.exa),
 // web_fetch direct (stdlib net/http, no external API).
-// web_search is removed from the tool list unless web_search.aistudio.active
-// is true with model + api key set. No PuruBoy API anywhere.
-// No new dependencies.
+// web_search is removed from the tool list unless at least one provider is
+// ready (active + credentials). Order is fixed: aistudio (0), exa (1) —
+// first ready error falls through to the next ready one.
+// No PuruBoy API anywhere. No new dependencies.
 package ai
 
 import (
@@ -35,6 +37,9 @@ const (
 // aistudioAPIBase is a var (not const) so tests
 // can point it at httptest servers.
 var aistudioAPIBase = "https://generativelanguage.googleapis.com/v1beta"
+
+// exaAPIBase is a var (not const) so tests can point it at httptest servers.
+var exaAPIBase = "https://api.exa.ai"
 
 // allowPrivateFetchHost lets tests point direct fetch at httptest servers
 // (127.0.0.1). Always false in production.
@@ -344,8 +349,114 @@ func fetchAIStudioSearch(ctx context.Context, cfg config.AIStudioSearchConfig, q
 	return out, nil
 }
 
-// runWebSearch searches via Google AI Studio (Gemini googleSearch grounding).
-func runWebSearch(ctx context.Context, cfg config.AIStudioSearchConfig, query string, count int) (string, error) {
+// exaSearchRequest is the POST /search body. Type auto lets Exa pick
+// neural/keyword; highlights give the snippet text per result.
+type exaSearchRequest struct {
+	Query      string         `json:"query"`
+	NumResults int            `json:"numResults"`
+	Type       string         `json:"type"`
+	Contents   map[string]any `json:"contents"`
+}
+
+type exaSearchResult struct {
+	Title      string   `json:"title"`
+	URL        string   `json:"url"`
+	Highlights []string `json:"highlights"`
+	Text       string   `json:"text"`
+}
+
+type exaSearchResponse struct {
+	Results []exaSearchResult `json:"results"`
+}
+
+// fetchExaSearch calls POST {base}/search with x-api-key and maps
+// title/url/highlights to webResult. Highlights[0] becomes the snippet
+// (truncated to 600 runes, matching aistudio excerpt length).
+func fetchExaSearch(ctx context.Context, cfg config.ExaSearchConfig, query string, limit int) ([]webResult, error) {
+	key := strings.TrimSpace(cfg.APIKey)
+	if key == "" {
+		return nil, fmt.Errorf("web_search exa api key is not configured")
+	}
+	payload, err := json.Marshal(exaSearchRequest{
+		Query:      strings.TrimSpace(query),
+		NumResults: limit,
+		Type:       "auto",
+		Contents:   map[string]any{"highlights": true},
+	})
+	if err != nil {
+		return nil, err
+	}
+	ectx, cancel := context.WithTimeout(ctx, webSearchTimeout)
+	defer cancel()
+	base := strings.TrimRight(strings.TrimSpace(exaAPIBase), "/")
+	endpoint := base + "/search"
+	req, err := http.NewRequestWithContext(ectx, "POST", endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("x-api-key", key)
+	req.Header.Set("User-Agent", webBrowserUA)
+	client := &http.Client{} // Timeout via context above
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	b, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != 200 {
+		msg := strings.TrimSpace(string(b))
+		if len(msg) > 500 {
+			msg = strings.TrimSpace(msg[:500])
+		}
+		return nil, fmt.Errorf("exa search HTTP %d: %s", resp.StatusCode, msg)
+	}
+	var sr exaSearchResponse
+	if err := json.Unmarshal(b, &sr); err != nil {
+		return nil, fmt.Errorf("exa search bad JSON: %v", err)
+	}
+	var out []webResult
+	for _, r := range sr.Results {
+		if len(out) >= limit {
+			break
+		}
+		u := strings.TrimSpace(r.URL)
+		title := strings.TrimSpace(r.Title)
+		if u == "" {
+			continue
+		}
+		if title == "" {
+			title = u
+		}
+		snip := ""
+		for _, h := range r.Highlights {
+			if strings.TrimSpace(h) != "" {
+				snip = strings.TrimSpace(h)
+				break
+			}
+		}
+		if snip == "" {
+			snip = strings.TrimSpace(r.Text)
+		}
+		if len([]rune(snip)) > 600 {
+			snip = strings.TrimSpace(string([]rune(snip)[:600]))
+		}
+		out = append(out, webResult{Title: title, URL: u, Snippet: snip})
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("search API returned no results (check connection/query)")
+	}
+	return out, nil
+}
+
+// runWebSearch tries each ready provider in fixed order: aistudio (0),
+// exa (1). First success wins; first error falls through to the next
+// ready provider. Only the last error is returned when all fail.
+func runWebSearch(ctx context.Context, cfg config.WebSearchConfig, query string, count int) (string, error) {
 	if err := validateSearchQuery(query); err != nil {
 		return "", err
 	}
@@ -355,17 +466,31 @@ func runWebSearch(ctx context.Context, cfg config.AIStudioSearchConfig, query st
 	if count > 10 {
 		count = 10
 	}
-	if !cfg.Active {
-		return "", fmt.Errorf("web_search is disabled (enable web_search.aistudio in config.json)")
+	if !cfg.AIStudio.Ready() && !cfg.Exa.Ready() {
+		return "", fmt.Errorf("web_search is disabled (enable web_search.aistudio or web_search.exa in config.json)")
 	}
-	res, err := fetchAIStudioSearch(ctx, cfg, query, count)
-	if err != nil {
-		return "", fmt.Errorf("web search failed: %v", err)
+	var errs []string
+	if cfg.AIStudio.Ready() {
+		res, err := fetchAIStudioSearch(ctx, cfg.AIStudio, query, count)
+		if err == nil && len(res) > 0 {
+			return formatWebResults(res), nil
+		}
+		if err == nil {
+			err = fmt.Errorf("search API returned no results (check connection/query)")
+		}
+		errs = append(errs, "aistudio: "+err.Error())
 	}
-	if len(res) == 0 {
-		return "", fmt.Errorf("search API returned no results (check connection/query)")
+	if cfg.Exa.Ready() {
+		res, err := fetchExaSearch(ctx, cfg.Exa, query, count)
+		if err == nil && len(res) > 0 {
+			return formatWebResults(res), nil
+		}
+		if err == nil {
+			err = fmt.Errorf("search API returned no results (check connection/query)")
+		}
+		errs = append(errs, "exa: "+err.Error())
 	}
-	return formatWebResults(res), nil
+	return "", fmt.Errorf("web search failed: %s", strings.Join(errs, "; "))
 }
 
 func formatWebResults(res []webResult) string {

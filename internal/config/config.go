@@ -61,9 +61,9 @@ type AIStudioSearchConfig struct {
 // UnmarshalJSON accepts both "api_key" and "apikey" spellings.
 func (s *AIStudioSearchConfig) UnmarshalJSON(b []byte) error {
 	type rawAIStudio struct {
-		Active   bool   `json:"active"`
-		Model    string `json:"model"`
-		APIKey   string `json:"api_key"`
+		Active    bool   `json:"active"`
+		Model     string `json:"model"`
+		APIKey    string `json:"api_key"`
 		APIKeyAlt string `json:"apikey"`
 	}
 	var r rawAIStudio
@@ -79,9 +79,58 @@ func (s *AIStudioSearchConfig) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// WebSearchConfig groups web_search providers. Only aistudio exists today.
+// Ready reports whether aistudio can serve: active + model + key.
+func (s AIStudioSearchConfig) Ready() bool {
+	if !s.Active {
+		return false
+	}
+	if strings.TrimSpace(s.Model) == "" {
+		return false
+	}
+	return strings.TrimSpace(s.APIKey) != ""
+}
+
+// ExaSearchConfig is the Exa web_search provider (POST /search with
+// x-api-key header). Disabled by default. Only api_key is required.
+type ExaSearchConfig struct {
+	Active bool   `json:"active"`
+	APIKey string `json:"api_key"`
+}
+
+// UnmarshalJSON accepts both "api_key" and "apikey" spellings.
+func (s *ExaSearchConfig) UnmarshalJSON(b []byte) error {
+	type rawExa struct {
+		Active    bool   `json:"active"`
+		APIKey    string `json:"api_key"`
+		APIKeyAlt string `json:"apikey"`
+	}
+	var r rawExa
+	if err := json.Unmarshal(b, &r); err != nil {
+		return err
+	}
+	s.Active = r.Active
+	s.APIKey = r.APIKey
+	if strings.TrimSpace(s.APIKey) == "" {
+		s.APIKey = r.APIKeyAlt
+	}
+	return nil
+}
+
+// Ready reports whether exa can serve: active + api key.
+func (s ExaSearchConfig) Ready() bool {
+	if !s.Active {
+		return false
+	}
+	return strings.TrimSpace(s.APIKey) != ""
+}
+
+// WebSearchConfig groups web_search providers. Order is fixed:
+// aistudio (0), exa (1). When both are active, aistudio is tried first
+// and exa is the fallback if aistudio errors (and vice versa — first
+// active error falls through to the next active one).
 type WebSearchConfig struct {
 	AIStudio AIStudioSearchConfig `json:"aistudio"`
+	Exa      ExaSearchConfig      `json:"exa"`
 }
 
 type Config struct {
@@ -283,24 +332,16 @@ func (c *Config) SkillsPolicy() workspace.SkillsPolicy {
 	return workspace.SkillsPolicy{Mode: c.SkillsMode, Allow: c.SkillsAllow}
 }
 
-// WebSearchEnabled reports whether the third-party web_search provider
-// is active. Default false: web_search is removed from the tool list
-// unless web_search.aistudio.active is true with model + api key set.
+// WebSearchEnabled reports whether any third-party web_search provider
+// is ready. Default false: web_search is removed from the tool list
+// unless at least one provider is active with its credentials set.
+// Order is fixed: aistudio (0), exa (1) — first ready error falls
+// through to the next ready one.
 func (c *Config) WebSearchEnabled() bool {
 	if c == nil {
 		return false
 	}
-	s := c.WebSearch.AIStudio
-	if !s.Active {
-		return false
-	}
-	if strings.TrimSpace(s.Model) == "" {
-		return false
-	}
-	if strings.TrimSpace(s.APIKey) == "" {
-		return false
-	}
-	return true
+	return c.WebSearch.AIStudio.Ready() || c.WebSearch.Exa.Ready()
 }
 
 // MemoryPath is <workspace>/memory/MEMORY.md — single memory file, local.

@@ -575,7 +575,7 @@ func buildDynamicContext(channel, chatID, senderID, senderDisplayName string) st
 func buildMemoryContent(memory string) string {
 	const guidance = "## Memory\n" +
 		"- memory/MEMORY.md below holds lasting user facts (name, hobby, personal info, stable\n" +
-		"   preferences). You MAY update it yourself with edit_file_replace_string (or write_file /\n" +
+		"   preferences). You MAY update it yourself with edit_file (or write_file /\n" +
 		"   append_file for new files) when you\n" +
 		"  learn a lasting fact. Never store temporary or session info there. Keep it\n" +
 		"  short bullets.\n" +
@@ -736,7 +736,7 @@ func Build(req Request) (string, error) {
 		if catalog := workspace.BuildSkillsSummaryExcluding(req.Workspace, policy, activeNames); catalog != "" {
 			intro := "The following skills extend your capabilities. They are NOT loaded: only name and description are shown."
 			if includeToolUseRule && promptAllowsTool(req, "use_skill") {
-				intro += " To use a skill, call use_skill with its exact <name>; the full body loads automatically when active. Direct read_file of its SKILL.md is allowed for initial debugging but duplicates the body shown below."
+				intro += " To use a skill, call use_skill with its exact `name`; the full body loads automatically when active. Direct read_file of its SKILL.md is allowed for initial debugging but duplicates the body shown below."
 			}
 			add(PromptPart{
 				ID:      "capability.skill_catalog",
@@ -756,7 +756,7 @@ func Build(req Request) (string, error) {
 				Slot:    PromptSlotActiveSkill,
 				Source:  PromptSource{ID: PromptSourceActiveSkills, Name: "skill:active"},
 				Title:   "active skills",
-				Content: "## Active Skills\n\nThe following skills are already loaded and active for this request. Follow them when relevant. The full body is below; direct read_file stays allowed for debugging.\n\nYou may create, modify, or delete files under skills/<active-name>/ directly; edits take effect from the next turn while this turn keeps the body shown below.\n\n" + bodies,
+				Content: "## Active Skills\n\nThe following skills are already loaded and active for this request. Follow them when relevant. The full body is below; direct read_file stays allowed for debugging.\n\nYou may create, modify, or delete files under `skills/<name>/` directly; edits take effect from the next turn while this turn keeps the body shown below.\n\n" + bodies,
 				Stable:  false,
 				Cache:   PromptCacheNone,
 			})

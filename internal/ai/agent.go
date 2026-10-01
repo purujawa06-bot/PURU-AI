@@ -1,11 +1,11 @@
 // Package ai implements the lightweight local tool-calling agent.
 //
-// Single model from config.json, 15 tools by default (read_file, write_file,
-// list_dir, edit_file_replace_string, edit_file_replace_line,
-// edit_file_apply_patch, append_file, exec, telegram_sendfile,
-// telegram_getuser, get_env, web_fetch, schedule, use_skill, stop_skill)
-// plus opt-in web_search (16th, only when web_search.aistudio.active is true
-// with model + api key in config.json), no
+// Single model from config.json, 14 tools by default (read_file, write_file,
+// list_dir, edit_file, append_file, exec, telegram_sendfile,
+// telegram_getuser, get_env, web_fetch, schedule, spawn_agent, use_skill,
+// stop_skill)
+// plus opt-in web_search (15th, only when at least one web_search provider
+// is ready in config.json), no
 // fallback: one executor run per request, max iterations from config (default
 // 500), pause between iterations from config (loop_delay_seconds, default 3s).
 // Every model call streams, and API errors are retried up to 5x total (2s

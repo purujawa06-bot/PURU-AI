@@ -10,13 +10,32 @@ import (
 	"github.com/purujawa06-bot/PURU-AI/internal/config"
 )
 
-func testSearchConfig() config.AIStudioSearchConfig {
-	return config.AIStudioSearchConfig{Active: true, Model: "gemini-2.5-flash", APIKey: "test-key"}
+func testSearchConfig() config.WebSearchConfig {
+	return config.WebSearchConfig{
+		AIStudio: config.AIStudioSearchConfig{Active: true, Model: "gemini-2.5-flash", APIKey: "test-key"},
+	}
+}
+
+func testAIStudioConfig() config.AIStudioSearchConfig {
+	return testSearchConfig().AIStudio
+}
+
+func testExaConfig() config.WebSearchConfig {
+	return config.WebSearchConfig{
+		Exa: config.ExaSearchConfig{Active: true, APIKey: "test-key"},
+	}
+}
+
+func testBothConfig() config.WebSearchConfig {
+	return config.WebSearchConfig{
+		AIStudio: config.AIStudioSearchConfig{Active: true, Model: "gemini-2.5-flash", APIKey: "test-key"},
+		Exa:      config.ExaSearchConfig{Active: true, APIKey: "test-key"},
+	}
 }
 
 func testSearchAgent(ws string) *Agent {
 	a := testAgent(ws)
-	a.Config.WebSearch.AIStudio = testSearchConfig()
+	a.Config.WebSearch = testSearchConfig()
 	return a
 }
 
@@ -140,15 +159,15 @@ func TestWebSearchDisabledByDefault(t *testing.T) {
 	if def["web_fetch"] == nil {
 		t.Fatalf("web_fetch harus tetap ada")
 	}
-	if len(def) != 15 {
-		t.Fatalf("default tools = %d, want 15 (web_search opt-in)", len(def))
+	if len(def) != 14 {
+		t.Fatalf("default tools = %d, want 14 (web_search opt-in)", len(def))
 	}
 	en := BuildTools(testSearchAgent(t.TempDir()), nil)
 	if en["web_search"] == nil {
 		t.Fatalf("web_search harus ada saat aistudio active")
 	}
-	if len(en) != 16 {
-		t.Fatalf("enabled tools = %d, want 16", len(en))
+	if len(en) != 15 {
+		t.Fatalf("enabled tools = %d, want 15", len(en))
 	}
 	off := testAgent(t.TempDir())
 	off.Config.WebSearch.AIStudio = config.AIStudioSearchConfig{Active: true, Model: "gemini-2.5-flash"}
@@ -159,6 +178,16 @@ func TestWebSearchDisabledByDefault(t *testing.T) {
 	off2.Config.WebSearch.AIStudio = config.AIStudioSearchConfig{Active: false, Model: "m", APIKey: "k"}
 	if BuildTools(off2, nil)["web_search"] != nil {
 		t.Fatalf("web_search active=false harus mati")
+	}
+	exaOnly := testAgent(t.TempDir())
+	exaOnly.Config.WebSearch = config.WebSearchConfig{Exa: config.ExaSearchConfig{Active: true, APIKey: "k"}}
+	if BuildTools(exaOnly, nil)["web_search"] == nil {
+		t.Fatalf("web_search harus ada saat exa active")
+	}
+	exaNoKey := testAgent(t.TempDir())
+	exaNoKey.Config.WebSearch = config.WebSearchConfig{Exa: config.ExaSearchConfig{Active: true}}
+	if BuildTools(exaNoKey, nil)["web_search"] != nil {
+		t.Fatalf("web_search exa tanpa api key harus tetap mati")
 	}
 }
 
@@ -201,7 +230,7 @@ func TestFetchAIStudioSearchMapsResults(t *testing.T) {
 	aistudioAPIBase = srv.URL
 	defer func() { aistudioAPIBase = old }()
 
-	res, err := fetchAIStudioSearch(context.Background(), testSearchConfig(), "harga emas", 5)
+	res, err := fetchAIStudioSearch(context.Background(), testAIStudioConfig(), "harga emas", 5)
 	if err != nil {
 		t.Fatalf("fetchAIStudioSearch error: %v", err)
 	}
@@ -230,7 +259,7 @@ func TestFetchAIStudioSearchAPIFailure(t *testing.T) {
 	aistudioAPIBase = srv.URL
 	defer func() { aistudioAPIBase = old }()
 
-	if _, err := fetchAIStudioSearch(context.Background(), testSearchConfig(), "x", 5); err == nil {
+	if _, err := fetchAIStudioSearch(context.Background(), testAIStudioConfig(), "x", 5); err == nil {
 		t.Fatalf("HTTP 400 harus jadi error")
 	} else if !strings.Contains(err.Error(), "API key not valid") {
 		t.Fatalf("pesan API harus diteruskan: %v", err)
@@ -238,7 +267,7 @@ func TestFetchAIStudioSearchAPIFailure(t *testing.T) {
 	if _, err := runWebSearch(context.Background(), testSearchConfig(), "", 5); err == nil {
 		t.Fatalf("query kosong harus error")
 	}
-	off := config.AIStudioSearchConfig{Active: false, Model: "m", APIKey: "k"}
+	off := config.WebSearchConfig{AIStudio: config.AIStudioSearchConfig{Active: false, Model: "m", APIKey: "k"}}
 	if _, err := runWebSearch(context.Background(), off, "x", 5); err == nil {
 		t.Fatalf("inactive harus error")
 	}
@@ -251,7 +280,7 @@ func TestFetchAIStudioAnswerWithoutChunks(t *testing.T) {
 	aistudioAPIBase = srv.URL
 	defer func() { aistudioAPIBase = old }()
 
-	res, err := fetchAIStudioSearch(context.Background(), testSearchConfig(), "emas", 5)
+	res, err := fetchAIStudioSearch(context.Background(), testAIStudioConfig(), "emas", 5)
 	if err != nil {
 		t.Fatalf("error: %v", err)
 	}
@@ -276,6 +305,129 @@ func TestRunWebSearchFormatsOutput(t *testing.T) {
 	}
 	if !strings.Contains(out, "Go Dev - https://go.dev/doc/install") {
 		t.Fatalf("output salah: %q", out)
+	}
+}
+
+func exaTestServer(t *testing.T, body string, status int, check func(r *http.Request)) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Errorf("method = %s, want POST", r.Method)
+		}
+		if !strings.HasSuffix(r.URL.Path, "/search") {
+			t.Errorf("path harus /search, got %s", r.URL.Path)
+		}
+		if check != nil {
+			check(r)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if status != 0 && status != 200 {
+			w.WriteHeader(status)
+		}
+		w.Write([]byte(body))
+	}))
+}
+
+func TestFetchExaSearchMapsResults(t *testing.T) {
+	srv := exaTestServer(t, `{"results":[{"title":"Nvidia pushes AI security","url":"https://example.com/nvidia","highlights":["Nvidia CEO Jensen Huang says jailbreaks are an engineering problem"]},{"title":"Go Dev","url":"https://go.dev/doc/install"}]}`, 200, func(r *http.Request) {
+		if r.Header.Get("x-api-key") == "" {
+			t.Errorf("x-api-key kosong sampai ke API")
+		}
+		if ct := r.Header.Get("Content-Type"); !strings.Contains(ct, "application/json") {
+			t.Errorf("content-type = %q, want application/json", ct)
+		}
+	})
+	defer srv.Close()
+	old := exaAPIBase
+	exaAPIBase = srv.URL
+	defer func() { exaAPIBase = old }()
+
+	res, err := fetchExaSearch(context.Background(), testExaConfig().Exa, "nvidia", 5)
+	if err != nil {
+		t.Fatalf("fetchExaSearch error: %v", err)
+	}
+	if len(res) != 2 {
+		t.Fatalf("hasil = %d, want 2: %+v", len(res), res)
+	}
+	if res[0].Title != "Nvidia pushes AI security" || res[0].URL != "https://example.com/nvidia" {
+		t.Fatalf("hasil pertama salah: %+v", res[0])
+	}
+	if !strings.Contains(res[0].Snippet, "engineering problem") {
+		t.Fatalf("highlights harus jadi snippet: %+v", res[0])
+	}
+}
+
+func TestFetchExaSearchAPIFailure(t *testing.T) {
+	srv := exaTestServer(t, `{"error":"unauthorized"}`, 401, nil)
+	defer srv.Close()
+	old := exaAPIBase
+	exaAPIBase = srv.URL
+	defer func() { exaAPIBase = old }()
+
+	if _, err := fetchExaSearch(context.Background(), testExaConfig().Exa, "x", 5); err == nil {
+		t.Fatalf("HTTP 401 harus jadi error")
+	}
+}
+
+func TestRunWebSearchExaOnly(t *testing.T) {
+	srv := exaTestServer(t, `{"results":[{"title":"Exa Hit","url":"https://example.com/hit","highlights":["cuplikan exa"]}]}`, 200, nil)
+	defer srv.Close()
+	old := exaAPIBase
+	exaAPIBase = srv.URL
+	defer func() { exaAPIBase = old }()
+
+	out, err := runWebSearch(context.Background(), testExaConfig(), "exa saja", 5)
+	if err != nil {
+		t.Fatalf("runWebSearch exa error: %v", err)
+	}
+	if !strings.Contains(out, "Exa Hit - https://example.com/hit") || !strings.Contains(out, "cuplikan exa") {
+		t.Fatalf("output exa salah: %q", out)
+	}
+}
+
+func TestRunWebSearchFallsBackToExa(t *testing.T) {
+	// aistudio fails, exa succeeds — fallback must return exa results.
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(400)
+		w.Write([]byte(`{"error":{"code":400,"message":"API key not valid","status":"INVALID_ARGUMENT"}}`))
+	}))
+	defer bad.Close()
+	good := exaTestServer(t, `{"results":[{"title":"Fallback Hit","url":"https://example.com/fallback","highlights":["dari exa"]}]}`, 200, nil)
+	defer good.Close()
+	oldAI, oldExa := aistudioAPIBase, exaAPIBase
+	aistudioAPIBase, exaAPIBase = bad.URL, good.URL
+	defer func() { aistudioAPIBase, exaAPIBase = oldAI, oldExa }()
+
+	out, err := runWebSearch(context.Background(), testBothConfig(), "fallback", 5)
+	if err != nil {
+		t.Fatalf("fallback ke exa harus sukses: %v", err)
+	}
+	if !strings.Contains(out, "Fallback Hit - https://example.com/fallback") {
+		t.Fatalf("hasil fallback salah: %q", out)
+	}
+}
+
+func TestRunWebSearchBothFailJoinsErrors(t *testing.T) {
+	badAI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(400)
+		w.Write([]byte(`{"error":{"code":400,"message":"bad ai key","status":"INVALID_ARGUMENT"}}`))
+	}))
+	defer badAI.Close()
+	badExa := exaTestServer(t, `{"error":"bad exa key"}`, 401, nil)
+	defer badExa.Close()
+	oldAI, oldExa := aistudioAPIBase, exaAPIBase
+	aistudioAPIBase, exaAPIBase = badAI.URL, badExa.URL
+	defer func() { aistudioAPIBase, exaAPIBase = oldAI, oldExa }()
+
+	_, err := runWebSearch(context.Background(), testBothConfig(), "gagal semua", 5)
+	if err == nil {
+		t.Fatalf("dua-duanya gagal harus error")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "aistudio:") || !strings.Contains(msg, "exa:") {
+		t.Fatalf("error harus sebut dua provider: %v", err)
 	}
 }
 

@@ -24,6 +24,10 @@
       "active": false,
       "model": "gemini-flash-lite-latest",
       "api_key": "replace-with-aistudio-key"
+    },
+    "exa": {
+      "active": false,
+      "api_key": "replace-with-exa-key"
     }
   }
 }
