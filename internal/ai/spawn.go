@@ -14,12 +14,15 @@ import (
 )
 
 func buildSpawnTool(a *Agent, opts *ProcessOptions, mk func(string, string, map[string]any, func(context.Context, map[string]any) (any, error)) *Tool, errVal func(error) (any, error)) *Tool {
-	return mk("spawn_agent", "Spawn a synchronous sub-agent for one delegated task. Use when a task is independent and needs its own system prompt and limited tools (e.g. researcher, scraper). Runs inline (not in background) with the same model and max_iterations from config, then returns its final answer directly. Do NOT use for trivial tasks you can do yourself. The sub-agent cannot spawn further sub-agents.",
+	return mk("spawn_agent", "Spawn a synchronous sub-agent for one delegated task. Use when a task is independent and needs its own system prompt and limited tools (e.g. researcher, scraper). Runs inline (not in background) with the same model and max_iterations from config, then returns its final answer directly. Do NOT use for trivial tasks you can do yourself. Capabilities are gated by four combinable flags: agent_read, agent_write, agent_exec, agent_search. All false/omitted = all parent tools except spawn_agent. Skill tools (use_skill, stop_skill) are always available. The sub-agent cannot spawn further sub-agents.",
 		objSchema([]string{"agent_name", "system_prompt", "task_prompt"}, map[string]any{
 			"agent_name":    strProp("Sub-agent name, e.g. 'researcher_01'. Required, non-empty."),
 			"system_prompt": strProp("System prompt for the sub-agent (its role and rules). Required, non-empty."),
 			"task_prompt":   strProp("Task for the sub-agent to execute. Required, non-empty."),
-			"allowed_tools": map[string]any{"type": "array", "description": "Tools the sub-agent may use, e.g. [\"web_search\", \"web_fetch\"]. Empty = all parent tools except spawn_agent.", "items": map[string]any{"type": "string"}},
+			"agent_read":    boolProp("Read-only tools: read_file, list_dir, get_env, telegram_getuser. Combinable with other agent_* flags.", false),
+			"agent_write":   boolProp("Write tools: write_file, edit_file, append_file, telegram_sendfile. Combinable with other agent_* flags.", false),
+			"agent_exec":    boolProp("Execution tools: exec, schedule. Combinable with other agent_* flags.", false),
+			"agent_search":  boolProp("Search/fetch tools: web_fetch, web_search (when available). Combinable with other agent_* flags.", false),
 		}),
 		func(ctx context.Context, args map[string]any) (any, error) {
 			if a == nil || a.Client == nil {
@@ -41,9 +44,9 @@ func buildSpawnTool(a *Agent, opts *ProcessOptions, mk func(string, string, map[
 			if terr != nil || len(full) == 0 {
 				return errVal(fmt.Errorf("spawn_agent unavailable: cannot build tools"))
 			}
-			subTools := filterSpawnTools(full, args["allowed_tools"])
+			subTools := filterSpawnTools(full, args)
 			if len(subTools) == 0 {
-				return errVal(fmt.Errorf("allowed_tools matched no tools"))
+				return errVal(fmt.Errorf("agent_* flags matched no tools"))
 			}
 			subSystem := fmt.Sprintf("%s\n\nYou are sub-agent %q spawned by the parent agent. Complete the task and return the final result directly, concisely.", system, name)
 			run, rerr := a.runOnce(ctx, subSystem, nil, task, opts, subTools)
@@ -63,10 +66,11 @@ func buildSpawnTool(a *Agent, opts *ProcessOptions, mk func(string, string, map[
 		})
 }
 
-// filterSpawnTools restricts the parent toolbox to allowed_tools.
-// Empty/missing allowed_tools = all except spawn_agent (no nesting).
-// Unknown names are ignored; matching is case-insensitive.
-func filterSpawnTools(full map[string]*Tool, raw any) map[string]*Tool {
+// filterSpawnTools restricts the parent toolbox to the four agent_* flags.
+// All false/missing = all except spawn_agent (no nesting).
+// Each true flag adds its group (union, combinable); skill tools
+// (use_skill, stop_skill) are always included when filtering.
+func filterSpawnTools(full map[string]*Tool, args map[string]any) map[string]*Tool {
 	out := map[string]*Tool{}
 	if full == nil {
 		return out
@@ -78,31 +82,42 @@ func filterSpawnTools(full map[string]*Tool, raw any) map[string]*Tool {
 		}
 		lower[strings.ToLower(n)] = t
 	}
-	var want []string
-	switch v := raw.(type) {
-	case []string:
-		want = v
-	case []any:
-		for _, e := range v {
-			if s, ok := e.(string); ok {
-				want = append(want, s)
+	add := func(names ...string) {
+		for _, n := range names {
+			if t, ok := lower[strings.ToLower(n)]; ok {
+				out[t.Name] = t
 			}
 		}
-	case string:
-		if strings.TrimSpace(v) != "" {
-			want = []string{v}
-		}
 	}
-	if len(want) == 0 {
+	if args == nil {
 		for _, t := range lower {
 			out[t.Name] = t
 		}
 		return out
 	}
-	for _, n := range want {
-		if t, ok := lower[strings.ToLower(strings.TrimSpace(n))]; ok {
+	rd := argBool(args, "agent_read")
+	wr := argBool(args, "agent_write")
+	ex := argBool(args, "agent_exec")
+	se := argBool(args, "agent_search")
+	if !rd && !wr && !ex && !se {
+		for _, t := range lower {
 			out[t.Name] = t
 		}
+		return out
+	}
+	// Skill tools always available so sub-agents can use loaded skills.
+	add("use_skill", "stop_skill")
+	if rd {
+		add("read_file", "list_dir", "get_env", "telegram_getuser")
+	}
+	if wr {
+		add("write_file", "edit_file", "append_file", "telegram_sendfile")
+	}
+	if ex {
+		add("exec", "schedule")
+	}
+	if se {
+		add("web_fetch", "web_search")
 	}
 	return out
 }
