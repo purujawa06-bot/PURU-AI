@@ -1,37 +1,40 @@
 github.com/purujawa06-bot/PURU-AI/cmd/dump-prompt
-github.com/purujawa06-bot/PURU-AI
 github.com/purujawa06-bot/PURU-AI/cmd/cli
+github.com/purujawa06-bot/PURU-AI
 github.com/purujawa06-bot/PURU-AI/cmd/puru
 ?   	github.com/purujawa06-bot/PURU-AI	[no test files]
 ?   	github.com/purujawa06-bot/PURU-AI/cmd/cli	[no test files]
 ?   	github.com/purujawa06-bot/PURU-AI/cmd/dump-prompt	[no test files]
 ok  	github.com/purujawa06-bot/PURU-AI/cmd/puru	0.011s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/ai	15.787s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/ai/openai	0.014s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/app	0.036s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/config	0.010s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/health	0.006s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/history	0.017s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/memory	0.013s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/messages	0.005s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/prompt	0.024s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/schedule	0.032s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/skillstate	0.005s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/telegram	0.029s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/tokens	0.020s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/ai	15.770s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/ai/openai	0.017s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/app	0.037s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/config	0.009s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/health	0.007s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/history	0.025s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/memory	0.008s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/messages	0.007s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/prompt	0.023s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/schedule	0.015s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/skillstate	0.006s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/telegram	0.028s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/tokens	0.022s
 ok  	github.com/purujawa06-bot/PURU-AI/internal/workspace	0.020s
 go: downloading github.com/tmc/langchaingo v0.1.14
 go: downloading github.com/mymmrac/telego v1.11.0
 go: downloading github.com/tiktoken-go/tokenizer v0.8.1
+go: downloading github.com/valyala/fasthttp v1.72.0
+go: downloading github.com/valyala/fastjson v1.6.10
 go: downloading github.com/pkoukk/tiktoken-go v0.1.6
 go: downloading go.starlark.net v0.0.0-20230302034142-4b1e35fe2254
 go: downloading github.com/Masterminds/sprig/v3 v3.2.3
 go: downloading github.com/nikolalohinski/gonja v1.5.3
-go: downloading github.com/valyala/fasthttp v1.72.0
-go: downloading github.com/valyala/fastjson v1.6.10
+go: downloading github.com/grbit/go-json v0.11.0
 go: downloading github.com/dlclark/regexp2 v1.10.0
 go: downloading github.com/google/uuid v1.6.0
-go: downloading golang.org/x/sys v0.46.0
+go: downloading github.com/andybalholm/brotli v1.2.1
+go: downloading github.com/klauspost/compress v1.18.6
+go: downloading github.com/valyala/bytebufferpool v1.0.0
 go: downloading github.com/Masterminds/goutils v1.1.1
 go: downloading github.com/Masterminds/semver/v3 v3.5.0
 go: downloading github.com/huandu/xstrings v1.3.3
@@ -41,16 +44,13 @@ go: downloading github.com/shopspring/decimal v1.2.0
 go: downloading github.com/spf13/cast v1.3.1
 go: downloading golang.org/x/crypto v0.53.0
 go: downloading github.com/goph/emperror v0.17.2
+go: downloading golang.org/x/sys v0.46.0
 go: downloading github.com/dlclark/regexp2/v2 v2.5.2
-go: downloading github.com/grbit/go-json v0.11.0
-go: downloading github.com/andybalholm/brotli v1.2.1
-go: downloading github.com/klauspost/compress v1.18.6
-go: downloading github.com/valyala/bytebufferpool v1.0.0
 go: downloading github.com/mitchellh/reflectwalk v1.0.0
+go: downloading github.com/pkg/errors v0.9.1
 go: downloading github.com/dustin/go-humanize v1.0.1
 go: downloading github.com/json-iterator/go v1.1.12
 go: downloading github.com/pelletier/go-toml/v2 v2.0.9
-go: downloading github.com/pkg/errors v0.9.1
 go: downloading github.com/yargevad/filepathx v1.0.0
 go: downloading golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f
 go: downloading gopkg.in/yaml.v3 v3.0.1
