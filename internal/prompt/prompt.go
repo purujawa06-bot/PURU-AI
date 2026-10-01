@@ -575,7 +575,7 @@ func buildDynamicContext(channel, chatID, senderID, senderDisplayName string) st
 func buildMemoryContent(memory string) string {
 	const guidance = "## Memory\n" +
 		"- memory/MEMORY.md below holds lasting user facts (name, hobby, personal info, stable\n" +
-		"   preferences). You MAY update it yourself with edit_file_replace_string (or write_file /\n" +
+		"   preferences). You MAY update it yourself with edit_file (or write_file /\n" +
 		"   append_file for new files) when you\n" +
 		"  learn a lasting fact. Never store temporary or session info there. Keep it\n" +
 		"  short bullets.\n" +

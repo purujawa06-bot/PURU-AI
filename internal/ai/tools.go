@@ -38,14 +38,13 @@ type TelegramClient interface {
 // maxSendFileBytes caps telegram_sendfile uploads (Telegram bots allow 50MB).
 const maxSendFileBytes = 20 << 20
 
-// BuildTools returns 15 tools by default: file tools (read_file, write_file,
-// list_dir, edit_file_replace_string, edit_file_replace_line,
-// edit_file_apply_patch, append_file) + exec + Telegram tools
+// BuildTools returns 14 tools by default: file tools (read_file, write_file,
+// list_dir, edit_file, append_file) + exec + Telegram tools
 // (telegram_sendfile, telegram_getuser) + get_env + web_fetch + schedule
-// + skill tools (use_skill, stop_skill). web_search (third-party, opt-in:
-// Google AI Studio with googleSearch grounding and/or Exa) is added as
-// the 16th tool only when at least one web_search provider is ready
-// (active + credentials) in config.json. No PuruBoy API anywhere.
+// + spawn_agent + skill tools (use_skill, stop_skill). web_search
+// (third-party, opt-in: Google AI Studio with googleSearch grounding and/or
+// Exa) is added as the 15th tool only when at least one web_search provider
+// is ready (active + credentials) in config.json. No PuruBoy API anywhere.
 // opts carries workspace config, current chat/user, and the OnTool preview hook.
 func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 	ws := ""
@@ -85,7 +84,7 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				}
 				return text, nil
 			}),
-		"write_file": mk("write_file", "Write content to a file. Fails when the file already exists unless overwrite=true; use edit_file_* or append_file for partial changes.",
+		"write_file": mk("write_file", "Write content to a file. Fails when the file already exists unless overwrite=true; use edit_file or append_file for partial changes.",
 			objSchema([]string{"path", "content"}, map[string]any{
 				"path":      strProp("Path to the file to write"),
 				"content":   strProp("Content to write to the file."),
@@ -112,63 +111,25 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				}
 				return text, nil
 			}),
-		"edit_file_replace_string": mk("edit_file_replace_string", "Replace text in a file.",
-			objSchema([]string{"path", "old_text", "new_text"}, map[string]any{
-				"path":     strProp("The file path to edit"),
-				"old_text": strProp("The text to find and replace (must occur exactly once)."),
-				"new_text": strProp("The text to replace with."),
+		"edit_file": mk("edit_file", "Replace text in a file. old_string must occur exactly once; give more context when ambiguous.",
+			objSchema([]string{"path", "old_string", "new_string"}, map[string]any{
+				"path":       strProp("The file path to edit."),
+				"old_string": strProp("The text to find and replace (must occur exactly once)."),
+				"new_string": strProp("The text to replace with."),
 			}),
 			func(ctx context.Context, args map[string]any) (any, error) {
-				oldText, ok := args["old_text"].(string)
-				if !ok {
-					return errVal(fmt.Errorf("old_text is required"))
+				oldText, ok := args["old_string"].(string)
+				if !ok || strings.TrimSpace(oldText) == "" {
+					return errVal(fmt.Errorf("old_string is required"))
 				}
-				newText, ok := args["new_text"].(string)
+				newText, ok := args["new_string"].(string)
 				if !ok {
-					return errVal(fmt.Errorf("new_text is required"))
+					return errVal(fmt.Errorf("new_string is required"))
 				}
 				if err := editLocalFile(ws, restrict, argStr(args, "path"), oldText, newText); err != nil {
 					return errVal(err)
 				}
 				return fmt.Sprintf("File edited: %s", argStr(args, "path")), nil
-			}),
-		"edit_file_replace_line": mk("edit_file_replace_line", "Replace lines in a file.",
-			objSchema([]string{"path", "start_line", "new_text"}, map[string]any{
-				"path":       strProp("The file path to edit"),
-				"start_line": intProp("First line to replace (1-based).", 1),
-				"end_line":   intProp("Last line to replace, inclusive (default: same as start_line).", 0),
-				"new_text":   strProp("Replacement text, may span multiple lines. Empty string deletes the range."),
-			}),
-			func(ctx context.Context, args map[string]any) (any, error) {
-				newText, ok := args["new_text"].(string)
-				if !ok {
-					return errVal(fmt.Errorf("new_text is required"))
-				}
-				start := argInt(args, "start_line")
-				end := argInt(args, "end_line")
-				if end <= 0 {
-					end = start
-				}
-				if err := editLocalFileByLine(ws, restrict, argStr(args, "path"), start, end, newText); err != nil {
-					return errVal(err)
-				}
-				return fmt.Sprintf("File edited: %s", argStr(args, "path")), nil
-			}),
-		"edit_file_apply_patch": mk("edit_file_apply_patch", "Apply a unified diff patch to a file.",
-			objSchema([]string{"path", "patch"}, map[string]any{
-				"path":  strProp("The file path to patch"),
-				"patch": strProp("Unified diff text with one or more @@ hunks (file headers like '---'/'+++' are optional)."),
-			}),
-			func(ctx context.Context, args map[string]any) (any, error) {
-				patch, ok := args["patch"].(string)
-				if !ok || strings.TrimSpace(patch) == "" {
-					return errVal(fmt.Errorf("patch is required"))
-				}
-				res, err := editLocalFileApplyPatch(ws, restrict, argStr(args, "path"), patch)
-				if err != nil {
-					return errVal(err)
-				}
-				return res, nil
 			}),
 		"append_file": mk("append_file", "Append content to a file.",
 			objSchema([]string{"path", "content"}, map[string]any{
@@ -358,6 +319,7 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 			})
 	}
 	tools["schedule"] = buildScheduleTool(a, opts, mk, errVal)
+	tools["spawn_agent"] = buildSpawnTool(a, opts, mk, errVal)
 	for name, tool := range buildSkillTools(a, opts, mk, errVal) {
 		tools[name] = tool
 	}

@@ -27,12 +27,12 @@ func TestGetRendersMemory(t *testing.T) {
 	if !strings.Contains(out, ws) {
 		t.Fatalf("workspace not injected")
 	}
-	for _, tool := range []string{"read_file", "write_file", "list_dir", "edit_file_replace_string", "edit_file_replace_line", "edit_file_apply_patch", "append_file", "exec", "telegram_sendfile", "telegram_getuser"} {
+	for _, tool := range []string{"read_file", "write_file", "list_dir", "edit_file", "append_file", "exec", "telegram_sendfile", "telegram_getuser"} {
 		_ = tool
 	}
 	// Picoclaw 1:1 — tools are declared via native function calls only and
 	// must not be embedded as a list in the system prompt.
-	for _, banned := range []string{"## Tools", "web_search —", "web_fetch —", "telegram_sendfile —", "telegram_getuser —", "edit_file_apply_patch —"} {
+	for _, banned := range []string{"## Tools", "web_search —", "web_fetch —", "telegram_sendfile —", "telegram_getuser —", "edit_file —"} {
 		if strings.Contains(out, banned) {
 			t.Fatalf("tool list %q must not be in prompt", banned)
 		}
