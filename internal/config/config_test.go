@@ -240,3 +240,44 @@ func TestWebSearchAIStudioEnabled(t *testing.T) {
 		t.Errorf("nil cfg harus disabled")
 	}
 }
+
+func TestWebSearchExaEnabled(t *testing.T) {
+	p := writeCfg(t, `{"telegram_bot_token":"x","model":{"base_url":"http://m/v1","model":"puru"},"web_search":{"exa":{"active":true,"api_key":"e123"}}}`)
+	c, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.WebSearchEnabled() {
+		t.Errorf("web_search exa active dengan key harus enabled")
+	}
+	if c.WebSearch.Exa.APIKey != "e123" {
+		t.Errorf("exa key = %q", c.WebSearch.Exa.APIKey)
+	}
+	// Alternate "apikey" spelling must also load.
+	p = writeCfg(t, `{"telegram_bot_token":"x","model":{"base_url":"http://m/v1","model":"puru"},"web_search":{"exa":{"active":true,"apikey":"e456"}}}`)
+	c, err = Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.WebSearchEnabled() || c.WebSearch.Exa.APIKey != "e456" {
+		t.Errorf("exa apikey spelling harus diterima: %+v", c.WebSearch.Exa)
+	}
+	// Missing key stays disabled.
+	p = writeCfg(t, `{"telegram_bot_token":"x","model":{"base_url":"http://m/v1","model":"puru"},"web_search":{"exa":{"active":true}}}`)
+	c, err = Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.WebSearchEnabled() {
+		t.Errorf("exa tanpa api key harus disabled")
+	}
+	// Both providers ready stays enabled.
+	p = writeCfg(t, `{"telegram_bot_token":"x","model":{"base_url":"http://m/v1","model":"puru"},"web_search":{"aistudio":{"active":true,"model":"gemini-2.5-flash","api_key":"k123"},"exa":{"active":true,"api_key":"e123"}}}`)
+	c, err = Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.WebSearchEnabled() || !c.WebSearch.AIStudio.Ready() || !c.WebSearch.Exa.Ready() {
+		t.Errorf("dua provider ready harus enabled: %+v", c.WebSearch)
+	}
+}

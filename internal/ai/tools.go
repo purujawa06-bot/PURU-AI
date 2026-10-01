@@ -42,10 +42,10 @@ const maxSendFileBytes = 20 << 20
 // list_dir, edit_file_replace_string, edit_file_replace_line,
 // edit_file_apply_patch, append_file) + exec + Telegram tools
 // (telegram_sendfile, telegram_getuser) + get_env + web_fetch + schedule
-// + skill tools (use_skill, stop_skill). web_search (third-party Google
-// AI Studio with googleSearch grounding) is added as the 16th tool only
-// when web_search.aistudio.active is true with model + api key set in
-// config.json. No PuruBoy API anywhere.
+// + skill tools (use_skill, stop_skill). web_search (third-party, opt-in:
+// Google AI Studio with googleSearch grounding and/or Exa) is added as
+// the 16th tool only when at least one web_search provider is ready
+// (active + credentials) in config.json. No PuruBoy API anywhere.
 // opts carries workspace config, current chat/user, and the OnTool preview hook.
 func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 	ws := ""
@@ -335,10 +335,10 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				return text, nil
 			}),
 	}
-	// web_search is opt-in only: registered when web_search.aistudio is
-	// active with model + api key. Default builds exclude it entirely.
+	// web_search is opt-in only: registered when at least one web_search
+	// provider is ready. Default builds exclude it entirely.
 	if a != nil && a.Config != nil && a.Config.WebSearchEnabled() {
-		searchCfg := a.Config.WebSearch.AIStudio
+		searchCfg := a.Config.WebSearch
 		tools["web_search"] = mk("web_search", "Search the web.",
 			objSchema([]string{"query"}, map[string]any{
 				"query": strProp("Search query (required, non-empty)."),

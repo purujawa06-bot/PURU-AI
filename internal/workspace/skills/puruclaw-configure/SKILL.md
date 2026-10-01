@@ -25,7 +25,7 @@ Fallback with `web_fetch` when curl is unavailable. If the fetch fails, say so a
 
 1. Fetch the canonical JSON above.
 2. Answer only with fields present in that JSON.
-3. For setup questions: tell the user to copy `example.config.json` to `config.json` and fill in secrets (`telegram_bot_token`, model `api_key`, `web_search.aistudio.api_key` when used).
+3. For setup questions: tell the user to copy `example.config.json` to `config.json` and fill in secrets (`telegram_bot_token`, model `api_key`, `web_search.aistudio.api_key` / `web_search.exa.api_key` when used).
 4. Never print real secrets. Use placeholders from the example file (`123456:ABCDEF-replace-with-bot-token`, `sk-replace-with-openai-key`).
 5. Explain unknown fields as "not in the canonical example config" instead of inventing them.
 
@@ -38,4 +38,5 @@ Fallback with `web_fetch` when curl is unavailable. If the fetch fails, say so a
 - `max_iterations`, `history_token_limit`, `loop_delay_seconds`, `exec_memory_mb`: agent loop limits.
 - `host`, `port`: HTTP listen address.
 - `tools_preview`, `skills_mode` (`default|off|custom`), `skills_allow`, `timezone`: runtime/skills options.
-- `web_search.aistudio.active`, `web_search.aistudio.model`, `web_search.aistudio.api_key`: optional Gemini fallback for web search.
+- `web_search.aistudio.active`, `web_search.aistudio.model`, `web_search.aistudio.api_key`: optional Gemini provider for web search (tried first).
+- `web_search.exa.active`, `web_search.exa.api_key`: optional Exa provider for web search (fallback when aistudio fails).

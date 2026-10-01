@@ -169,6 +169,8 @@ func runSetup(args []string) error {
 	webActive := false
 	webModel := "gemini-flash-lite-latest"
 	webAPIKey := ""
+	exaActive := false
+	exaAPIKey := ""
 
 	full := o.full
 	if !nonInteractive && !o.full {
@@ -212,6 +214,8 @@ func runSetup(args []string) error {
 		webActive = askBool(in, "Web search (aistudio) active", webActive)
 		webModel = askLine(in, "Web search model", webModel, false)
 		webAPIKey = askLine(in, "Web search api_key (empty = disabled)", webAPIKey, false)
+		exaActive = askBool(in, "Web search (exa) active", exaActive)
+		exaAPIKey = askLine(in, "Exa api_key (empty = disabled)", exaAPIKey, false)
 	}
 	if strings.TrimSpace(token) == "" {
 		return errors.New("telegram_bot_token is required (env TELEGRAM_BOT_TOKEN)")
@@ -249,6 +253,10 @@ func runSetup(args []string) error {
 				"active":  webActive,
 				"model":   strings.TrimSpace(webModel),
 				"api_key": strings.TrimSpace(webAPIKey),
+			},
+			"exa": map[string]any{
+				"active":  exaActive,
+				"api_key": strings.TrimSpace(exaAPIKey),
 			},
 		},
 	}
