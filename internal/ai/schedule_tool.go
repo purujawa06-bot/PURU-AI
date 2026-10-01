@@ -34,7 +34,7 @@ func scheduleDefaultTimezone(a *Agent) string {
 
 // buildScheduleTool returns the agent-facing schedule tool.
 func buildScheduleTool(a *Agent, opts *ProcessOptions, mk func(string, string, map[string]any, func(context.Context, map[string]any) (any, error)) *Tool, errVal func(error) (any, error)) *Tool {
-	desc := "Manage scheduled tasks."
+	desc := "Create, inspect, and manage scheduled jobs that fire this agent as a turn later. Use when the user asks for a reminder, a recurring check, or a task at a specific time. Do NOT use for immediate work — just do it now with your other tools. Returns a job listing or confirmation text per action, or {success:false,error} when workspace is unset or arguments are incomplete. Notes: jobs persist in <workspace>/schedule/jobs.json and keep running after this chat, so confirm timing before adding; use action=remove to cancel. Times are wall-clock in timezone (default Asia/Jakarta)."
 	return mk("schedule", desc,
 		objSchema([]string{"action"}, map[string]any{
 			"action":        enumProp("Action: add, list, get, update, remove, enable, disable", []string{"add", "list", "get", "update", "remove", "enable", "disable"}),
@@ -43,13 +43,13 @@ func buildScheduleTool(a *Agent, opts *ProcessOptions, mk func(string, string, m
 			"type":          enumProp("Schedule type: once, every, daily, cron (add/update).", []string{"once", "every", "daily", "cron"}),
 			"timezone":      strProp("IANA timezone for wall-clock times (default Asia/Jakarta)."),
 			"run_once_at":   strProp("One-time run time, e.g. 18:00, 2026-09-29 18:00 (once)."),
-			"every_seconds": intProp("Repeat interval in seconds, min 60 (every).", 3600),
+			"every_seconds": intRangeProp("Repeat interval in seconds for type=every. Default 3600, min 60, max under one year.", 3600, 60, 31622400),
 			"daily_time":    strProp("Daily time HH:MM 24-hour, e.g. 06:00 (daily)."),
 			"weekdays":      strProp("Comma weekdays mon,tue,wed,thu,fri,sat,sun (daily, optional)."),
 			"cron_expr":     strProp("Cron expression, 5 fields minute hour dom month dow (cron)."),
 			"end_at":        strProp("Stop after this time, e.g. 2026-10-05 00:00 (optional, for a few days only)."),
-			"days":          intProp("Run only for N days from now (optional shortcut, sets end date).", 0),
-			"max_runs":      intProp("Stop after N runs (optional, for once or limited repeats).", 0),
+			"days":          intRangeProp("Run only for N days from now, 0 = no end date (optional shortcut, sets end date).", 0, 0, 366),
+			"max_runs":      intRangeProp("Stop after N runs, 0 = unlimited (optional, for once or limited repeats, max 10000).", 0, 0, 10000),
 			"job_id":        strProp("Job id for get/update/remove/enable/disable."),
 		}),
 		func(ctx context.Context, args map[string]any) (any, error) {
