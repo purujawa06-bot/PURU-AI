@@ -51,7 +51,7 @@ func TestToolCount(t *testing.T) {
 	if len(tools) != 14 {
 		t.Fatalf("tools = %d, want exactly 14 (web_search opt-in)", len(tools))
 	}
-	for _, n := range []string{"read_file", "write_file", "list_dir", "edit_file", "append_file", "exec", "telegram_sendfile", "telegram_getuser", "get_env", "web_fetch", "schedule", "spawn_agent", "use_skill", "stop_skill"} {
+	for _, n := range []string{"read_file", "write_file", "list_dir", "edit_file", "append_file", "run_shell_command", "telegram_sendfile", "telegram_getuser", "get_env", "web_fetch", "manage_schedule", "spawn_agent", "use_skill", "stop_skill"} {
 		if tools[n] == nil {
 			t.Fatalf("tool %s missing", n)
 		}
@@ -80,7 +80,7 @@ func TestToolCount(t *testing.T) {
 // write_file(path, content, overwrite), list_dir(path),
 // edit_file(path, old_string, new_string),
 // spawn_agent(agent_name, system_prompt, task_prompt, agent_read, agent_write, agent_exec, agent_search),
-// exec(action wajib; opsional command, sessionId, background, cwd, timeout).
+// run_shell_command(action wajib; opsional command, sessionId, background, cwd, timeout).
 func TestPicoclawParamDeclarations(t *testing.T) {
 	tools := BuildTools(testAgent(t.TempDir()), nil)
 	want := map[string][]string{
@@ -90,7 +90,7 @@ func TestPicoclawParamDeclarations(t *testing.T) {
 		"edit_file":   {"path", "old_string", "new_string"},
 		"spawn_agent": {"agent_name", "system_prompt", "task_prompt", "agent_read", "agent_write", "agent_exec", "agent_search"},
 		"append_file": {"path", "content"},
-		"exec":        {"action", "command", "sessionId", "background", "cwd", "timeout"},
+		"run_shell_command":        {"action", "command", "sessionId", "background", "cwd", "timeout"},
 	}
 	wantRequired := map[string][]string{
 		"read_file":   {"path"},
@@ -99,7 +99,7 @@ func TestPicoclawParamDeclarations(t *testing.T) {
 		"edit_file":   {"path", "old_string", "new_string"},
 		"spawn_agent": {"agent_name", "system_prompt", "task_prompt"},
 		"append_file": {"path", "content"},
-		"exec":        {"action"},
+		"run_shell_command":        {"action"},
 	}
 	for name, props := range want {
 		params, _ := tools[name].Parameters["properties"].(map[string]any)
@@ -224,17 +224,17 @@ func TestExecWorkdirJailed(t *testing.T) {
 	ws := t.TempDir()
 	a := testAgent(ws)
 	tools := BuildTools(a, nil)
-	out, _ := tools["exec"].Run(context.Background(), map[string]any{"action": "run", "command": "echo hi", "cwd": ".."})
+	out, _ := tools["run_shell_command"].Run(context.Background(), map[string]any{"action": "run", "command": "echo hi", "cwd": ".."})
 	if m, _ := out.(map[string]any); m["success"] != false {
-		t.Fatalf("exec cwd escape must fail: %v", out)
+		t.Fatalf("run_shell_command cwd escape must fail: %v", out)
 	}
 }
 
 func TestExecRejectsUnknownAction(t *testing.T) {
 	tools := BuildTools(testAgent(t.TempDir()), nil)
-	out, _ := tools["exec"].Run(context.Background(), map[string]any{"action": "invalid"})
+	out, _ := tools["run_shell_command"].Run(context.Background(), map[string]any{"action": "invalid"})
 	if m, _ := out.(map[string]any); m["success"] != false {
-		t.Fatalf("exec unknown action must fail: %v", out)
+		t.Fatalf("run_shell_command unknown action must fail: %v", out)
 	}
 }
 
@@ -244,13 +244,13 @@ func TestExecBackgroundSessions(t *testing.T) {
 	}
 	tools := BuildTools(testAgent(t.TempDir()), nil)
 	ctx := context.Background()
-	out, _ := tools["exec"].Run(ctx, map[string]any{"action": "run", "command": "sleep 5", "background": true, "timeout": 30})
+	out, _ := tools["run_shell_command"].Run(ctx, map[string]any{"action": "run", "command": "sleep 5", "background": true, "timeout": 30})
 	m, _ := out.(map[string]any)
 	sid, _ := m["sessionId"].(string)
 	if m["success"] != true || sid == "" {
 		t.Fatalf("background run must return sessionId: %v", out)
 	}
-	lst, _ := tools["exec"].Run(ctx, map[string]any{"action": "list"})
+	lst, _ := tools["run_shell_command"].Run(ctx, map[string]any{"action": "list"})
 	found := false
 	if arr, ok := lst.([]map[string]any); ok {
 		for _, s := range arr {
@@ -262,19 +262,19 @@ func TestExecBackgroundSessions(t *testing.T) {
 	if !found {
 		t.Fatalf("session %s missing from list: %v", sid, lst)
 	}
-	p, _ := tools["exec"].Run(ctx, map[string]any{"action": "poll", "sessionId": sid})
+	p, _ := tools["run_shell_command"].Run(ctx, map[string]any{"action": "poll", "sessionId": sid})
 	if pm, _ := p.(map[string]any); pm["sessionId"] != sid {
 		t.Fatalf("poll must return session: %v", p)
 	}
-	r, _ := tools["exec"].Run(ctx, map[string]any{"action": "read", "sessionId": sid})
+	r, _ := tools["run_shell_command"].Run(ctx, map[string]any{"action": "read", "sessionId": sid})
 	if rm, _ := r.(map[string]any); rm["sessionId"] != sid {
 		t.Fatalf("read must return session output: %v", r)
 	}
-	k, _ := tools["exec"].Run(ctx, map[string]any{"action": "kill", "sessionId": sid})
+	k, _ := tools["run_shell_command"].Run(ctx, map[string]any{"action": "kill", "sessionId": sid})
 	if km, _ := k.(map[string]any); km["sessionId"] != sid {
 		t.Fatalf("kill must confirm session: %v", k)
 	}
-	if bad, _ := tools["exec"].Run(ctx, map[string]any{"action": "poll", "sessionId": "nope"}); !hasErrPicoclaw(bad) {
+	if bad, _ := tools["run_shell_command"].Run(ctx, map[string]any{"action": "poll", "sessionId": "nope"}); !hasErrPicoclaw(bad) {
 		t.Fatalf("poll unknown session must error: %v", bad)
 	}
 }
@@ -457,8 +457,8 @@ func TestSpawnAgentValidation(t *testing.T) {
 		"edit_file":        {Name: "edit_file"},
 		"append_file":      {Name: "append_file"},
 		"telegram_sendfile": {Name: "telegram_sendfile"},
-		"exec":             {Name: "exec"},
-		"schedule":         {Name: "schedule"},
+		"run_shell_command":             {Name: "run_shell_command"},
+		"manage_schedule":  {Name: "manage_schedule"},
 		"web_fetch":        {Name: "web_fetch"},
 		"web_search":       {Name: "web_search"},
 		"use_skill":        {Name: "use_skill"},
@@ -494,8 +494,8 @@ func TestSpawnAgentValidation(t *testing.T) {
 	}
 	// exec only: 2 exec + 2 skill
 	got = filterSpawnTools(full, map[string]any{"agent_exec": true})
-	if len(got) != 4 || got["exec"] == nil || got["schedule"] == nil {
-		t.Fatalf("agent_exec = %v, want exec+schedule+2 skill", got)
+	if len(got) != 4 || got["run_shell_command"] == nil || got["manage_schedule"] == nil {
+		t.Fatalf("agent_exec = %v, want run_shell_command+manage_schedule+2 skill", got)
 	}
 	// search only: 2 search + 2 skill
 	got = filterSpawnTools(full, map[string]any{"agent_search": true})

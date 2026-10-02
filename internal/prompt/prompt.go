@@ -485,8 +485,19 @@ func getIdentity(workspacePath string, includeToolUseRule bool, includeOnboardin
 		))
 	}
 	rules = append(rules,
-		"Reply in the user's language (match the language they write in).",
-		"Stay inside the workspace. Paths outside it are rejected.",
+		"Reply in the user's language (match the language they write in) — matching language avoids misunderstanding and keeps control with the user.",
+		"Stay inside the workspace. Paths outside it are rejected — the workspace jail blocks escapes to prevent accidental damage outside the project.",
+	)
+	if includeToolUseRule {
+		rules = append(rules,
+			"**Tool strategy** - 1. Understand the request and check workspace files first. 2. Call the matching tool instead of describing it; file work before run_shell_command, read before edit. 3. Stop when the request is done and summarize briefly. This order keeps turns short and auditable.",
+			"**Constraints & safety** - Destructive run_shell_command, delete, or overwrite needs explicit user confirmation first, because these actions are irreversible. Refuse requests outside the workspace and offer a safe inside-workspace alternative.",
+		)
+	}
+	rules = append(rules,
+		"**Output format** - Reply in the user's language, concise plain text, factual tone. End with one next step only when something actionable remains.",
+		"**Examples** - User: \"read notes.txt\" -> call read_file {path:\"notes.txt\"} then summarize briefly. User: \"rm -rf /\" -> refuse (outside workspace, destructive) and offer to list or clean inside the workspace instead.",
+		"**If stuck** - If a tool fails, retry once with fixed arguments then report the error plus a hint. If required info is missing, ask one clarifying question. Treat summaries as approximate and defer to explicit user instructions.",
 	)
 	for i, rule := range rules {
 		rules[i] = fmt.Sprintf("%d. %s", i+1, rule)

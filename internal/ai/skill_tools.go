@@ -119,9 +119,9 @@ func rejectActiveSkillExec(a *Agent, opts *ProcessOptions, command string) (stri
 // buildSkillTools returns the use_skill / stop_skill tools sharing the same
 // mk/errVal helpers as the file tools.
 func buildSkillTools(a *Agent, opts *ProcessOptions, mk func(string, string, map[string]any, func(context.Context, map[string]any) (any, error)) *Tool, errVal func(error) (any, error)) map[string]*Tool {
-	useSkill := mk("use_skill", "Activate a skill by name.",
+	useSkill := mk("use_skill", "Activate a skill by its exact catalog name and load its full instructions for this and later turns. Use when a listed skill matches the request and its workflow should be followed. Do NOT use for skills already active in <skills> Active Skills, or to read a file — use read_file. Returns the skill name plus its full SKILL.md body, or {success:false,error} when the name is unknown, blocked by policy, or has no readable SKILL.md. Notes: persists per chat until stop_skill, so activate once and reuse it; ask before activating an unexpected skill.",
 		objSchema([]string{"name"}, map[string]any{
-			"name": strProp("Exact skill <name> from the <skills> catalog (case-insensitive)."),
+			"name": strProp("Exact skill <name> from the <skills> catalog, case-insensitive. Example: find-skills."),
 		}),
 		func(ctx context.Context, args map[string]any) (any, error) {
 			name := strings.TrimSpace(argStr(args, "name"))
@@ -170,9 +170,9 @@ func buildSkillTools(a *Agent, opts *ProcessOptions, mk func(string, string, map
 			}
 			return fmt.Sprintf("Skill %q activated. Its full body is now injected as Active Skills and stays active until stop_skill.\n\n%s", canonical, body), nil
 		})
-	stopSkill := mk("stop_skill", "Deactivate an active skill.",
+	stopSkill := mk("stop_skill", "Deactivate a skill that is currently active for this chat. Use when its instructions no longer apply and you want its body out of the prompt. Do NOT use to read or list skills — use use_skill or the <skills> catalog. Returns a confirmation string, or {success:false,error} when there is no chat scope or the name was not runtime-active. Notes: skills activated by AGENTS.md frontmatter stay active and cannot be stopped this way.",
 		objSchema([]string{"name"}, map[string]any{
-			"name": strProp("Active skill name to deactivate (case-insensitive)."),
+			"name": strProp("Active skill name to deactivate, case-insensitive. Example: find-skills."),
 		}),
 		func(ctx context.Context, args map[string]any) (any, error) {
 			name := strings.TrimSpace(argStr(args, "name"))
