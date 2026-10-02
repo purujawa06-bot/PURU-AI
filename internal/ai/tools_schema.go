@@ -9,9 +9,7 @@ import (
 
 // tools_schema.json is the single source of truth for every tool
 // description and parameter schema. Edit that file to change what the
-// model sees — the inline objSchema/strProp calls in tools.go are only
-// evaluated and then overridden.
-//
+// model sees — mk(name, run) in tools.go loads desc/params from here.
 //go:embed tools_schema.json
 var rawToolSchema []byte
 
