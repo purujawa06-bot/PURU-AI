@@ -176,7 +176,7 @@ func scheduleJobFromArgs(a *Agent, args map[string]any, chatID, userID int64, no
 			return schedule.Job{}, err
 		}
 		job.DailyTime = daily
-		weekdays, err := schedule.ParseWeekdays(argStr(args, "weekdays"))
+		weekdays, err := schedule.ParseWeekdays(args["weekdays"])
 		if err != nil {
 			return schedule.Job{}, err
 		}

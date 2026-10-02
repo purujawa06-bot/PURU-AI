@@ -164,17 +164,17 @@
       }
     },
     "telegram_getuser": {
-      "description": "Look up a Telegram user's id, username, and name. Use when you need to confirm who is talking or resolve a username. Do NOT use to store profile data in memory — only lasting facts belong in MEMORY.md. Returns {id, username, first_name, last_name, bio} (bio only when fetched for another user), or {error} outside Telegram or for an unknown id. Read-only.",
+      "description": "Look up a Telegram user's id, username, and name by numeric id. Use when you need to confirm who is talking or fetch details for a known user id. Do NOT use to search by @username — that is not supported; do NOT use to store profile data in memory — only lasting facts belong in MEMORY.md. Returns {id, username, first_name, last_name, bio} (bio only when fetched for another user), or {error} outside Telegram or for an unknown id. Read-only.",
       "properties": {
         "user_id": {
-          "type": "number",
+          "type": "integer",
           "description": "Telegram user id to look up. Omit or 0 to return the current sender from the prompt context.",
           "minimum": 1
         }
       }
     },
     "get_env": {
-      "description": "Get runtime facts about this agent: OS, architecture, Go version, workspace path, jail mode, and memory use. Use when you need to check the platform before choosing commands. Do NOT use to read environment variables or secrets — this returns no secret values. Returns {os, arch, go_ver, workspace, restricted, memory_mb} with no parameters. Read-only.",
+      "description": "Get runtime facts about this agent: OS, architecture, Go version, workspace path, jail mode, and memory use. Use when you need to check the platform before choosing commands. Do NOT use to read environment variables or secrets — despite the name, it returns none. Returns {os, arch, go_ver, workspace, restricted, memory_mb} with no parameters. Read-only.",
       "properties": {}
     },
     "web_fetch": {
@@ -192,7 +192,7 @@
         },
         "start_line": {
           "type": "integer",
-          "description": "Line number to start from, 1-based. Example: start_line 1 length 100, lanjut start_line 101. Default 1.",
+          "description": "Line number to start from, 1-based. Example: start_line 1 length 100, then start_line 101. Default 1.",
           "default": 1,
           "minimum": 1,
           "maximum": 1000000
@@ -265,8 +265,12 @@
           "description": "Daily time HH:MM 24-hour, e.g. 06:00 (daily)."
         },
         "weekdays": {
-          "type": "string",
-          "description": "Comma weekdays mon,tue,wed,thu,fri,sat,sun (daily, optional)."
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+          },
+          "description": "Weekdays to run on, e.g. [\"mon\",\"fri\"] (daily, optional). Omit for every day."
         },
         "cron_expr": {
           "type": "string",
@@ -297,7 +301,7 @@
       }
     },
     "spawn_agent": {
-      "description": "Spawn a synchronous sub-agent for one delegated task. Use when a task is independent and needs its own system prompt and limited tools (e.g. researcher, scraper). Runs inline (not in background) with the same model and max_iterations from config, then returns its final answer directly as \"Result from <agent_name>: ...\" (or a step-limit notice when capped). Do NOT use for trivial tasks you can do yourself. Capabilities are gated by four combinable flags: agent_read, agent_write, agent_exec, agent_search; all false/omitted = all parent tools except spawn_agent. Skill tools (use_skill, stop_skill) are always available. Notes: the child cannot spawn again (spawn_agent is stripped) and cannot use your chat or Telegram tools directly; each spawn costs model time and shares your step budget, so batch tightly. Returns {success:false,error} when no model is configured, required args are empty, the flags match no tools, or the child errors.",
+      "description": "Spawn a synchronous sub-agent for one delegated task. Use when a task is independent and needs its own system prompt and limited tools (e.g. researcher, scraper). Runs inline (not in background) with the same model and max_iterations from config, then returns its final answer directly as \"Result from <agent_name>: ...\" (or a step-limit notice when capped). Do NOT use for trivial tasks you can do yourself. Capabilities are gated by four combinable flags: agent_read, agent_write, agent_exec, agent_search; all false/omitted = all parent tools except spawn_agent. Skill tools (use_skill, stop_skill) are always available. Notes: the child cannot spawn again (spawn_agent is stripped) and cannot use your chat or Telegram tools directly; omitting every agent_* flag gives the child shell and write access, so set only the flags the task needs; each spawn costs model time and shares your step budget, so batch tightly. Returns {success:false,error} when no model is configured, required args are empty, the flags match no tools, or the child errors.",
       "required": ["agent_name", "system_prompt", "task_prompt"],
       "properties": {
         "agent_name": {
