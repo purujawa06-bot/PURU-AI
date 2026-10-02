@@ -20,6 +20,7 @@ import (
 	"github.com/purujawa06-bot/PURU-AI/internal/messages"
 	"github.com/purujawa06-bot/PURU-AI/internal/prompt"
 	"github.com/purujawa06-bot/PURU-AI/internal/telegram"
+	"github.com/purujawa06-bot/PURU-AI/internal/workspace"
 )
 
 const maxMessageLength = 4096
@@ -221,7 +222,7 @@ func isCommandChar(c byte) bool {
 
 func isCommand(s string) bool {
 	switch commandName(s) {
-	case "/help", "/clear", "/token", "/stop", "/sched":
+	case "/help", "/clear", "/token", "/stop", "/sched", "/skills":
 		return true
 	}
 	return false
@@ -237,9 +238,11 @@ func (a *App) handleCommand(ctx context.Context, msg *telegram.Message) error {
 	case "/token":
 		return a.safeReply(ctx, msg, tokenInfo(history.TokenCountFull(a.renderedSystemFor(msg.From.ID), a.hist.Get(msg.From.ID)), a.cfg.HistoryTokenLimit), true)
 	case "/help":
-		return a.safeReply(ctx, msg, "PURU-AI lightweight — just send any message.\n/clear = clear history.\n/token = memory token usage info.\n/stop = stop the running process.\n/sched = list scheduled jobs (ask me to schedule, e.g. \"every day 6am WIB check stocks\").\nIn groups: call via /ai <question> (e.g. /ai explain Raft).", true)
+		return a.safeReply(ctx, msg, "PURU-AI lightweight — just send any message.\n/clear = clear history.\n/token = memory token usage info.\n/stop = stop the running process.\n/sched = list scheduled jobs (ask me to schedule, e.g. \"every day 6am WIB check stocks\").\n/skills = list installed and active skills.\nIn groups: call via /ai <question> (e.g. /ai explain Raft).", true)
 	case "/sched":
 		return a.handleSchedCommand(ctx, msg)
+	case "/skills":
+		return a.handleSkillsCommand(ctx, msg)
 	default: // /clear
 		_ = a.hist.Clear(msg.From.ID)
 		return a.safeReply(ctx, msg, "History cleared.", true)
@@ -591,4 +594,83 @@ func (a *App) handleSchedCommand(ctx context.Context, msg *telegram.Message) err
 		return a.safeReply(ctx, msg, "Cannot list jobs: "+err.Error(), true)
 	}
 	return a.safeReply(ctx, msg, FormatScheduleList(jobs), true)
+}
+
+// handleSkillsCommand implements /skills: list installed skills plus
+// which ones are active for this chat (frontmatter + runtime use_skill).
+func (a *App) handleSkillsCommand(ctx context.Context, msg *telegram.Message) error {
+	ws := ""
+	if a != nil && a.cfg != nil {
+		ws = a.cfg.Workspace
+	}
+	if strings.TrimSpace(ws) == "" {
+		return a.safeReply(ctx, msg, "Skills unavailable: workspace not configured.", true)
+	}
+	installed := workspace.ListSkills(ws)
+	policy := workspace.SkillsPolicy{}
+	if a != nil && a.cfg != nil {
+		policy = a.cfg.SkillsPolicy()
+	}
+	installed = workspace.FilterSkills(installed, policy)
+	active := []string{}
+	if a != nil && a.agent != nil {
+		opts := &ai.ProcessOptions{ChatID: msg.From.ID}
+		frontmatter := workspace.Load(ws).FrontmatterSkills
+		active = workspace.MergeActiveSkills(frontmatter, ai.ActiveSkillsFor(a.agent, opts))
+		// Keep only policy-allowed + still-installed names.
+		allowed := map[string]struct{}{}
+		for _, s := range installed {
+			allowed[strings.ToLower(s.Name)] = struct{}{}
+		}
+		kept := active[:0]
+		for _, name := range active {
+			if _, ok := allowed[strings.ToLower(strings.TrimSpace(name))]; !ok {
+				continue
+			}
+			if !policy.Allows(name) {
+				continue
+			}
+			kept = append(kept, name)
+		}
+		active = kept
+	}
+	return a.safeReply(ctx, msg, FormatSkillsList(installed, active), true)
+}
+
+// FormatSkillsList renders installed + active skills for /skills output.
+func FormatSkillsList(installed []workspace.SkillInfo, active []string) string {
+	if len(installed) == 0 {
+		return "No skills installed. Ask me to find one (e.g. \"find a skill for pdf\")."
+	}
+	isActive := map[string]bool{}
+	for _, name := range active {
+		isActive[strings.ToLower(strings.TrimSpace(name))] = true
+	}
+	lines := make([]string, 0, len(installed))
+	for _, s := range installed {
+		mark := "○"
+		if isActive[strings.ToLower(s.Name)] {
+			mark = "●"
+		}
+		desc := strings.TrimSpace(s.Description)
+		if len(desc) > 100 {
+			desc = desc[:100] + "…"
+		}
+		if desc != "" {
+			lines = append(lines, mark+" "+s.Name+" — "+desc)
+		} else {
+			lines = append(lines, mark+" "+s.Name)
+		}
+	}
+	out := "🧩 Skills (" + strconv.Itoa(len(installed)) + " installed"
+	if len(active) > 0 {
+		out += ", " + strconv.Itoa(len(active)) + " active"
+	}
+	out += "):\n" + strings.Join(lines, "\n")
+	if len(active) > 0 {
+		out += "\n\nActive: " + strings.Join(active, ", ")
+	} else {
+		out += "\n\nNo active skills. Use `use_skill` or list in AGENTS.md frontmatter."
+	}
+	return out
 }

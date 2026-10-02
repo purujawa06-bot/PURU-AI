@@ -13,7 +13,7 @@
 - ⚡ **Minimalist & Fast** — Single Go binary with a tiny footprint. No heavy runtimes.
 - 🛠️ **Local Tool Intelligence** — Native file operations, shell execution, and web navigation.
 - 🧠 **Smart Context Management** — Long-term memory via `memory/MEMORY.md` and automated history summarization into `memory/context/`.
-- 🧩 **Skills** — Picoclaw-style `skills/*/SKILL.md` catalog (metadata only in the prompt; the agent reads bodies via `read_file`). Builtins `find-skills` + `skill-creator` + `puruclaw-configure` are seeded on first run; list more skills in `AGENTS.md` frontmatter (`skills: [...]`) to inject them as Active Skills.
+- 🧩 **Skills** — Picoclaw-style `skills/*/SKILL.md` catalog (metadata only in the prompt; the agent reads bodies via `read_file`). Builtins `find-skills` + `skill-creator` are seeded on first run; list more skills in `AGENTS.md` frontmatter (`skills: [...]`) to inject them as Active Skills.
 - 🔄 **Async Process Control** — Manage long-running background tasks with real-time polling and termination.
 - 🔒 **Security First** — Granular workspace restrictions and memory-capped execution.
 - 🐳 **Cloud Ready** — Pre-configured for Docker and GitHub Container Registry (GHCR).
@@ -44,7 +44,6 @@ graph TD
   memory/context/*.md        # conversation summaries, system-managed (newest 20)
   skills/find-skills/SKILL.md  # builtin: discover + install new skills via skills.sh directory
   skills/skill-creator/SKILL.md # builtin: author new skills
-  skills/puruclaw-configure/SKILL.md # builtin: answer config questions from example.config.json on main
   skills/<skill>/SKILL.md    # installed skills
 ```
 
@@ -163,6 +162,7 @@ In Telegram, use the following commands:
 - `/token` — Monitor token usage and costs.
 - `/stop` — Force-kill the active background session.
 - `/sched` — List scheduled jobs (`/sched remove <id>` deletes one). Ask in chat to schedule, e.g. "every day 6am WIB check stocks".
+- `/skills` — List installed skills (● active, ○ installed).
 
 ### ⏰ Scheduled tasks (Picoclaw cron-like)
 

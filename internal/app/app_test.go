@@ -16,10 +16,11 @@ import (
 	"github.com/purujawa06-bot/PURU-AI/internal/memory"
 	"github.com/purujawa06-bot/PURU-AI/internal/messages"
 	"github.com/purujawa06-bot/PURU-AI/internal/telegram"
+	"github.com/purujawa06-bot/PURU-AI/internal/workspace"
 )
 
 func TestIsCommandMenu(t *testing.T) {
-	for _, c := range []string{"/help", "/help@bot", "/clear", "/token", "/stop", "/stop@bot", "/sched", "/sched remove abc"} {
+	for _, c := range []string{"/help", "/help@bot", "/clear", "/token", "/stop", "/stop@bot", "/sched", "/sched remove abc", "/skills"} {
 		if !isCommand(c) {
 			t.Errorf("%q harus dikenali sebagai command", c)
 		}
@@ -241,5 +242,22 @@ func TestParseAICommand(t *testing.T) {
 		if ok != want.ok || rest != want.rest {
 			t.Errorf("parseAICommand(%q) = (%q,%v), want (%q,%v)", in, rest, ok, want.rest, want.ok)
 		}
+	}
+}
+
+func TestFormatSkillsList(t *testing.T) {
+	installed := []workspace.SkillInfo{
+		{Name: "find-skills", Description: "Discover skills"},
+		{Name: "skill-creator", Description: "Author skills"},
+	}
+	got := FormatSkillsList(installed, []string{"find-skills"})
+	if !strings.Contains(got, "● find-skills") || !strings.Contains(got, "○ skill-creator") {
+		t.Fatalf("marks wrong: %q", got)
+	}
+	if !strings.Contains(got, "Active: find-skills") {
+		t.Fatalf("active missing: %q", got)
+	}
+	if got := FormatSkillsList(nil, nil); !strings.Contains(got, "No skills installed") {
+		t.Fatalf("empty must hint install: %q", got)
 	}
 }
