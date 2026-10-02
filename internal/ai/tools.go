@@ -54,6 +54,10 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 		restrict = a.Config.RestrictWorkspace
 	}
 	mk := func(name, desc string, params map[string]any, run func(ctx context.Context, args map[string]any) (any, error)) *Tool {
+		// Single source of truth: internal/ai/tools_schema.json.
+		// Inline desc/params below are ignored; edit the JSON only.
+		desc = toolDescription(name)
+		params = toolParameters(name)
 		return &Tool{Name: name, Description: desc, Parameters: params, Run: func(ctx context.Context, args map[string]any) (any, error) {
 			if opts != nil && opts.OnTool != nil {
 				opts.OnTool(name, args)

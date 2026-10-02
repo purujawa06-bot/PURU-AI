@@ -1,0 +1,358 @@
+{
+  "tools": {
+    "read_file": {
+      "description": "Read a file from the workspace. Use when you need file contents before answering, editing, or summarizing. Do NOT use to list directories — use list_dir. Returns lines start_line..end with [file: ... read: lines a-b] header, plus start_line= next when truncated, or {success:false,error} when missing or blocked. Read-only, no writes.",
+      "required": ["path"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Workspace-relative file path to read. Example: notes.txt, sub/a.txt."
+        },
+        "start_line": {
+          "type": "integer",
+          "description": "Line number to start reading from, 1-based. Example: 1 = from top, 101 = continue at line 101. Default 1.",
+          "default": 1,
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "length": {
+          "type": "integer",
+          "description": "Max lines to return. Default 200, max 2000.",
+          "default": 200,
+          "minimum": 1,
+          "maximum": 2000
+        }
+      }
+    },
+    "write_file": {
+      "description": "Create a new file with the exact content given. Use when you need a file that does not exist yet. Do NOT use to change part of an existing file — use edit_file; to add at the end — use append_file. Returns \"File written: <path>\" on success, or {success:false,error} when the path is blocked or already exists. Writes the file: confirm with the user before replacing anything important, and prefer overwrite=false so accidental data loss fails loudly.",
+      "required": ["path", "content"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Workspace-relative file path to create, parent dirs are created. Example: notes.txt, skills/<name>/SKILL.md."
+        },
+        "content": {
+          "type": "string",
+          "description": "Full file content to write, verbatim. Empty string creates an empty file."
+        },
+        "overwrite": {
+          "type": "boolean",
+          "description": "Replace an existing file in full. Default false, so the call fails instead of discarding data. Example: {\"path\":\"notes.txt\",\"content\":\"...\",\"overwrite\":true}.",
+          "default": false
+        }
+      }
+    },
+    "list_dir": {
+      "description": "List files and directories at one path. Use when you need to discover what exists before reading or editing. Do NOT use to read file contents — use read_file. Returns a plain-text listing (names one per line, directories marked), or {success:false,error} when the path is missing or blocked. Read-only, no writes.",
+      "required": ["path"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Workspace-relative directory to list. Example: \".\" for the workspace root, or skills/find-skills."
+        }
+      }
+    },
+    "grep": {
+      "description": "Search a file or folder tree for a literal keyword. Use when you need to locate text across files without reading each one. path may be one file (e.g. internal/ai/fs.go) or a folder (e.g. internal/ai, scanned recursively with subfolders). Do NOT use to read full file contents — use read_file; to list names only — use list_dir. Returns rel:line: text hits (or (no matches)), or {success:false,error} when keyword is empty or path is blocked. Read-only.",
+      "required": ["path", "keyword"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Workspace-relative file or folder to search. Example: internal/ai/fs.go for one file, internal/ai for recursive folder scan."
+        },
+        "keyword": {
+          "type": "string",
+          "description": "Literal text to find (case-sensitive). Example: BuildTools."
+        },
+        "ext": {
+          "type": "string",
+          "description": "Optional extension filter, e.g. go or .go,.md. Empty = all files."
+        },
+        "limit": {
+          "type": "integer",
+          "description": "Max matches to return. Default 50, max 200.",
+          "default": 50,
+          "minimum": 1,
+          "maximum": 200
+        }
+      }
+    },
+    "edit_file": {
+      "description": "Replace one unique text block inside an existing file. Use for targeted changes to a file you have already read. Do NOT use to create a file — use write_file; to append — use append_file; for wholesale replacement — write_file with overwrite=true. Returns \"File edited: <path>\", or {success:false,error} when old_string is missing or ambiguous. Writes the file: re-read before editing and confirm destructive edits with the user.",
+      "required": ["path", "old_string", "new_string"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Workspace-relative path of the existing file to edit. Example: AGENTS.md."
+        },
+        "old_string": {
+          "type": "string",
+          "description": "Exact text to find. Must occur exactly once in the file; if it occurs more than once the call fails and you must include more surrounding context."
+        },
+        "new_string": {
+          "type": "string",
+          "description": "Replacement text. Use an empty string to delete the matched block."
+        }
+      }
+    },
+    "append_file": {
+      "description": "Append content to the end of a file, creating it when missing. Use for logs, notes, and adding to a list. Do NOT use to change existing text — use edit_file; to create with exact content — write_file. Returns \"Appended to <path>\", or {success:false,error} when the path is blocked. Writes the file: the previous content is preserved, but confirm before appending to files the user owns.",
+      "required": ["path", "content"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Workspace-relative file path to append to. Example: memory/context-notes.md."
+        },
+        "content": {
+          "type": "string",
+          "description": "Text to add after the current end of file. Include leading newlines when needed."
+        }
+      }
+    },
+    "run_shell_command": {
+      "description": "Run a shell command inside the workspace and return its result. Use when you need to build, test, inspect git, or run any command the file tools cannot do. Do NOT use to read or edit files — use read_file/edit_file; to fetch URLs — use web_fetch. Returns {success, exit_code, output} on run, or {success:false,error} when blocked. Notes: writes and executes arbitrary commands inside the workspace jail (outside paths are rejected); destructive commands are irreversible — confirm with the user first. Long commands should run with background=true then poll/read; kill stops them. Timeouts are clamped 1-300s, output is capped.",
+      "required": ["action"],
+      "properties": {
+        "action": {
+          "type": "string",
+          "description": "Action: run (execute), list (show sessions), poll (check status), read (get output), kill (terminate)",
+          "enum": ["run", "list", "poll", "read", "kill"]
+        },
+        "command": {
+          "type": "string",
+          "description": "Shell command to run, required for action=run. Example: go test ./... ."
+        },
+        "sessionId": {
+          "type": "string",
+          "description": "Session ID from a background run, required for poll/read/kill. Example: sess_1712345678."
+        },
+        "background": {
+          "type": "boolean",
+          "description": "Run in background immediately and return a sessionId for poll/read. Default false.",
+          "default": false
+        },
+        "cwd": {
+          "type": "string",
+          "description": "Working directory inside the workspace. Default is the workspace root. Example: internal/ai."
+        },
+        "timeout": {
+          "type": "integer",
+          "description": "Timeout in seconds for action=run. Default 60, clamped 1-300.",
+          "default": 60,
+          "minimum": 1,
+          "maximum": 300
+        }
+      }
+    },
+    "telegram_sendfile": {
+      "description": "Upload a workspace file to the current Telegram chat. Use when the user asks to receive a file, image, or generated artifact. Do NOT use to paste file contents in a message — use read_file and reply with text. Returns {success:true,path} on upload, or {error} when unavailable outside Telegram, too large, or blocked. Notes: sends a message to the user immediately and cannot be unsent — send only when the user asked for it. Max 20MB; filename defaults to the path basename.",
+      "required": ["path"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Workspace-relative path of the file to upload. Relative paths resolve from the workspace root. Example: out/report.pdf."
+        },
+        "filename": {
+          "type": "string",
+          "description": "Display filename shown in Telegram. Default is the basename of path."
+        },
+        "caption": {
+          "type": "string",
+          "description": "Optional short caption shown under the file."
+        }
+      }
+    },
+    "telegram_getuser": {
+      "description": "Look up a Telegram user's id, username, and name. Use when you need to confirm who is talking or resolve a username. Do NOT use to store profile data in memory — only lasting facts belong in MEMORY.md. Returns {id, username, first_name, last_name, bio} (bio only when fetched for another user), or {error} outside Telegram or for an unknown id. Read-only.",
+      "properties": {
+        "user_id": {
+          "type": "number",
+          "description": "Telegram user id to look up. Omit or 0 to return the current sender from the prompt context.",
+          "minimum": 1
+        }
+      }
+    },
+    "get_env": {
+      "description": "Get runtime facts about this agent: OS, architecture, Go version, workspace path, jail mode, and memory use. Use when you need to check the platform before choosing commands. Do NOT use to read environment variables or secrets — this returns no secret values. Returns {os, arch, go_ver, workspace, restricted, memory_mb} with no parameters. Read-only.",
+      "properties": {}
+    },
+    "web_fetch": {
+      "description": "Fetch one public http/https URL and return its content as text. Use when you already know the exact page URL, including following up a web_search result. Do NOT use to discover pages — use web_search; to read local files — use read_file. Returns lines start_line..end (default 100 lines, max 1000) or raw HTML lines with section=html; long pages tell you to call again with a larger start_line. Returns {success:false,error} for private/local hosts, non-http schemes, or timeouts (120s). Read-only; sends no data out except the GET request.",
+      "required": ["url"],
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "Public http/https URL to fetch. Local, private, and file:// URLs are rejected. Example: https://example.com/docs."
+        },
+        "section": {
+          "type": "string",
+          "description": "Content section: text (default, HTML stripped) or html (raw).",
+          "enum": ["text", "html"]
+        },
+        "start_line": {
+          "type": "integer",
+          "description": "Line number to start from, 1-based. Example: start_line 1 length 100, lanjut start_line 101. Default 1.",
+          "default": 1,
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "length": {
+          "type": "integer",
+          "description": "Max lines to return. Default 100, max 1000.",
+          "default": 100,
+          "minimum": 1,
+          "maximum": 1000
+        }
+      }
+    },
+    "web_search": {
+      "description": "Search the web and return ranked result snippets. Use when you need current facts, news, docs, or anything not already known or in the workspace. Do NOT use to read a page you already have the URL for — use web_fetch. Returns text results (title, url, snippet); pass count for more or fewer (default 5, max 10). Returns {success:false,error} on empty query or provider failure (60s). Read-only, costs a third-party search API call.",
+      "required": ["query"],
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Search query, non-empty. Example: 'golang slog handler test'."
+        },
+        "count": {
+          "type": "integer",
+          "description": "Number of results to return. Default 5, clamped 1-10.",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 10
+        }
+      }
+    },
+    "manage_schedule": {
+      "description": "Create, inspect, and manage scheduled jobs that fire this agent as a turn later. Use when the user asks for a reminder, a recurring check, or a task at a specific time. Do NOT use for immediate work — just do it now with your other tools. Returns a job listing or confirmation text per action, or {success:false,error} when workspace is unset or arguments are incomplete. Notes: jobs persist in <workspace>/schedule/jobs.json and keep running after this chat, so confirm timing before adding; use action=remove to cancel. Times are wall-clock in timezone (default Asia/Jakarta).",
+      "required": ["action"],
+      "properties": {
+        "action": {
+          "type": "string",
+          "description": "Action: add, list, get, update, remove, enable, disable",
+          "enum": ["add", "list", "get", "update", "remove", "enable", "disable"]
+        },
+        "name": {
+          "type": "string",
+          "description": "Short job name (add only, optional)."
+        },
+        "prompt": {
+          "type": "string",
+          "description": "What the agent should do when the job fires (add/update, required for add)."
+        },
+        "type": {
+          "type": "string",
+          "description": "Schedule type: once, every, daily, cron (add/update).",
+          "enum": ["once", "every", "daily", "cron"]
+        },
+        "timezone": {
+          "type": "string",
+          "description": "IANA timezone for wall-clock times (default Asia/Jakarta)."
+        },
+        "run_once_at": {
+          "type": "string",
+          "description": "One-time run time, e.g. 18:00, 2026-09-29 18:00 (once)."
+        },
+        "every_seconds": {
+          "type": "integer",
+          "description": "Repeat interval in seconds for type=every. Default 3600, min 60, max under one year.",
+          "default": 3600,
+          "minimum": 60,
+          "maximum": 31622400
+        },
+        "daily_time": {
+          "type": "string",
+          "description": "Daily time HH:MM 24-hour, e.g. 06:00 (daily)."
+        },
+        "weekdays": {
+          "type": "string",
+          "description": "Comma weekdays mon,tue,wed,thu,fri,sat,sun (daily, optional)."
+        },
+        "cron_expr": {
+          "type": "string",
+          "description": "Cron expression, 5 fields minute hour dom month dow (cron)."
+        },
+        "end_at": {
+          "type": "string",
+          "description": "Stop after this time, e.g. 2026-10-05 00:00 (optional, for a few days only)."
+        },
+        "days": {
+          "type": "integer",
+          "description": "Run only for N days from now, 0 = no end date (optional shortcut, sets end date).",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 366
+        },
+        "max_runs": {
+          "type": "integer",
+          "description": "Stop after N runs, 0 = unlimited (optional, for once or limited repeats, max 10000).",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "job_id": {
+          "type": "string",
+          "description": "Job id for get/update/remove/enable/disable."
+        }
+      }
+    },
+    "spawn_agent": {
+      "description": "Spawn a synchronous sub-agent for one delegated task. Use when a task is independent and needs its own system prompt and limited tools (e.g. researcher, scraper). Runs inline (not in background) with the same model and max_iterations from config, then returns its final answer directly as \"Result from <agent_name>: ...\" (or a step-limit notice when capped). Do NOT use for trivial tasks you can do yourself. Capabilities are gated by four combinable flags: agent_read, agent_write, agent_exec, agent_search; all false/omitted = all parent tools except spawn_agent. Skill tools (use_skill, stop_skill) are always available. Notes: the child cannot spawn again (spawn_agent is stripped) and cannot use your chat or Telegram tools directly; each spawn costs model time and shares your step budget, so batch tightly. Returns {success:false,error} when no model is configured, required args are empty, the flags match no tools, or the child errors.",
+      "required": ["agent_name", "system_prompt", "task_prompt"],
+      "properties": {
+        "agent_name": {
+          "type": "string",
+          "description": "Sub-agent name, non-empty. Example: researcher_01."
+        },
+        "system_prompt": {
+          "type": "string",
+          "description": "System prompt for the sub-agent: its role, rules, and output shape. Non-empty. Example: You are a researcher. Return 3 bullets with sources."
+        },
+        "task_prompt": {
+          "type": "string",
+          "description": "Task for the sub-agent to execute. Non-empty. Example: Summarize docs/api.md in 5 bullets."
+        },
+        "agent_read": {
+          "type": "boolean",
+          "description": "Read-only tools: read_file, list_dir, grep, get_env, telegram_getuser. Combinable with other agent_* flags.",
+          "default": false
+        },
+        "agent_write": {
+          "type": "boolean",
+          "description": "Write tools: write_file, edit_file, append_file, telegram_sendfile. Combinable with other agent_* flags.",
+          "default": false
+        },
+        "agent_exec": {
+          "type": "boolean",
+          "description": "Execution tools: run_shell_command, manage_schedule. Combinable with other agent_* flags.",
+          "default": false
+        },
+        "agent_search": {
+          "type": "boolean",
+          "description": "Search/fetch tools: web_fetch, web_search (when available). Combinable with other agent_* flags.",
+          "default": false
+        }
+      }
+    },
+    "use_skill": {
+      "description": "Activate a skill by its exact catalog name and load its full instructions for this and later turns. Use when a listed skill matches the request and its workflow should be followed. Do NOT use for skills already active in <skills> Active Skills, or to read a file — use read_file. Returns the skill name plus its full SKILL.md body, or {success:false,error} when the name is unknown, blocked by policy, or has no readable SKILL.md. Notes: persists per chat until stop_skill, so activate once and reuse it; ask before activating an unexpected skill.",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Exact skill <name> from the <skills> catalog, case-insensitive. Example: find-skills."
+        }
+      }
+    },
+    "stop_skill": {
+      "description": "Deactivate a skill that is currently active for this chat. Use when its instructions no longer apply and you want its body out of the prompt. Do NOT use to read or list skills — use use_skill or the <skills> catalog. Returns a confirmation string, or {success:false,error} when there is no chat scope or the name was not runtime-active. Notes: skills activated by AGENTS.md frontmatter stay active and cannot be stopped this way.",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Active skill name to deactivate, case-insensitive. Example: find-skills."
+        }
+      }
+    }
+  }
+}
