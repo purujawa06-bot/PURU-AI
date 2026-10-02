@@ -1,10 +1,10 @@
 // Package ai implements the lightweight local tool-calling agent.
 //
-// Single model from config.json, 14 tools by default (read_file, write_file,
-// list_dir, edit_file, append_file, exec, telegram_sendfile,
+// Single model from config.json, 15 tools by default (read_file, write_file,
+// list_dir, grep, edit_file, append_file, exec, telegram_sendfile,
 // telegram_getuser, get_env, web_fetch, schedule, spawn_agent, use_skill,
 // stop_skill)
-// plus opt-in web_search (15th, only when at least one web_search provider
+// plus opt-in web_search (16th, only when at least one web_search provider
 // is ready in config.json), no
 // fallback: one executor run per request, max iterations from config (default
 // 500), pause between iterations from config (loop_delay_seconds, default 3s).

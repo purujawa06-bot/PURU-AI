@@ -159,15 +159,15 @@ func TestWebSearchDisabledByDefault(t *testing.T) {
 	if def["web_fetch"] == nil {
 		t.Fatalf("web_fetch harus tetap ada")
 	}
-	if len(def) != 14 {
-		t.Fatalf("default tools = %d, want 14 (web_search opt-in)", len(def))
+	if len(def) != 15 {
+		t.Fatalf("default tools = %d, want 15 (web_search opt-in)", len(def))
 	}
 	en := BuildTools(testSearchAgent(t.TempDir()), nil)
 	if en["web_search"] == nil {
 		t.Fatalf("web_search harus ada saat aistudio active")
 	}
-	if len(en) != 15 {
-		t.Fatalf("enabled tools = %d, want 15", len(en))
+	if len(en) != 16 {
+		t.Fatalf("enabled tools = %d, want 16", len(en))
 	}
 	off := testAgent(t.TempDir())
 	off.Config.WebSearch.AIStudio = config.AIStudioSearchConfig{Active: true, Model: "gemini-2.5-flash"}

@@ -497,6 +497,8 @@ func toolArgPreview(name string, args map[string]any) string {
 	switch name {
 	case "read_file", "write_file", "list_dir", "edit_file", "append_file", "telegram_sendfile":
 		return previewStr(args["path"])
+	case "grep":
+		return previewStr(args["keyword"])
 	case "use_skill", "stop_skill":
 		return previewStr(args["name"])
 	case "run_shell_command":
