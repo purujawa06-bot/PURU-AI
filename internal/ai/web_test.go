@@ -95,23 +95,23 @@ func TestClampSearchFetch(t *testing.T) {
 	if got := clampSearchCount(3); got != 3 {
 		t.Errorf("count 3 -> %d", got)
 	}
-	if got := clampFetchLength(0); got != 5000 {
-		t.Errorf("length 0 -> %d, want 5000", got)
+	if got := clampFetchLength(0); got != 100 {
+		t.Errorf("length 0 -> %d, want 100", got)
 	}
-	if got := clampFetchLength(999999); got != 20000 {
-		t.Errorf("length huge -> %d, want 20000", got)
+	if got := clampFetchLength(999999); got != 1000 {
+		t.Errorf("length huge -> %d, want 1000", got)
 	}
-	if got := clampFetchLength(10); got != 1000 {
-		t.Errorf("length 10 -> %d, want 1000", got)
+	if got := clampFetchLength(10); got != 10 {
+		t.Errorf("length 10 -> %d, want 10", got)
 	}
-	if got := clampFetchLength(5000); got != 5000 {
-		t.Errorf("length 5000 -> %d, got %d", 5000, got)
+	if got := clampFetchLength(5000); got != 1000 {
+		t.Errorf("length 5000 -> %d, got %d", 1000, got)
 	}
-	if got := clampFetchOffset(-3); got != 0 {
-		t.Errorf("offset -3 -> %d, want 0", got)
+	if got := clampFetchStartLine(0); got != 1 {
+		t.Errorf("start_line 0 -> %d, want 1", got)
 	}
-	if got := clampFetchOffset(120); got != 120 {
-		t.Errorf("offset 120 -> %d, want 120", got)
+	if got := clampFetchStartLine(120); got != 120 {
+		t.Errorf("start_line 120 -> %d, want 120", got)
 	}
 }
 
@@ -480,7 +480,7 @@ func TestFetchDirectText(t *testing.T) {
 	allowPrivateFetchHost = true
 	defer func() { allowPrivateFetchHost = old }()
 
-	text, err := fetchDirectFetch(context.Background(), srv.URL, "text", 0, 5000)
+	text, err := fetchDirectFetch(context.Background(), srv.URL, "text", 1, 100)
 	if err != nil {
 		t.Fatalf("fetchDirectFetch error: %v", err)
 	}
@@ -502,7 +502,7 @@ func TestFetchDirectHTML(t *testing.T) {
 	allowPrivateFetchHost = true
 	defer func() { allowPrivateFetchHost = old }()
 
-	text, err := runWebFetch(context.Background(), srv.URL, "html", 0, 5000)
+	text, err := runWebFetch(context.Background(), srv.URL, "html", 1, 100)
 	if err != nil {
 		t.Fatalf("runWebFetch html error: %v", err)
 	}
@@ -512,7 +512,7 @@ func TestFetchDirectHTML(t *testing.T) {
 }
 
 func TestFetchDirectPagination(t *testing.T) {
-	long := strings.Repeat("a", 8000)
+	long := strings.Repeat("lorem ipsum dolor\n", 250)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		w.Write([]byte(long))
@@ -522,35 +522,35 @@ func TestFetchDirectPagination(t *testing.T) {
 	allowPrivateFetchHost = true
 	defer func() { allowPrivateFetchHost = old }()
 
-	text, err := runWebFetch(context.Background(), srv.URL, "text", 0, 5000)
+	text, err := runWebFetch(context.Background(), srv.URL, "text", 1, 100)
 	if err != nil {
 		t.Fatalf("runWebFetch error: %v", err)
 	}
-	if !strings.Contains(text, "call web_fetch again with section text offset 5000") {
+	if !strings.Contains(text, "call web_fetch again with section text start_line 101") {
 		t.Fatalf("penanda paginasi salah: %q", text[len(text)-200:])
 	}
-	text2, err := runWebFetch(context.Background(), srv.URL, "text", 5000, 5000)
+	text2, err := runWebFetch(context.Background(), srv.URL, "text", 101, 100)
 	if err != nil {
 		t.Fatalf("page 2 error: %v", err)
 	}
-	if len([]rune(text2)) != 3000 {
-		t.Fatalf("page 2 len = %d, want 3000", len([]rune(text2)))
+	if got := strings.Count(text2, "lorem ipsum dolor"); got != 100 {
+		t.Fatalf("page 2 lines = %d, want 100", got)
 	}
-	if _, err := runWebFetch(context.Background(), srv.URL, "text", 99999, 5000); err == nil {
-		t.Fatalf("offset lewat harus error")
+	if _, err := runWebFetch(context.Background(), srv.URL, "text", 99999, 100); err == nil {
+		t.Fatalf("start_line lewat harus error")
 	}
 }
 
 func TestFetchDirectRejects(t *testing.T) {
-	if _, err := fetchDirectFetch(context.Background(), "file:///etc/passwd", "text", 0, 5000); err == nil {
+	if _, err := fetchDirectFetch(context.Background(), "file:///etc/passwd", "text", 1, 100); err == nil {
 		t.Fatalf("file:// harus ditolak")
 	}
-	if _, err := runWebFetch(context.Background(), "file:///etc/passwd", "text", 0, 5000); err == nil {
+	if _, err := runWebFetch(context.Background(), "file:///etc/passwd", "text", 1, 100); err == nil {
 		t.Fatalf("host non-http harus ditolak")
 	}
 }
 
-func TestWebFetchSchemaUsesSectionOffsetLength(t *testing.T) {
+func TestWebFetchSchemaUsesSectionStartLineLength(t *testing.T) {
 	tools := BuildTools(testAgent(t.TempDir()), nil)
 	wf := tools["web_fetch"]
 	if wf == nil {
@@ -560,8 +560,8 @@ func TestWebFetchSchemaUsesSectionOffsetLength(t *testing.T) {
 	if props == nil {
 		t.Fatal("web_fetch properties nil")
 	}
-	if props["url"] == nil || props["section"] == nil || props["offset"] == nil || props["length"] == nil {
-		t.Fatalf("web_fetch url/section/offset/length missing: %v", props)
+	if props["url"] == nil || props["section"] == nil || props["start_line"] == nil || props["length"] == nil {
+		t.Fatalf("web_fetch url/section/start_line/length missing: %v", props)
 	}
 	if _, ok := props["max_chars"]; ok {
 		t.Fatalf("web_fetch max_chars must be gone: %v", props)

@@ -29,8 +29,9 @@ const (
 	webSearchTimeout = 60 * time.Second
 	webFetchTimeout  = 120 * time.Second
 	defaultSearchN   = 5
-	// Default paginated fetch length (chars).
-	defaultFetchLength = 5000
+	// Default paginated fetch length (lines).
+	defaultFetchLines = 100
+	maxFetchLines = 1000
 	webBrowserUA       = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
 )
 
@@ -114,24 +115,24 @@ func clampSearchCount(n int64) int {
 	return int(n)
 }
 
-// clampFetchOffset floors negative offsets to 0.
-func clampFetchOffset(n int64) int {
-	if n < 0 {
-		return 0
+// clampFetchStartLine floors start_line <1 to 1.
+func clampFetchStartLine(n int64) int {
+	if n < 1 {
+		return 1
 	}
 	return int(n)
 }
 
-// clampFetchLength defaults to 5000 when unset (0), clamps 1000-20000.
+// clampFetchLength defaults to 100 when unset (0), clamps 1-1000.
 func clampFetchLength(n int64) int {
 	if n == 0 {
-		return defaultFetchLength
+		return defaultFetchLines
 	}
-	if n < 1000 {
-		return 1000
+	if n < 1 {
+		return 1
 	}
-	if n > 20000 {
-		return 20000
+	if n > maxFetchLines {
+		return maxFetchLines
 	}
 	return int(n)
 }
@@ -199,13 +200,26 @@ func isPrivateHost(host string) bool {
 	return false
 }
 
+// normalizeFetchLines collapses horizontal whitespace per line, drops empty
+// lines, and joins with "\n" so start_line/length paginate by lines.
+func normalizeFetchLines(s string) string {
+	var out []string
+	for _, ln := range strings.Split(s, "\n") {
+		ln = strings.TrimSpace(webSpaceRe.ReplaceAllString(ln, " "))
+		if ln != "" {
+			out = append(out, ln)
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
 // stripHTMLToText removes script/style, tags, unescapes entities,
-// and collapses whitespace to single spaces.
+// and collapses whitespace per line (newlines preserved for pagination).
 func stripHTMLToText(s string) string {
-	s = webScriptRe.ReplaceAllString(s, " ")
-	s = webTagRe.ReplaceAllString(s, " ")
+	s = webScriptRe.ReplaceAllString(s, "\n")
+	s = webTagRe.ReplaceAllString(s, "\n")
 	s = html.UnescapeString(s)
-	return webSpaceRe.ReplaceAllString(strings.TrimSpace(s), " ")
+	return normalizeFetchLines(s)
 }
 
 // aistudioSearchURL builds the Gemini generateContent URL for a model:
@@ -522,13 +536,13 @@ func normalizeFetchSection(s string) string {
 
 // fetchDirectFetch fetches URL directly (no external API) and returns
 // paginated content. section "text" strips HTML to plain text,
-// section "html" returns raw HTML. offset/length operate on runes.
-func fetchDirectFetch(ctx context.Context, rawURL, section string, offset, length int) (string, error) {
+// section "html" returns raw HTML. startLine/length operate on lines.
+func fetchDirectFetch(ctx context.Context, rawURL, section string, startLine, length int) (string, error) {
 	clean, err := validateFetchURL(rawURL)
 	if err != nil {
 		return "", err
 	}
-	offset = clampFetchOffset(int64(offset))
+	startLine = clampFetchStartLine(int64(startLine))
 	length = clampFetchLength(int64(length))
 	section = normalizeFetchSection(section)
 
@@ -572,37 +586,38 @@ func fetchDirectFetch(ctx context.Context, rawURL, section string, offset, lengt
 	var full string
 	ct := strings.ToLower(resp.Header.Get("Content-Type"))
 	if section == "html" {
-		full = raw
+		full = normalizeFetchLines(raw)
 	} else {
 		if strings.Contains(ct, "html") || strings.Contains(raw, "<") {
 			full = strings.TrimSpace(stripHTMLToText(raw))
 		} else {
-			full = strings.TrimSpace(webSpaceRe.ReplaceAllString(raw, " "))
+			full = normalizeFetchLines(raw)
 		}
 		if full == "" {
 			return "", fmt.Errorf("page is empty")
 		}
 	}
-	runes := []rune(full)
-	total := len(runes)
-	if offset >= total {
-		return "", fmt.Errorf("offset %d beyond content length %d", offset, total)
+	lines := strings.Split(full, "\n")
+	total := len(lines)
+	if startLine > total {
+		return "", fmt.Errorf("start_line %d beyond content lines %d", startLine, total)
 	}
-	end := offset + length
-	if end > total {
-		end = total
+	startIdx := startLine - 1
+	endIdx := startIdx + length
+	if endIdx > total {
+		endIdx = total
 	}
-	page := strings.TrimSpace(string(runes[offset:end]))
+	page := strings.TrimSpace(strings.Join(lines[startIdx:endIdx], "\n"))
 	if page == "" {
 		return "", fmt.Errorf("page is empty")
 	}
-	if end < total {
-		page += fmt.Sprintf(" ... [truncated, total %d chars, offset %d — call web_fetch again with section %s offset %d length %d for more]", total, offset, section, end, length)
+	if endIdx < total {
+		page += fmt.Sprintf(" ... [truncated, total %d lines, start_line %d — call web_fetch again with section %s start_line %d length %d for more]", total, startLine, section, endIdx+1, length)
 	}
 	return page, nil
 }
 
 // runWebFetch fetches paginated text/html directly (stdlib only).
-func runWebFetch(ctx context.Context, rawURL, section string, offset, length int) (string, error) {
-	return fetchDirectFetch(ctx, rawURL, section, clampFetchOffset(int64(offset)), clampFetchLength(int64(length)))
+func runWebFetch(ctx context.Context, rawURL, section string, startLine, length int) (string, error) {
+	return fetchDirectFetch(ctx, rawURL, section, clampFetchStartLine(int64(startLine)), clampFetchLength(int64(length)))
 }

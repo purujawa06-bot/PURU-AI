@@ -65,20 +65,20 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 		return map[string]any{"success": false, "error": err.Error()}, nil
 	}
 	tools := map[string]*Tool{
-			"read_file": mk("read_file", "Read a file from the workspace. Use when you need file contents before answering, editing, or summarizing. Do NOT use to list directories — use list_dir. Returns the file text (truncated at max bytes), or {success:false,error} when missing or blocked. Read-only, no writes.",
+			"read_file": mk("read_file", "Read a file from the workspace. Use when you need file contents before answering, editing, or summarizing. Do NOT use to list directories — use list_dir. Returns lines start_line..end with [file: ... read: lines a-b] header, plus start_line= next when truncated, or {success:false,error} when missing or blocked. Read-only, no writes.",
 				objSchema([]string{"path"}, map[string]any{
 					"path":   strProp("Workspace-relative file path to read. Example: notes.txt, sub/a.txt."),
-					"offset": intRangeProp("Byte offset to start reading from. Default 0.", 0, 0, 1073741824),
-					"length": intRangeProp("Maximum number of bytes to read. Default 65536, max 65536.", maxReadFileSize, 1, 65536),
+					"start_line": intRangeProp("Line number to start reading from, 1-based. Example: 1 = from top, 101 = continue at line 101. Default 1.", 1, 1, 1000000),
+					"length": intRangeProp("Max lines to return. Default 200, max 2000.", defaultReadFileLines, 1, 2000),
 				}),
 			func(ctx context.Context, args map[string]any) (any, error) {
 				// Active skills stay readable: use_skill remains the
 				// preferred loader, read_file is kept for debugging.
-				length := int64(maxReadFileSize)
+				length := int64(defaultReadFileLines)
 				if _, ok := args["length"]; ok {
 					length = argInt(args, "length")
 				}
-				text, err := readLocalFile(ws, restrict, argStr(args, "path"), argInt(args, "offset"), length)
+				text, err := readLocalFile(ws, restrict, argStr(args, "path"), argInt(args, "start_line"), length)
 				if err != nil {
 					return errVal(err)
 				}
@@ -299,15 +299,15 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 					"memory_mb":  m.Alloc / 1024 / 1024,
 				}, nil
 			}),
-		"web_fetch": mk("web_fetch", "Fetch one public http/https URL and return its content as text. Use when you already know the exact page URL, including following up a web_search result. Do NOT use to discover pages — use web_search; to read local files — use read_file. Returns the page text (default 5000 chars, clamped 1000-20000) or raw HTML with section=html; long pages tell you to call again with a larger offset. Returns {success:false,error} for private/local hosts, non-http schemes, or timeouts (120s). Read-only; sends no data out except the GET request.",
+		"web_fetch": mk("web_fetch", "Fetch one public http/https URL and return its content as text. Use when you already know the exact page URL, including following up a web_search result. Do NOT use to discover pages — use web_search; to read local files — use read_file. Returns lines start_line..end (default 100 lines, max 1000) or raw HTML lines with section=html; long pages tell you to call again with a larger start_line. Returns {success:false,error} for private/local hosts, non-http schemes, or timeouts (120s). Read-only; sends no data out except the GET request.",
 			objSchema([]string{"url"}, map[string]any{
 				"url":     strProp("Public http/https URL to fetch. Local, private, and file:// URLs are rejected. Example: https://example.com/docs."),
 				"section": enumProp("Content section: text (default, HTML stripped) or html (raw).", []string{"text", "html"}),
-				"offset":  intRangeProp("Char offset to start reading from, for paginating long pages. Default 0.", 0, 0, 100000000),
-				"length":  intRangeProp("Max output chars. Default 5000, clamped 1000-20000.", defaultFetchLength, 1000, 20000),
+				"start_line": intRangeProp("Line number to start from, 1-based. Example: start_line 1 length 100, lanjut start_line 101. Default 1.", 1, 1, 1000000),
+				"length": intRangeProp("Max lines to return. Default 100, max 1000.", defaultFetchLines, 1, 1000),
 			}),
 			func(ctx context.Context, args map[string]any) (any, error) {
-				text, err := runWebFetch(ctx, argStr(args, "url"), argStr(args, "section"), int(argInt(args, "offset")), int(argInt(args, "length")))
+				text, err := runWebFetch(ctx, argStr(args, "url"), argStr(args, "section"), int(argInt(args, "start_line")), int(argInt(args, "length")))
 				if err != nil {
 					return errVal(err)
 				}

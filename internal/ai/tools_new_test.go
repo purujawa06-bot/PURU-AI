@@ -76,7 +76,7 @@ func TestToolCount(t *testing.T) {
 	}
 }
 
-// Deklarasi tools: read_file(path, offset, length),
+// Deklarasi tools: read_file(path, start_line, length),
 // write_file(path, content, overwrite), list_dir(path),
 // edit_file(path, old_string, new_string),
 // spawn_agent(agent_name, system_prompt, task_prompt, agent_read, agent_write, agent_exec, agent_search),
@@ -84,7 +84,7 @@ func TestToolCount(t *testing.T) {
 func TestPicoclawParamDeclarations(t *testing.T) {
 	tools := BuildTools(testAgent(t.TempDir()), nil)
 	want := map[string][]string{
-		"read_file":   {"path", "offset", "length"},
+		"read_file":   {"path", "start_line", "length"},
 		"write_file":  {"path", "content", "overwrite"},
 		"list_dir":    {"path"},
 		"grep":        {"path", "keyword", "ext", "limit"},
