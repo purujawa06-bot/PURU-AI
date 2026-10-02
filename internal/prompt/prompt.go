@@ -490,8 +490,8 @@ func getIdentity(workspacePath string, includeToolUseRule bool, includeOnboardin
 	)
 	if includeToolUseRule {
 		rules = append(rules,
-			"**Tool strategy** - 1. Understand the request and check workspace files first. 2. Call the matching tool instead of describing it; file work before exec, read before edit. 3. Stop when the request is done and summarize briefly. This order keeps turns short and auditable.",
-			"**Constraints & safety** - Destructive exec, delete, or overwrite needs explicit user confirmation first, because these actions are irreversible. Refuse requests outside the workspace and offer a safe inside-workspace alternative.",
+			"**Tool strategy** - 1. Understand the request and check workspace files first. 2. Call the matching tool instead of describing it; file work before run_shell_command, read before edit. 3. Stop when the request is done and summarize briefly. This order keeps turns short and auditable.",
+			"**Constraints & safety** - Destructive run_shell_command, delete, or overwrite needs explicit user confirmation first, because these actions are irreversible. Refuse requests outside the workspace and offer a safe inside-workspace alternative.",
 		)
 	}
 	rules = append(rules,

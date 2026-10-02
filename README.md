@@ -135,11 +135,11 @@ docker run -d \
 | Category | Tool | Description |
 | :--- | :--- | :--- |
 | **File System** | `read`, `write`, `edit`, `ls` | Precise file manipulation with fuzzy matching support. |
-| **Execution** | `exec` | Run blocking or background commands with RAM limits. |
+| **Execution** | `run_shell_command` | Run blocking or background commands with RAM limits. |
 | **Web** | `search`, `fetch` | Real-time web search and content extraction. |
 | **Telegram** | `sendfile`, `getuser` | Direct interaction with Telegram's API for file sharing. |
 | **Runtime** | `get_env` | System telemetry (OS, Arch, Go version, Memory). |
-| **Schedule** | `schedule` | Picoclaw cron-like tasks: once, every, daily, cron (default Asia/Jakarta). |
+| **Schedule** | `manage_schedule` | Picoclaw cron-like tasks: once, every, daily, cron (default Asia/Jakarta). |
 
 ---
 
@@ -170,7 +170,7 @@ In Telegram, use the following commands:
 - Timezone defaults to `Asia/Jakarta` (WIB); override per job or via `timezone` in `config.json`.
 - Limits: `end_at` / `days` (run only a few days), `max_runs` (run N times). One-shot jobs auto-delete after firing.
 - Storage: `<workspace>/schedule/jobs.json`. Delivery: agent turn posted back to the originating Telegram chat.
-- Examples: "daily 06:00 WIB stock prices", "once 18:00 check GitHub issues". Use `/sched` to list, or the `schedule` AI tool for full control.
+- Examples: "daily 06:00 WIB stock prices", "once 18:00 check GitHub issues". Use `/sched` to list, or the `manage_schedule` AI tool for full control.
 
 ---
 

@@ -27,7 +27,7 @@ func TestGetRendersMemory(t *testing.T) {
 	if !strings.Contains(out, ws) {
 		t.Fatalf("workspace not injected")
 	}
-	for _, tool := range []string{"read_file", "write_file", "list_dir", "edit_file", "append_file", "exec", "telegram_sendfile", "telegram_getuser"} {
+	for _, tool := range []string{"read_file", "write_file", "list_dir", "edit_file", "append_file", "run_shell_command", "telegram_sendfile", "telegram_getuser"} {
 		_ = tool
 	}
 	// Picoclaw 1:1 — tools are declared via native function calls only and

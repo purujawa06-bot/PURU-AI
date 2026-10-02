@@ -39,8 +39,8 @@ type TelegramClient interface {
 const maxSendFileBytes = 20 << 20
 
 // BuildTools returns 14 tools by default: file tools (read_file, write_file,
-// list_dir, edit_file, append_file) + exec + Telegram tools
-// (telegram_sendfile, telegram_getuser) + get_env + web_fetch + schedule
+// list_dir, edit_file, append_file) + run_shell_command + Telegram tools
+// (telegram_sendfile, telegram_getuser) + get_env + web_fetch + manage_schedule
 // + spawn_agent + skill tools (use_skill, stop_skill). web_search
 // (third-party, opt-in: Google AI Studio with googleSearch grounding and/or
 // Exa) is added as the 15th tool only when at least one web_search provider
@@ -146,11 +146,11 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				}
 				return fmt.Sprintf("Appended to %s", argStr(args, "path")), nil
 			}),
-			"exec": mk("exec", "Run a shell command inside the workspace and return its result. Use when you need to build, test, inspect git, or run any command the file tools cannot do. Do NOT use to read or edit files — use read_file/edit_file; to fetch URLs — use web_fetch. Returns {success, exit_code, output} on run, or {success:false,error} when blocked. Notes: writes and executes arbitrary commands inside the workspace jail (outside paths are rejected); destructive commands are irreversible — confirm with the user first. Long commands should run with background=true then poll/read; kill stops them. Timeouts are clamped 1-300s, output is capped.",
+			"run_shell_command": mk("run_shell_command", "Run a shell command inside the workspace and return its result. Use when you need to build, test, inspect git, or run any command the file tools cannot do. Do NOT use to read or edit files — use read_file/edit_file; to fetch URLs — use web_fetch. Returns {success, exit_code, output} on run, or {success:false,error} when blocked. Notes: writes and executes arbitrary commands inside the workspace jail (outside paths are rejected); destructive commands are irreversible — confirm with the user first. Long commands should run with background=true then poll/read; kill stops them. Timeouts are clamped 1-300s, output is capped.",
 				objSchema([]string{"action"}, map[string]any{
 					"action":     enumProp("Action: run (execute), list (show sessions), poll (check status), read (get output), kill (terminate)", []string{"run", "list", "poll", "read", "kill"}),
 					"command":    strProp("Shell command to run, required for action=run. Example: go test ./... ."),
-					"sessionId":  strProp("Session ID from a background run, required for poll/read/kill. Example: exec-1."),
+					"sessionId":  strProp("Session ID from a background run, required for poll/read/kill. Example: sess_1712345678."),
 					"background": boolProp("Run in background immediately and return a sessionId for poll/read. Default false.", false),
 					"cwd":        strProp("Working directory inside the workspace. Default is the workspace root. Example: internal/ai."),
 					"timeout":    intRangeProp("Timeout in seconds for action=run. Default 60, clamped 1-300.", defaultExecTimeoutSec, 1, 300),
@@ -318,7 +318,7 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				return text, nil
 			})
 	}
-	tools["schedule"] = buildScheduleTool(a, opts, mk, errVal)
+	tools["manage_schedule"] = buildScheduleTool(a, opts, mk, errVal)
 	tools["spawn_agent"] = buildSpawnTool(a, opts, mk, errVal)
 	for name, tool := range buildSkillTools(a, opts, mk, errVal) {
 		tools[name] = tool

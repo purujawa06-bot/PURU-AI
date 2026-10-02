@@ -4,7 +4,7 @@
 // Config.RestrictWorkspace is true) — declarations mirror picoclaw:
 //   - read_file (path, offset, length), write_file (path, content, overwrite),
 //     list_dir (path), edit_file (path, old_string, new_string),
-//     exec (action
+//     run_shell_command (action
 //     wajib: run/list/poll/read/kill; command, sessionId, background, cwd,
 //     timeout opsional)
 //   - telegram_sendfile, telegram_getuser (need a Telegram request context)

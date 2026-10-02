@@ -499,7 +499,7 @@ func toolArgPreview(name string, args map[string]any) string {
 		return previewStr(args["path"])
 	case "use_skill", "stop_skill":
 		return previewStr(args["name"])
-	case "exec":
+	case "run_shell_command":
 		return previewStr(args["command"])
 	case "spawn_agent":
 		return previewStr(args["agent_name"])

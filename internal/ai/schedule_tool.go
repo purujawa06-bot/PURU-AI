@@ -1,6 +1,6 @@
 // Schedule tool exposes scheduled jobs to the agent.
 //
-// One tool named "schedule" with an "action" switch keeps the tool count
+// One tool named "manage_schedule" with an "action" switch keeps the tool count
 // small: add, list, get, update, remove, enable, disable. Jobs persist in
 // <workspace>/schedule/jobs.json and fire as agent turns via schedule.Runner.
 package ai
@@ -35,7 +35,7 @@ func scheduleDefaultTimezone(a *Agent) string {
 // buildScheduleTool returns the agent-facing schedule tool.
 func buildScheduleTool(a *Agent, opts *ProcessOptions, mk func(string, string, map[string]any, func(context.Context, map[string]any) (any, error)) *Tool, errVal func(error) (any, error)) *Tool {
 	desc := "Create, inspect, and manage scheduled jobs that fire this agent as a turn later. Use when the user asks for a reminder, a recurring check, or a task at a specific time. Do NOT use for immediate work — just do it now with your other tools. Returns a job listing or confirmation text per action, or {success:false,error} when workspace is unset or arguments are incomplete. Notes: jobs persist in <workspace>/schedule/jobs.json and keep running after this chat, so confirm timing before adding; use action=remove to cancel. Times are wall-clock in timezone (default Asia/Jakarta)."
-	return mk("schedule", desc,
+	return mk("manage_schedule", desc,
 		objSchema([]string{"action"}, map[string]any{
 			"action":        enumProp("Action: add, list, get, update, remove, enable, disable", []string{"add", "list", "get", "update", "remove", "enable", "disable"}),
 			"name":          strProp("Short job name (add only, optional)."),
@@ -55,7 +55,7 @@ func buildScheduleTool(a *Agent, opts *ProcessOptions, mk func(string, string, m
 		func(ctx context.Context, args map[string]any) (any, error) {
 			store := scheduleStoreFor(a)
 			if store == nil {
-				return errVal(fmt.Errorf("schedule unavailable: workspace not configured"))
+				return errVal(fmt.Errorf("manage_schedule unavailable: workspace not configured"))
 			}
 			action := strings.ToLower(strings.TrimSpace(argStr(args, "action")))
 			now := time.Now().UTC()

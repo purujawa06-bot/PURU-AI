@@ -13,7 +13,7 @@ Use this skill when the task needs specialized knowledge or a workflow that no i
 
 ## Search
 
-Use `exec` with curl (preferred). `web_fetch` works as fallback but curl handles compression better.
+Use `run_shell_command` with curl (preferred). `web_fetch` works as fallback but curl handles compression better.
 
 ```bash
 curl 'https://www.skills.sh/api/search?q=<keywords>&limit=10' \
@@ -72,7 +72,7 @@ Save the returned markdown to `skills/<skill>/SKILL.md` with the write_file tool
 
 If the fetched SKILL.md references sibling `references/...`, `scripts/...`, or `assets/...` files, fetch them from the same raw base path and save preserving relative paths.
 
-Fallback: only when raw fetch fails and npm exists, run via `exec`:
+Fallback: only when raw fetch fails and npm exists, run via `run_shell_command`:
 `npx -y skills add https://github.com/<source> --skill <skill>`
 then copy the resulting SKILL.md into workspace `skills/<skill>/SKILL.md`.
 

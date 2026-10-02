@@ -21,7 +21,7 @@ func buildSpawnTool(a *Agent, opts *ProcessOptions, mk func(string, string, map[
 			"task_prompt":   strProp("Task for the sub-agent to execute. Non-empty. Example: Summarize docs/api.md in 5 bullets."),
 			"agent_read":    boolProp("Read-only tools: read_file, list_dir, get_env, telegram_getuser. Combinable with other agent_* flags.", false),
 			"agent_write":   boolProp("Write tools: write_file, edit_file, append_file, telegram_sendfile. Combinable with other agent_* flags.", false),
-			"agent_exec":    boolProp("Execution tools: exec, schedule. Combinable with other agent_* flags.", false),
+			"agent_exec":    boolProp("Execution tools: run_shell_command, manage_schedule. Combinable with other agent_* flags.", false),
 			"agent_search":  boolProp("Search/fetch tools: web_fetch, web_search (when available). Combinable with other agent_* flags.", false),
 		}),
 		func(ctx context.Context, args map[string]any) (any, error) {
@@ -146,7 +146,7 @@ func filterSpawnTools(full map[string]*Tool, args map[string]any) map[string]*To
 		add("write_file", "edit_file", "append_file", "telegram_sendfile")
 	}
 	if ex {
-		add("exec", "schedule")
+		add("run_shell_command", "manage_schedule")
 	}
 	if se {
 		add("web_fetch", "web_search")
