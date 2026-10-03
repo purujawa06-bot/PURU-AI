@@ -1,7 +1,7 @@
 {
   "tools": {
     "read_file": {
-      "description": "Read file from Workspace. Use this if you want to view the file contents.",
+      "description": "Read file contents from workspace.",
       "required": ["path"],
       "properties": {
         "path": {
@@ -10,14 +10,14 @@
         },
         "start_line": {
           "type": "integer",
-          "description": "Line to start reading the file, example: 23, Default 1",
+          "description": "First line to read. Example: 23, Default 1",
           "default": 1,
           "minimum": 1,
           "maximum": 1000000
         },
         "length": {
           "type": "integer",
-          "description": "Length limit for reading file contents. Example: 200, Default: 200",
+          "description": "Max lines to read. Example: 200, Default: 200",
           "default": 200,
           "minimum": 1,
           "maximum": 2000
@@ -25,7 +25,7 @@
       }
     },
     "write_file": {
-      "description": "Create new file. Use this if you want to create a file.",
+      "description": "Create a new file in workspace.",
       "required": ["path", "content"],
       "properties": {
         "path": {
@@ -34,7 +34,7 @@
         },
         "content": {
           "type": "string",
-          "description": "File content to write. Example: hello world"
+          "description": "File content. Example: hello world"
         },
         "overwrite": {
           "type": "boolean",
@@ -44,7 +44,7 @@
       }
     },
     "list_dir": {
-      "description": "List files in folder. Use this if you want to see folder contents.",
+      "description": "List files in a folder.",
       "required": ["path"],
       "properties": {
         "path": {
@@ -54,12 +54,12 @@
       }
     },
     "grep": {
-      "description": "Search text in file or folder. Use this if you want to find text.",
+      "description": "Search text in files.",
       "required": ["path", "keyword"],
       "properties": {
         "path": {
           "type": "string",
-          "description": "Relative file or folder to search. Example: note.txt, sub"
+          "description": "File or folder to search. Example: note.txt, sub"
         },
         "keyword": {
           "type": "string",
@@ -67,7 +67,7 @@
         },
         "ext": {
           "type": "string",
-          "description": "File extension filter. Example: txt. Empty = all files."
+          "description": "Filter by extension. Example: txt. Empty = all files."
         },
         "limit": {
           "type": "integer",
@@ -79,7 +79,7 @@
       }
     },
     "edit_file": {
-      "description": "Edit part of file. Use this if you want to change file contents.",
+      "description": "Replace part of a file.",
       "required": ["path", "old_string", "new_string"],
       "properties": {
         "path": {
@@ -88,7 +88,7 @@
         },
         "old_string": {
           "type": "string",
-          "description": "Text to find. Must occur once in file."
+          "description": "Text to find. Must occur once."
         },
         "new_string": {
           "type": "string",
@@ -97,7 +97,7 @@
       }
     },
     "append_file": {
-      "description": "Append text to file. Use this if you want to add to file.",
+      "description": "Append text to a file.",
       "required": ["path", "content"],
       "properties": {
         "path": {
@@ -111,7 +111,7 @@
       }
     },
     "run_shell_command": {
-      "description": "Run shell command. Use this if you need to run a command.",
+      "description": "Run shell command in workspace.",
       "required": ["action"],
       "properties": {
         "action": {
@@ -121,7 +121,7 @@
         },
         "command": {
           "type": "string",
-          "description": "Shell command to run. Example: du -sh"
+          "description": "Shell command. Example: du -sh"
         },
         "sessionId": {
           "type": "string",
@@ -146,7 +146,7 @@
       }
     },
     "telegram_sendfile": {
-      "description": "Send file to Telegram chat. Use this if user asks for a file.",
+      "description": "Send file to Telegram chat.",
       "required": ["path"],
       "properties": {
         "path": {
@@ -155,7 +155,7 @@
         },
         "filename": {
           "type": "string",
-          "description": "Display filename. Default is file name."
+          "description": "Display name. Default is file name."
         },
         "caption": {
           "type": "string",
@@ -164,7 +164,7 @@
       }
     },
     "telegram_getuser": {
-      "description": "Get Telegram user info. Use this if you want to know who is talking.",
+      "description": "Look up Telegram user info.",
       "properties": {
         "user_id": {
           "type": "integer",
@@ -174,11 +174,11 @@
       }
     },
     "get_env": {
-      "description": "Get runtime info. Use this if you need OS, arch, memory.",
+      "description": "Get runtime info.",
       "properties": {}
     },
     "web_fetch": {
-      "description": "Fetch URL content. Use this if you have exact page URL.",
+      "description": "Fetch content from a public URL.",
       "required": ["url"],
       "properties": {
         "url": {
@@ -192,7 +192,7 @@
         },
         "start_line": {
           "type": "integer",
-          "description": "Line to start. Example: 1, 101. Default 1",
+          "description": "First line. Example: 1. Default 1",
           "default": 1,
           "minimum": 1,
           "maximum": 1000000
@@ -207,7 +207,7 @@
       }
     },
     "web_search": {
-      "description": "Search web. Use this if you need current info.",
+      "description": "Search web for current info.",
       "required": ["query"],
       "properties": {
         "query": {
@@ -224,7 +224,7 @@
       }
     },
     "manage_schedule": {
-      "description": "Manage scheduled jobs. Use this if user asks for reminder or routine task.",
+      "description": "Create and manage scheduled jobs.",
       "required": ["action"],
       "properties": {
         "action": {
@@ -255,7 +255,7 @@
         },
         "every_seconds": {
           "type": "integer",
-          "description": "Repeat seconds. Example: 3600, Default: 3600",
+          "description": "Repeat interval in seconds. Example: 3600, Default: 3600",
           "default": 3600,
           "minimum": 60,
           "maximum": 31622400
@@ -274,7 +274,7 @@
         },
         "cron_expr": {
           "type": "string",
-          "description": "Cron 5 fields. Example: 0 6 * * *"
+          "description": "Cron with 5 fields. Example: 0 6 * * *"
         },
         "end_at": {
           "type": "string",
@@ -301,7 +301,7 @@
       }
     },
     "spawn_agent": {
-      "description": "Spawn sub-agent for task. Use this for independent task.",
+      "description": "Delegate one task to a sub-agent.",
       "required": ["agent_name", "system_prompt", "task_prompt"],
       "properties": {
         "agent_name": {
@@ -339,7 +339,7 @@
       }
     },
     "use_skill": {
-      "description": "Activate skill. Use this if task matches skill.",
+      "description": "Activate a skill by name.",
       "required": ["name"],
       "properties": {
         "name": {
@@ -349,7 +349,7 @@
       }
     },
     "stop_skill": {
-      "description": "Deactivate skill. Use this if skill no longer needed.",
+      "description": "Deactivate an active skill.",
       "required": ["name"],
       "properties": {
         "name": {
