@@ -16,10 +16,11 @@ import (
 	"github.com/purujawa06-bot/PURU-AI/internal/memory"
 	"github.com/purujawa06-bot/PURU-AI/internal/messages"
 	"github.com/purujawa06-bot/PURU-AI/internal/telegram"
+	"github.com/purujawa06-bot/PURU-AI/internal/workspace"
 )
 
 func TestIsCommandMenu(t *testing.T) {
-	for _, c := range []string{"/help", "/help@bot", "/clear", "/token", "/stop", "/stop@bot", "/sched", "/sched remove abc"} {
+	for _, c := range []string{"/help", "/help@bot", "/clear", "/token", "/stop", "/stop@bot", "/sched", "/sched remove abc", "/skills"} {
 		if !isCommand(c) {
 			t.Errorf("%q harus dikenali sebagai command", c)
 		}
@@ -77,7 +78,7 @@ func (errSummarizer) Call(ctx context.Context, prompt string, options ...llms.Ca
 	return "", errors.New("boom")
 }
 
-func TestMaybeCompactSummarizesWipesInjects(t *testing.T) {
+func TestMaybeCompactSummarizesKeepsLastInjects(t *testing.T) {
 	ws := t.TempDir()
 	cfg := &config.Config{Workspace: ws, HistoryTokenLimit: 1} // paksa trigger
 	hist := history.New(t.TempDir())
@@ -93,12 +94,13 @@ func TestMaybeCompactSummarizesWipesInjects(t *testing.T) {
 		userTextMsg("halo, bahas topik A yang panjang"),
 	}
 	got := a.maybeCompact(context.Background(), 42, stored)
-	// wipe total: history kosong; ringkasan mengalir ke system prompt.
-	if len(got) != 0 {
-		t.Fatalf("harus wipe total, got %+v", got)
+	// Compact keeps last exchange (ends with user -> only last user kept
+	// so history still starts with user); summary flows to system prompt.
+	if len(got) != 1 || got[0].Text() != "halo, bahas topik A yang panjang" {
+		t.Fatalf("harus sisakan user terakhir, got %+v", got)
 	}
-	if saved := hist.Get(42); len(saved) != 0 {
-		t.Fatalf("history harus kosong, got %+v", saved)
+	if saved := hist.Get(42); len(saved) != 1 || saved[0].Text() != "halo, bahas topik A yang panjang" {
+		t.Fatalf("history harus sisakan user terakhir, got %+v", saved)
 	}
 	sys := a.renderedSystem()
 	if !strings.Contains(sys, "## Done") {
@@ -241,5 +243,22 @@ func TestParseAICommand(t *testing.T) {
 		if ok != want.ok || rest != want.rest {
 			t.Errorf("parseAICommand(%q) = (%q,%v), want (%q,%v)", in, rest, ok, want.rest, want.ok)
 		}
+	}
+}
+
+func TestFormatSkillsList(t *testing.T) {
+	installed := []workspace.SkillInfo{
+		{Name: "find-skills", Description: "Discover skills"},
+		{Name: "skill-creator", Description: "Author skills"},
+	}
+	got := FormatSkillsList(installed, []string{"find-skills"})
+	if !strings.Contains(got, "● find-skills") || !strings.Contains(got, "○ skill-creator") {
+		t.Fatalf("marks wrong: %q", got)
+	}
+	if !strings.Contains(got, "Active: find-skills") {
+		t.Fatalf("active missing: %q", got)
+	}
+	if got := FormatSkillsList(nil, nil); !strings.Contains(got, "No skills installed") {
+		t.Fatalf("empty must hint install: %q", got)
 	}
 }

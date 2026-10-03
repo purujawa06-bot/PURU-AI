@@ -2,7 +2,7 @@
 //
 // Tools (all jailed to Workspace when
 // Config.RestrictWorkspace is true) — declarations mirror picoclaw:
-//   - read_file (path, offset, length), write_file (path, content, overwrite),
+//   - read_file (path, start_line, length), write_file (path, content, overwrite),
 //     list_dir (path), edit_file (path, old_string, new_string),
 //     run_shell_command (action
 //     wajib: run/list/poll/read/kill; command, sessionId, background, cwd,
@@ -14,8 +14,8 @@
 package ai
 
 import (
+	"bufio"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -25,9 +25,12 @@ import (
 
 const maxExecOutput = 20_000
 
-// maxReadFileSize caps one read_file call (picoclaw parity: 64KB,
-// anti context-overflow).
-const maxReadFileSize = 64 * 1024
+// defaultReadFileLines and maxReadFileLines cap one read_file call
+// (line-based pagination, anti context-overflow).
+const (
+	defaultReadFileLines = 200
+	maxReadFileLines     = 2000
+)
 
 // resolvePath maps a tool path to an absolute filesystem path.
 // When restrict is true the result is jailed inside workspace:
@@ -185,23 +188,23 @@ func editLocalFile(workspace string, restrict bool, p, oldStr, newStr string) er
 	return fmt.Errorf("old_string not found in %s. Make sure the text exists exactly (including indentation and spacing)", p)
 }
 
-// readLocalFile reads path with byte pagination (picoclaw read_file parity).
-// Returns the full LLM text: "[file: base | total: N bytes | read: bytes a-b]"
-// header + "[TRUNCATED ... offset=X ...]" / "[END OF FILE ...]" trailer, or
-// "[END OF FILE - no content at this offset]" when offset is past the end.
-func readLocalFile(workspace string, restrict bool, p string, offset, length int64) (string, error) {
+// readLocalFile reads path with line pagination.
+// Returns the full LLM text: "[file: base | total: N lines | read: lines a-b]"
+// header + "[TRUNCATED ... start_line=X ...]" / "[END OF FILE ...]" trailer, or
+// "[END OF FILE - no content at this start_line]" when start_line is past the end.
+func readLocalFile(workspace string, restrict bool, p string, startLine, length int64) (string, error) {
 	abs, err := resolvePath(workspace, restrict, p)
 	if err != nil {
 		return "", err
 	}
-	if offset < 0 {
-		return "", fmt.Errorf("offset must be >= 0")
+	if startLine <= 0 {
+		startLine = 1
 	}
 	if length <= 0 {
 		return "", fmt.Errorf("length must be > 0")
 	}
-	if length > maxReadFileSize {
-		length = maxReadFileSize
+	if length > maxReadFileLines {
+		length = maxReadFileLines
 	}
 	f, err := os.Open(abs)
 	if err != nil {
@@ -214,58 +217,46 @@ func readLocalFile(workspace string, restrict bool, p string, offset, length int
 		return "", fmt.Errorf("failed to open file: %w", err)
 	}
 	defer f.Close()
-	info, err := f.Stat()
+	st, err := f.Stat()
 	if err != nil {
 		return "", fmt.Errorf("failed to stat file: %w", err)
 	}
-	if info.IsDir() {
+	if st.IsDir() {
 		return "", fmt.Errorf("path is a directory: %s. Use list_dir to see its contents", p)
 	}
-	if _, err := f.Seek(offset, io.SeekStart); err != nil {
-		return "", fmt.Errorf("failed to seek to offset %d: %w", offset, err)
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 64*1024), 256*1024)
+	var all []string
+	for sc.Scan() {
+		line := sc.Text()
+		if strings.ContainsRune(line, 0) {
+			return "", fmt.Errorf("file appears to be binary")
+		}
+		all = append(all, line)
 	}
-	probe := make([]byte, length+1)
-	n, rerr := io.ReadFull(f, probe)
-	if rerr != nil && rerr != io.EOF && rerr != io.ErrUnexpectedEOF {
-		return "", fmt.Errorf("failed to read file content: %w", rerr)
+	if err := sc.Err(); err != nil {
+		return "", fmt.Errorf("failed to read file content: %w", err)
 	}
-	hasMore := int64(n) > length
-	if int64(n) > length {
-		n = int(length)
+	total := len(all)
+	if total == 0 || startLine > int64(total) {
+		return "[END OF FILE - no content at this start_line]", nil
 	}
-	data := probe[:n]
-	if len(data) == 0 {
-		return "[END OF FILE - no content at this offset]", nil
+	startIdx := int(startLine - 1)
+	endIdx := startIdx + int(length)
+	if endIdx > total {
+		endIdx = total
 	}
-	if isBinaryData(data) {
-		return "", fmt.Errorf("file appears to be binary")
-	}
-	readEnd := offset + int64(len(data))
-	header := fmt.Sprintf("[file: %s | total: %d bytes | read: bytes %d-%d]",
-		filepath.Base(p), info.Size(), offset, readEnd-1)
-	if hasMore {
-		header += fmt.Sprintf("\n[TRUNCATED - file has more content. Call read_file again with offset=%d to continue.]", readEnd)
+	page := all[startIdx:endIdx]
+	data := strings.Join(page, "\n")
+	readEnd := int64(startIdx + len(page))
+	header := fmt.Sprintf("[file: %s | total: %d lines | read: lines %d-%d]",
+		filepath.Base(p), total, startLine, readEnd)
+	if endIdx < total {
+		header += fmt.Sprintf("\n[TRUNCATED - file has more content. Call read_file again with start_line=%d to continue.]", endIdx+1)
 	} else {
 		header += "\n[END OF FILE - no further content.]"
 	}
-	return header + "\n\n" + string(data), nil
-}
-
-// isBinaryData sniffs binary content (NUL byte or non-text ratio).
-func isBinaryData(data []byte) bool {
-	if len(data) == 0 {
-		return false
-	}
-	sample := data
-	if len(sample) > 512 {
-		sample = sample[:512]
-	}
-	for _, b := range sample {
-		if b == 0 {
-			return true
-		}
-	}
-	return false
+	return header + "\n\n" + data, nil
 }
 
 // writeLocalFile writes content, replacing any existing file (picoclaw
@@ -354,6 +345,146 @@ func listLocalDir(workspace string, restrict bool, p string) (string, error) {
 		return "(empty directory)", nil
 	}
 	return sb.String(), nil
+}
+
+// grepLocal searches a file or a directory tree for a literal keyword.
+// path may point at one file (single-file search) or a directory
+// (recursive walk including subfolders). ext optionally filters by
+// extension, e.g. "go" or ".go,.md" (empty = all files).
+// Returns "rel:line: text" lines, or "(no matches)" when nothing matches.
+func grepLocal(workspace string, restrict bool, p, keyword, ext string, maxResults int) (string, error) {
+	if strings.TrimSpace(keyword) == "" {
+		return "", fmt.Errorf("keyword is required")
+	}
+	if strings.TrimSpace(p) == "" {
+		p = "."
+	}
+	if maxResults <= 0 {
+		maxResults = 50
+	}
+	if maxResults > 200 {
+		maxResults = 200
+	}
+	abs, err := resolvePath(workspace, restrict, p)
+	if err != nil {
+		return "", err
+	}
+	st, err := os.Stat(abs)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("path not found: %s", p)
+		}
+		return "", fmt.Errorf("cannot access path: %w", err)
+	}
+	exts := parseGrepExt(ext)
+	var files []string
+	if !st.IsDir() {
+		files = []string{abs}
+	} else {
+		err = filepath.WalkDir(abs, func(fp string, d os.DirEntry, werr error) error {
+			if werr != nil {
+				return nil // skip unreadable, keep going
+			}
+			if d.IsDir() {
+				if d.Name() == ".git" {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if len(exts) > 0 && !exts[strings.ToLower(filepath.Ext(d.Name()))] {
+				return nil
+			}
+			if restrict && !insideDir(fp, workspace) {
+				return nil
+			}
+			if info, err := d.Info(); err == nil && info.Size() > 2<<20 {
+				return nil // skip files >2MB, read_file covers them
+			}
+			files = append(files, fp)
+			return nil
+		})
+		if err != nil {
+			return "", fmt.Errorf("failed to walk directory: %w", err)
+		}
+		sort.Strings(files)
+	}
+	var sb strings.Builder
+	matched := 0
+	truncated := false
+	for _, fp := range files {
+		if len(exts) > 0 && !st.IsDir() && !exts[strings.ToLower(filepath.Ext(fp))] {
+			continue
+		}
+		n, done, _ := grepOneFile(&sb, workspace, fp, keyword, maxResults-matched)
+		matched += n
+		if done {
+			truncated = true
+			break
+		}
+	}
+	if matched == 0 {
+		return "(no matches)", nil
+	}
+	out := sb.String()
+	if truncated {
+		out += fmt.Sprintf("... [truncated at %d matches, narrow path/ext/keyword]\n", maxResults)
+	}
+	return out, nil
+}
+
+// parseGrepExt normalizes "go" / ".go,.md" into a set like {".go":true}.
+func parseGrepExt(ext string) map[string]bool {
+	out := map[string]bool{}
+	for _, e := range strings.Split(ext, ",") {
+		e = strings.ToLower(strings.TrimSpace(e))
+		if e == "" {
+			continue
+		}
+		if !strings.HasPrefix(e, ".") {
+			e = "." + e
+		}
+		out[e] = true
+	}
+	return out
+}
+
+// grepOneFile appends "rel:line: text" hits from one file.
+// Returns (newHits, hitLimit, skippedBinary).
+func grepOneFile(sb *strings.Builder, workspace, fp, keyword string, budget int) (int, bool, bool) {
+	f, err := os.Open(fp)
+	if err != nil {
+		return 0, false, false
+	}
+	defer f.Close()
+	rel := fp
+	if workspace != "" {
+		if r, err := filepath.Rel(workspace, fp); err == nil && r != ".." && !strings.HasPrefix(r, ".."+string(os.PathSeparator)) {
+			rel = filepath.ToSlash(r)
+		}
+	}
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 64*1024), 256*1024)
+	hits := 0
+	line := 0
+	for sc.Scan() {
+		line++
+		text := sc.Text()
+		if strings.ContainsRune(text, 0) {
+			return hits, false, true // binary file, skip silently
+		}
+		if !strings.Contains(text, keyword) {
+			continue
+		}
+		if len(text) > 500 {
+			text = text[:500] + "…"
+		}
+		sb.WriteString(fmt.Sprintf("%s:%d: %s\n", rel, line, text))
+		hits++
+		if hits >= budget {
+			return hits, true, false
+		}
+	}
+	return hits, false, false
 }
 
 func defaultShell() (string, []string) {

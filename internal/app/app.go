@@ -20,6 +20,7 @@ import (
 	"github.com/purujawa06-bot/PURU-AI/internal/messages"
 	"github.com/purujawa06-bot/PURU-AI/internal/prompt"
 	"github.com/purujawa06-bot/PURU-AI/internal/telegram"
+	"github.com/purujawa06-bot/PURU-AI/internal/workspace"
 )
 
 const maxMessageLength = 4096
@@ -221,7 +222,7 @@ func isCommandChar(c byte) bool {
 
 func isCommand(s string) bool {
 	switch commandName(s) {
-	case "/help", "/clear", "/token", "/stop", "/sched":
+	case "/help", "/clear", "/token", "/stop", "/sched", "/skills":
 		return true
 	}
 	return false
@@ -237,9 +238,11 @@ func (a *App) handleCommand(ctx context.Context, msg *telegram.Message) error {
 	case "/token":
 		return a.safeReply(ctx, msg, tokenInfo(history.TokenCountFull(a.renderedSystemFor(msg.From.ID), a.hist.Get(msg.From.ID)), a.cfg.HistoryTokenLimit), true)
 	case "/help":
-		return a.safeReply(ctx, msg, "PURU-AI lightweight — just send any message.\n/clear = clear history.\n/token = memory token usage info.\n/stop = stop the running process.\n/sched = list scheduled jobs (ask me to schedule, e.g. \"every day 6am WIB check stocks\").\nIn groups: call via /ai <question> (e.g. /ai explain Raft).", true)
+		return a.safeReply(ctx, msg, "PURU-AI lightweight — just send any message.\n/clear = clear history.\n/token = memory token usage info.\n/stop = stop the running process.\n/sched = list scheduled jobs (ask me to schedule, e.g. \"every day 6am WIB check stocks\").\n/skills = list installed and active skills.\nIn groups: call via /ai <question> (e.g. /ai explain Raft).", true)
 	case "/sched":
 		return a.handleSchedCommand(ctx, msg)
+	case "/skills":
+		return a.handleSkillsCommand(ctx, msg)
 	default: // /clear
 		_ = a.hist.Clear(msg.From.ID)
 		return a.safeReply(ctx, msg, "History cleared.", true)
@@ -247,7 +250,7 @@ func (a *App) handleCommand(ctx context.Context, msg *telegram.Message) error {
 }
 
 // tokenInfo reports history usage vs the compaction limit: how full memory is
-// before it gets summarized (100%) and wiped.
+// before it gets summarized (100%) and compacted to summary + last exchange.
 func tokenInfo(used, limit int) string {
 	if limit <= 0 {
 		limit = 30000
@@ -261,7 +264,7 @@ func tokenInfo(used, limit int) string {
 		left = 0
 	}
 	return "📊 Token memory: " + fmtInt(used) + " / " + fmtInt(limit) +
-		" (" + fmtPct(pct) + ")\nSummarized + history cleared at 100% (" + fmtInt(left) + " left)."
+		" (" + fmtPct(pct) + ")\nSummarized, last exchange kept at 100% (" + fmtInt(left) + " left)."
 }
 
 // fmtInt formats n with ',' thousands separator: 30000 -> "30,000".
@@ -346,8 +349,9 @@ func (a *App) compactNeededFor(chatID int64, stored []*messages.Message) bool {
 	return history.TokenCountFull(a.renderedSystemFor(chatID), stored) >= limit
 }
 
-// runCompact summarizes history into memory/context, wipes history, and
-// returns the kept messages. On failure history is kept as-is for retry.
+// runCompact summarizes history into memory/context, keeps the last
+// user+assistant exchange, and returns the kept messages. On failure
+// history is kept as-is for retry.
 func (a *App) runCompact(ctx context.Context, userID int64, stored []*messages.Message) []*messages.Message {
 	if a.mem.Model == nil && a.agent != nil {
 		a.mem.Model = a.agent.Client
@@ -360,7 +364,7 @@ func (a *App) runCompact(ctx context.Context, userID int64, stored []*messages.M
 	if rel == "" {
 		return stored
 	}
-	kept := []*messages.Message{}
+	kept := messages.KeepLastExchange(stored)
 	if err := a.hist.Set(userID, kept); err != nil {
 		log.Printf("[memory] save note failed: %v", err)
 	}
@@ -380,9 +384,9 @@ func (a *App) editThinking(ctx context.Context, chatID, msgID int64, text string
 
 // maybeCompact checks the token trigger BEFORE the new prompt: when hit,
 // the model summarizes full history into memory/context/YYYY-MM-DD_HH-MM-SS.md,
-// history is wiped, and the new summary flows into the system prompt on the
-// next request (see memory.LatestSummary). On summarize failure history is
-// kept as-is and the next message retries.
+// history keeps only the last user+assistant exchange, and the new summary
+// flows into the system prompt on the next request (see memory.LatestSummary).
+// On summarize failure history is kept as-is and the next message retries.
 func (a *App) maybeCompact(ctx context.Context, userID int64, stored []*messages.Message) []*messages.Message {
 	if !a.compactNeededFor(userID, stored) {
 		return stored
@@ -497,6 +501,8 @@ func toolArgPreview(name string, args map[string]any) string {
 	switch name {
 	case "read_file", "write_file", "list_dir", "edit_file", "append_file", "telegram_sendfile":
 		return previewStr(args["path"])
+	case "grep":
+		return previewStr(args["keyword"])
 	case "use_skill", "stop_skill":
 		return previewStr(args["name"])
 	case "run_shell_command":
@@ -546,7 +552,7 @@ func (a *App) safeReply(ctx context.Context, msg *telegram.Message, text string,
 func (a *App) safeSend(ctx context.Context, msg *telegram.Message, text string) error {
 	if len(text) > maxMessageLength {
 		_ = a.safeReply(ctx, msg, "⚠️ Response too long, sent as a file.", false)
-		return a.tg.SendFile(ctx, msg.Chat.ID, "respon.md", []byte(text), "Respon lengkap.")
+		return a.tg.SendFile(ctx, msg.Chat.ID, "response.md", []byte(text), "Full response.")
 	}
 	return a.safeReply(ctx, msg, text, true)
 }
@@ -589,4 +595,83 @@ func (a *App) handleSchedCommand(ctx context.Context, msg *telegram.Message) err
 		return a.safeReply(ctx, msg, "Cannot list jobs: "+err.Error(), true)
 	}
 	return a.safeReply(ctx, msg, FormatScheduleList(jobs), true)
+}
+
+// handleSkillsCommand implements /skills: list installed skills plus
+// which ones are active for this chat (frontmatter + runtime use_skill).
+func (a *App) handleSkillsCommand(ctx context.Context, msg *telegram.Message) error {
+	ws := ""
+	if a != nil && a.cfg != nil {
+		ws = a.cfg.Workspace
+	}
+	if strings.TrimSpace(ws) == "" {
+		return a.safeReply(ctx, msg, "Skills unavailable: workspace not configured.", true)
+	}
+	installed := workspace.ListSkills(ws)
+	policy := workspace.SkillsPolicy{}
+	if a != nil && a.cfg != nil {
+		policy = a.cfg.SkillsPolicy()
+	}
+	installed = workspace.FilterSkills(installed, policy)
+	active := []string{}
+	if a != nil && a.agent != nil {
+		opts := &ai.ProcessOptions{ChatID: msg.From.ID}
+		frontmatter := workspace.Load(ws).FrontmatterSkills
+		active = workspace.MergeActiveSkills(frontmatter, ai.ActiveSkillsFor(a.agent, opts))
+		// Keep only policy-allowed + still-installed names.
+		allowed := map[string]struct{}{}
+		for _, s := range installed {
+			allowed[strings.ToLower(s.Name)] = struct{}{}
+		}
+		kept := active[:0]
+		for _, name := range active {
+			if _, ok := allowed[strings.ToLower(strings.TrimSpace(name))]; !ok {
+				continue
+			}
+			if !policy.Allows(name) {
+				continue
+			}
+			kept = append(kept, name)
+		}
+		active = kept
+	}
+	return a.safeReply(ctx, msg, FormatSkillsList(installed, active), true)
+}
+
+// FormatSkillsList renders installed + active skills for /skills output.
+func FormatSkillsList(installed []workspace.SkillInfo, active []string) string {
+	if len(installed) == 0 {
+		return "No skills installed. Ask me to find one (e.g. \"find a skill for pdf\")."
+	}
+	isActive := map[string]bool{}
+	for _, name := range active {
+		isActive[strings.ToLower(strings.TrimSpace(name))] = true
+	}
+	lines := make([]string, 0, len(installed))
+	for _, s := range installed {
+		mark := "○"
+		if isActive[strings.ToLower(s.Name)] {
+			mark = "●"
+		}
+		desc := strings.TrimSpace(s.Description)
+		if len(desc) > 100 {
+			desc = desc[:100] + "…"
+		}
+		if desc != "" {
+			lines = append(lines, mark+" "+s.Name+" — "+desc)
+		} else {
+			lines = append(lines, mark+" "+s.Name)
+		}
+	}
+	out := "🧩 Skills (" + strconv.Itoa(len(installed)) + " installed"
+	if len(active) > 0 {
+		out += ", " + strconv.Itoa(len(active)) + " active"
+	}
+	out += "):\n" + strings.Join(lines, "\n")
+	if len(active) > 0 {
+		out += "\n\nActive: " + strings.Join(active, ", ")
+	} else {
+		out += "\n\nNo active skills. Use `use_skill` or list in AGENTS.md frontmatter."
+	}
+	return out
 }

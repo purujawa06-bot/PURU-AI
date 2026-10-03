@@ -68,7 +68,6 @@ func TestGetRendersMemory(t *testing.T) {
 		"<source>workspace</source>",
 		"find-skills",
 		"skill-creator",
-		"puruclaw-configure",
 		"memory/MEMORY.md",
 		"memory/context/",
 	} {

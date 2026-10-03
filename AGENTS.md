@@ -2,7 +2,7 @@
 
 Single Go binary Telegram bot. Module `github.com/purujawa06-bot/PURU-AI`, `go 1.26` (`golang:1.26-alpine` in `Dockerfile`, Go 1.26 in CI).
 
-Always apply skill `rules-write-code`: English-only names, comments, logs, and error messages.
+Code rule: English-only names, comments, logs, and error messages (no external skill required).
 
 ## Commands
 
@@ -27,15 +27,15 @@ Release is manual only (`.github/workflows/release.yml`, Run workflow with `bump
 
 ## Architecture (`internal/`)
 
-- `ai/`: agent loop, single OpenAI-compatible model, no fallback. 14 tools by default: `read_file`, `write_file`, `list_dir`, `edit_file`, `append_file`, `run_shell_command`, `telegram_sendfile`, `telegram_getuser`, `get_env`, `web_fetch`, `manage_schedule`, `spawn_agent`, `use_skill`, `stop_skill` + opt-in `web_search` (15th, only when at least one `web_search` provider is ready: `aistudio` needs active + model + api key, `exa` needs active + api key). Order is fixed: `aistudio` (0), `exa` (1) — first ready error falls through to the next ready one. Timeouts: 330s per tool, 20m total (`agent.go`); `web_search` 60s, `web_fetch` 120s. Retry 5×/2s happens inside the model call (`model.go:retryModel`) — never re-run failed tools.
-- `ai/web.go`: `web_search` via Google AI Studio Gemini `generateContent` + `googleSearch` grounding (`aistudioAPIBase`, mockable var in tests; model free-form, e.g. `gemini-2.5-flash` / `gemma-4-31b-it`) with Exa fallback (`POST /search` with `x-api-key`, `type:auto` + `highlights`, `exaAPIBase` mockable var); removed from tool list unless at least one provider is ready. `web_fetch` strips HTML to text (8000 chars default, clamp 1000–20000; rejects local/private hosts).
+- `ai/`: agent loop, single OpenAI-compatible model, no fallback. 15 tools by default: `read_file`, `write_file`, `list_dir`, `grep`, `edit_file`, `append_file`, `run_shell_command`, `telegram_sendfile`, `telegram_getuser`, `get_env`, `web_fetch`, `manage_schedule`, `spawn_agent`, `use_skill`, `stop_skill` + opt-in `web_search` (16th, only when at least one `web_search` provider is ready: `aistudio` needs active + model + api key, `exa` needs active + api key). Order is fixed: `aistudio` (0), `exa` (1) — first ready error falls through to the next ready one. Timeouts: 330s per tool, 20m total (`agent.go`); `web_search` 60s, `web_fetch` 120s. Retry 5×/2s happens inside the model call (`model.go:retryModel`) — never re-run failed tools.
+- `ai/web.go`: `web_search` via Google AI Studio Gemini `generateContent` + `googleSearch` grounding (`aistudioAPIBase`, mockable var in tests; model free-form, e.g. `gemini-2.5-flash` / `gemma-4-31b-it`) with Exa fallback (`POST /search` with `x-api-key`, `type:auto` + `highlights`, `exaAPIBase` mockable var); removed from tool list unless at least one provider is ready. `web_fetch` strips HTML to text and paginates by lines (`start_line`/`length`, 100 lines default, max 1000 per call; rejects local/private hosts).
 - `app/` Telegram handling; `config/` load/validate + `HistoryDir()` + `MemoryPath()` (`memory/MEMORY.md`); `history/` per-chat JSON in `~/.puru/history`; `memory/` summarization into `memory/context/` (newest 20, `LatestSummary` injected); `workspace/` picoclaw-style bootstrap (`AGENTS.md` preferring plural, `AGENT.md` legacy alias, `SOUL.md`, `USER.md`; leading YAML frontmatter is stripped, `skills: [...]` activates skills) + embedded builtin skills (`skills/find-skills`, `skills/skill-creator`, seeded by `Ensure`, never overwritten) + skill catalog (`skills/*/SKILL.md`, `LoadSkill`/`LoadSkillsForContext`/`BuildSkillsSummary`); `prompt/` renders catalog + Active Skills 1:1 picoclaw (no install tutorial inline — it lives in the `find-skills` SKILL.md), `messages/`, `tokens/`, `telegram/`.
 - `restrict_workspace=true` jails file tools (rejects absolute/`../` escapes) and forces `run_shell_command` Dir inside workspace.
 
 ## Conventions
 
 - All user/agent-visible strings are English. The system prompt (`internal/prompt/prompt.go`) already tells the agent to reply in the user's language — never hardcode Indonesian into outputs, commands, or `example.config.json` placeholders.
-- Never prune history: `PruneMessages`/`PruneTurn` are intentional no-ops, `SanitizeHistoryMessages` only truncates 8k-char messages. Trimming happens solely via `memory.Compact` at `history_token_limit`.
+- Never prune history: `PruneMessages`/`PruneTurn` are intentional no-ops, `SanitizeHistoryMessages` only truncates 8k-char messages. Trimming happens solely via `memory.Compact` at `history_token_limit`, keeping the last user+assistant exchange (`messages.KeepLastExchange`) plus the fresh summary.
 - Number formatting is EN style (`fmtInt` → `30,000`, `fmtPct` → `50.0%`); tests assert this.
 
 ## Gotchas

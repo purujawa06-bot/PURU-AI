@@ -1,10 +1,10 @@
 // Package ai implements the lightweight local tool-calling agent.
 //
-// Single model from config.json, 14 tools by default (read_file, write_file,
-// list_dir, edit_file, append_file, exec, telegram_sendfile,
+// Single model from config.json, 15 tools by default (read_file, write_file,
+// list_dir, grep, edit_file, append_file, exec, telegram_sendfile,
 // telegram_getuser, get_env, web_fetch, schedule, spawn_agent, use_skill,
 // stop_skill)
-// plus opt-in web_search (15th, only when at least one web_search provider
+// plus opt-in web_search (16th, only when at least one web_search provider
 // is ready in config.json), no
 // fallback: one executor run per request, max iterations from config (default
 // 500), pause between iterations from config (loop_delay_seconds, default 3s).
@@ -544,8 +544,8 @@ func (a *Agent) runOnce(ctx context.Context, system string, history []*messages.
 
 // ProcessMessage runs one request: NO history trimming here — the caller
 // (app layer) summarizes history with the model into a memory/context/*.md
-// file when the token limit is hit, wipes history, and the newest summary is
-// injected into the system prompt (see memory.LatestSummary).
+// file when the token limit is hit, keeps the last user+assistant exchange,
+// and the newest summary is injected into the system prompt (see memory.LatestSummary).
 // Single executor run, no provider fallback; API errors are retried per model
 // call (5x total, 2s delay) inside the model wrapper.
 // The system prompt is built picoclaw-style: kernel identity + workspace

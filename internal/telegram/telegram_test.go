@@ -114,7 +114,7 @@ func TestSetCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 	cmds := botCommands()
-	want := []string{"help", "clear", "token", "stop", "sched"}
+	want := []string{"help", "clear", "token", "stop", "sched", "skills"}
 	if len(cmds) != len(want) {
 		t.Fatalf("menu must have %d commands, got %+v", len(want), cmds)
 	}

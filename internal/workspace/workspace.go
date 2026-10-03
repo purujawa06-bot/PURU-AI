@@ -482,7 +482,7 @@ func BuildSkillsSummaryExcluding(workspace string, policy SkillsPolicy, exclude 
 		lines = append(lines, "  </skill>")
 	}
 	lines = append(lines, "</skills>")
-	// ponytail: fence xml so GitHub/text extractors don't strip tags into one blob
+	// fence xml so GitHub/text extractors don't strip tags into one blob
 	return "```xml\n" + strings.Join(lines, "\n") + "\n```"
 }
 

@@ -350,6 +350,43 @@ func EnsureStartsWithUser(msgs []*Message) []*Message {
 	return result
 }
 
+// KeepLastExchange returns the last user text plus the last assistant text
+// as [user, assistant] in chronological order. Used after compaction so
+// the next request continues with live context instead of an empty history.
+// When history ends with a user (no assistant answer yet) only that user
+// is kept to guarantee the kept history starts with a user (avoids API 400).
+// When no user text exists the result is empty (summary covers context).
+// Tool messages are dropped to save tokens; the summary file covers older
+// context. Returns empty when no user text messages exist.
+func KeepLastExchange(msgs []*Message) []*Message {
+	lastUser := -1
+	lastAssist := -1
+	for i := len(msgs) - 1; i >= 0; i-- {
+		m := msgs[i]
+		if m == nil {
+			continue
+		}
+		if lastAssist == -1 && IsAssistant(m) && strings.TrimSpace(m.Text()) != "" {
+			lastAssist = i
+		} else if lastUser == -1 && IsUser(m) && strings.TrimSpace(m.Text()) != "" {
+			lastUser = i
+		}
+		if lastUser != -1 && lastAssist != -1 {
+			break
+		}
+	}
+	if lastUser == -1 {
+		return []*Message{}
+	}
+	if lastAssist == -1 {
+		return []*Message{msgs[lastUser]}
+	}
+	if lastUser < lastAssist {
+		return []*Message{msgs[lastUser], msgs[lastAssist]}
+	}
+	return []*Message{msgs[lastUser]}
+}
+
 const MaxUserMessages = 5
 
 // CapUserTurns keeps at most MaxUserMessages user turns. The incoming user

@@ -1,0 +1,367 @@
+{
+  "tools": {
+    "read_file": {
+      "description": "Read file contents from workspace.",
+      "required": ["path"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Relative file path. Example: note.txt, sub/note.txt"
+        },
+        "start_line": {
+          "type": "integer",
+          "description": "First line to read. Example: 23, Default 1",
+          "default": 1,
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "length": {
+          "type": "integer",
+          "description": "Max lines to read. Example: 200, Default: 200",
+          "default": 200,
+          "minimum": 1,
+          "maximum": 2000
+        }
+      }
+    },
+    "write_file": {
+      "description": "Create a new file in workspace.",
+      "required": ["path", "content"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Relative file path. Example: note.txt, sub/note.txt"
+        },
+        "content": {
+          "type": "string",
+          "description": "File content. Example: hello world"
+        },
+        "overwrite": {
+          "type": "boolean",
+          "description": "Overwrite existing file. Default false",
+          "default": false
+        }
+      }
+    },
+    "list_dir": {
+      "description": "List files in a folder.",
+      "required": ["path"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Relative folder path. Example: ., sub"
+        }
+      }
+    },
+    "grep": {
+      "description": "Search text in files.",
+      "required": ["path", "keyword"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "File or folder to search. Example: note.txt, sub"
+        },
+        "keyword": {
+          "type": "string",
+          "description": "Text to find. Example: hello"
+        },
+        "ext": {
+          "type": "string",
+          "description": "Filter by extension. Example: txt. Empty = all files."
+        },
+        "limit": {
+          "type": "integer",
+          "description": "Max matches. Example: 50, Default: 50",
+          "default": 50,
+          "minimum": 1,
+          "maximum": 200
+        }
+      }
+    },
+    "edit_file": {
+      "description": "Replace part of a file.",
+      "required": ["path", "old_string", "new_string"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Relative file path. Example: note.txt, sub/note.txt"
+        },
+        "old_string": {
+          "type": "string",
+          "description": "Text to find. Must occur once."
+        },
+        "new_string": {
+          "type": "string",
+          "description": "Replacement text. Empty = delete."
+        }
+      }
+    },
+    "append_file": {
+      "description": "Append text to a file.",
+      "required": ["path", "content"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Relative file path. Example: note.txt, sub/note.txt"
+        },
+        "content": {
+          "type": "string",
+          "description": "Text to append. Example: new line"
+        }
+      }
+    },
+    "run_shell_command": {
+      "description": "Run shell command in workspace.",
+      "required": ["action"],
+      "properties": {
+        "action": {
+          "type": "string",
+          "description": "Action: run, list, poll, read, kill",
+          "enum": ["run", "list", "poll", "read", "kill"]
+        },
+        "command": {
+          "type": "string",
+          "description": "Shell command. Example: du -sh"
+        },
+        "sessionId": {
+          "type": "string",
+          "description": "Session id for poll/read/kill. Example: sess_123"
+        },
+        "background": {
+          "type": "boolean",
+          "description": "Run in background. Default false",
+          "default": false
+        },
+        "cwd": {
+          "type": "string",
+          "description": "Working folder. Example: sub. Default workspace root."
+        },
+        "timeout": {
+          "type": "integer",
+          "description": "Timeout seconds. Example: 60, Default: 60",
+          "default": 60,
+          "minimum": 1,
+          "maximum": 300
+        }
+      }
+    },
+    "telegram_sendfile": {
+      "description": "Send file to Telegram chat.",
+      "required": ["path"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Relative file path. Example: out/report.pdf"
+        },
+        "filename": {
+          "type": "string",
+          "description": "Display name. Default is file name."
+        },
+        "caption": {
+          "type": "string",
+          "description": "Caption under file. Example: monthly report"
+        }
+      }
+    },
+    "telegram_getuser": {
+      "description": "Look up Telegram user info.",
+      "properties": {
+        "user_id": {
+          "type": "integer",
+          "description": "User id. Example: 123456. Omit = current sender.",
+          "minimum": 1
+        }
+      }
+    },
+    "get_env": {
+      "description": "Get runtime info.",
+      "properties": {}
+    },
+    "web_fetch": {
+      "description": "Fetch content from a public URL.",
+      "required": ["url"],
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "Public URL. Example: https://example.com"
+        },
+        "section": {
+          "type": "string",
+          "description": "Content type: text or html.",
+          "enum": ["text", "html"]
+        },
+        "start_line": {
+          "type": "integer",
+          "description": "First line. Example: 1. Default 1",
+          "default": 1,
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "length": {
+          "type": "integer",
+          "description": "Max lines. Example: 100, Default: 100",
+          "default": 100,
+          "minimum": 1,
+          "maximum": 1000
+        }
+      }
+    },
+    "web_search": {
+      "description": "Search web for current info.",
+      "required": ["query"],
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Search query. Example: weather jakarta"
+        },
+        "count": {
+          "type": "integer",
+          "description": "Result count. Example: 5, Default: 5",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 10
+        }
+      }
+    },
+    "manage_schedule": {
+      "description": "Create and manage scheduled jobs.",
+      "required": ["action"],
+      "properties": {
+        "action": {
+          "type": "string",
+          "description": "Action: add, list, get, update, remove, enable, disable",
+          "enum": ["add", "list", "get", "update", "remove", "enable", "disable"]
+        },
+        "name": {
+          "type": "string",
+          "description": "Job name. Example: morning check"
+        },
+        "prompt": {
+          "type": "string",
+          "description": "What agent should do. Example: check weather"
+        },
+        "type": {
+          "type": "string",
+          "description": "Schedule type: once, every, daily, cron",
+          "enum": ["once", "every", "daily", "cron"]
+        },
+        "timezone": {
+          "type": "string",
+          "description": "Timezone. Example: Asia/Jakarta"
+        },
+        "run_once_at": {
+          "type": "string",
+          "description": "One-time run. Example: 18:00"
+        },
+        "every_seconds": {
+          "type": "integer",
+          "description": "Repeat interval in seconds. Example: 3600, Default: 3600",
+          "default": 3600,
+          "minimum": 60,
+          "maximum": 31622400
+        },
+        "daily_time": {
+          "type": "string",
+          "description": "Daily time. Example: 06:00"
+        },
+        "weekdays": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+          },
+          "description": "Days to run. Example: [\"mon\",\"fri\"]. Omit = every day."
+        },
+        "cron_expr": {
+          "type": "string",
+          "description": "Cron with 5 fields. Example: 0 6 * * *"
+        },
+        "end_at": {
+          "type": "string",
+          "description": "Stop time. Example: 2026-10-05 00:00"
+        },
+        "days": {
+          "type": "integer",
+          "description": "Run for N days. Example: 7, Default: 0 = no end",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 366
+        },
+        "max_runs": {
+          "type": "integer",
+          "description": "Max runs. Example: 10, Default: 0 = unlimited",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "job_id": {
+          "type": "string",
+          "description": "Job id for get/update/remove/enable/disable."
+        }
+      }
+    },
+    "spawn_agent": {
+      "description": "Delegate one task to a sub-agent.",
+      "required": ["agent_name", "system_prompt", "task_prompt"],
+      "properties": {
+        "agent_name": {
+          "type": "string",
+          "description": "Agent name. Example: researcher_01"
+        },
+        "system_prompt": {
+          "type": "string",
+          "description": "Role and rules. Example: You are researcher. Return 3 bullets."
+        },
+        "task_prompt": {
+          "type": "string",
+          "description": "Task to do. Example: Summarize note.txt in 3 bullets."
+        },
+        "agent_read": {
+          "type": "boolean",
+          "description": "Give read tools. Default false",
+          "default": false
+        },
+        "agent_write": {
+          "type": "boolean",
+          "description": "Give write tools. Default false",
+          "default": false
+        },
+        "agent_exec": {
+          "type": "boolean",
+          "description": "Give exec tools. Default false",
+          "default": false
+        },
+        "agent_search": {
+          "type": "boolean",
+          "description": "Give search tools. Default false",
+          "default": false
+        }
+      }
+    },
+    "use_skill": {
+      "description": "Activate a skill by name.",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Skill name. Example: find-skills"
+        },
+        "always_active": {
+          "type": "boolean",
+          "description": "Persist across turns. Default false = this turn only, idle after final answer.",
+          "default": false
+        }
+      }
+    },
+    "stop_skill": {
+      "description": "Deactivate an active skill.",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Skill name. Example: find-skills"
+        }
+      }
+    }
+  }
+}

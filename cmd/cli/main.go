@@ -89,7 +89,7 @@ func process(ctx context.Context, agent *ai.Agent, hist *history.Store, mem *mem
 		if cerr != nil {
 			log.Printf("compact: %v", cerr)
 		} else if rel != "" {
-			stored = []*messages.Message{}
+			stored = messages.KeepLastExchange(stored)
 			_ = hist.Set(chatID, stored)
 			fmt.Printf("(saved: %s)\n", rel)
 		}
