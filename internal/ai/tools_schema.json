@@ -25,53 +25,53 @@
       }
     },
     "write_file": {
-      "description": "Create a new file with the exact content given. Use when you need a file that does not exist yet. Do NOT use to change part of an existing file — use edit_file; to add at the end — use append_file. Returns \"File written: <path>\" on success, or {success:false,error} when the path is blocked or already exists. Writes the file: confirm with the user before replacing anything important, and prefer overwrite=false so accidental data loss fails loudly.",
+      "description": "Create new file. Use this if you want to create a file.",
       "required": ["path", "content"],
       "properties": {
         "path": {
           "type": "string",
-          "description": "Workspace-relative file path to create, parent dirs are created. Example: notes.txt, skills/<name>/SKILL.md."
+          "description": "Relative file path. Example: note.txt, sub/note.txt"
         },
         "content": {
           "type": "string",
-          "description": "Full file content to write, verbatim. Empty string creates an empty file."
+          "description": "File content to write. Example: hello world"
         },
         "overwrite": {
           "type": "boolean",
-          "description": "Replace an existing file in full. Default false, so the call fails instead of discarding data. Example: {\"path\":\"notes.txt\",\"content\":\"...\",\"overwrite\":true}.",
+          "description": "Overwrite existing file. Default false",
           "default": false
         }
       }
     },
     "list_dir": {
-      "description": "List files and directories at one path. Use when you need to discover what exists before reading or editing. Do NOT use to read file contents — use read_file. Returns a plain-text listing (names one per line, directories marked), or {success:false,error} when the path is missing or blocked. Read-only, no writes.",
+      "description": "List files in folder. Use this if you want to see folder contents.",
       "required": ["path"],
       "properties": {
         "path": {
           "type": "string",
-          "description": "Workspace-relative directory to list. Example: \".\" for the workspace root, or skills/find-skills."
+          "description": "Relative folder path. Example: ., sub"
         }
       }
     },
     "grep": {
-      "description": "Search a file or folder tree for a literal keyword. Use when you need to locate text across files without reading each one. path may be one file (e.g. internal/ai/fs.go) or a folder (e.g. internal/ai, scanned recursively with subfolders). Do NOT use to read full file contents — use read_file; to list names only — use list_dir. Returns rel:line: text hits (or (no matches)), or {success:false,error} when keyword is empty or path is blocked. Read-only.",
+      "description": "Search text in file or folder. Use this if you want to find text.",
       "required": ["path", "keyword"],
       "properties": {
         "path": {
           "type": "string",
-          "description": "Workspace-relative file or folder to search. Example: internal/ai/fs.go for one file, internal/ai for recursive folder scan."
+          "description": "Relative file or folder to search. Example: note.txt, sub"
         },
         "keyword": {
           "type": "string",
-          "description": "Literal text to find (case-sensitive). Example: BuildTools."
+          "description": "Text to find. Example: hello"
         },
         "ext": {
           "type": "string",
-          "description": "Optional extension filter, e.g. go or .go,.md. Empty = all files."
+          "description": "File extension filter. Example: txt. Empty = all files."
         },
         "limit": {
           "type": "integer",
-          "description": "Max matches to return. Default 50, max 200.",
+          "description": "Max matches. Example: 50, Default: 50",
           "default": 50,
           "minimum": 1,
           "maximum": 200
@@ -79,66 +79,66 @@
       }
     },
     "edit_file": {
-      "description": "Replace one unique text block inside an existing file. Use for targeted changes to a file you have already read. Do NOT use to create a file — use write_file; to append — use append_file; for wholesale replacement — write_file with overwrite=true. Returns \"File edited: <path>\", or {success:false,error} when old_string is missing or ambiguous. Writes the file: re-read before editing and confirm destructive edits with the user.",
+      "description": "Edit part of file. Use this if you want to change file contents.",
       "required": ["path", "old_string", "new_string"],
       "properties": {
         "path": {
           "type": "string",
-          "description": "Workspace-relative path of the existing file to edit. Example: AGENTS.md."
+          "description": "Relative file path. Example: note.txt, sub/note.txt"
         },
         "old_string": {
           "type": "string",
-          "description": "Exact text to find. Must occur exactly once in the file; if it occurs more than once the call fails and you must include more surrounding context."
+          "description": "Text to find. Must occur once in file."
         },
         "new_string": {
           "type": "string",
-          "description": "Replacement text. Use an empty string to delete the matched block."
+          "description": "Replacement text. Empty = delete."
         }
       }
     },
     "append_file": {
-      "description": "Append content to the end of a file, creating it when missing. Use for logs, notes, and adding to a list. Do NOT use to change existing text — use edit_file; to create with exact content — write_file. Returns \"Appended to <path>\", or {success:false,error} when the path is blocked. Writes the file: the previous content is preserved, but confirm before appending to files the user owns.",
+      "description": "Append text to file. Use this if you want to add to file.",
       "required": ["path", "content"],
       "properties": {
         "path": {
           "type": "string",
-          "description": "Workspace-relative file path to append to. Example: memory/context-notes.md."
+          "description": "Relative file path. Example: note.txt, sub/note.txt"
         },
         "content": {
           "type": "string",
-          "description": "Text to add after the current end of file. Include leading newlines when needed."
+          "description": "Text to append. Example: new line"
         }
       }
     },
     "run_shell_command": {
-      "description": "Run a shell command inside the workspace and return its result. Use when you need to build, test, inspect git, or run any command the file tools cannot do. Do NOT use to read or edit files — use read_file/edit_file; to fetch URLs — use web_fetch. Returns {success, exit_code, output} on run, or {success:false,error} when blocked. Notes: writes and executes arbitrary commands inside the workspace jail (outside paths are rejected); destructive commands are irreversible — confirm with the user first. Long commands should run with background=true then poll/read; kill stops them. Timeouts are clamped 1-300s, output is capped.",
+      "description": "Run shell command. Use this if you need to run a command.",
       "required": ["action"],
       "properties": {
         "action": {
           "type": "string",
-          "description": "Action: run (execute), list (show sessions), poll (check status), read (get output), kill (terminate)",
+          "description": "Action: run, list, poll, read, kill",
           "enum": ["run", "list", "poll", "read", "kill"]
         },
         "command": {
           "type": "string",
-          "description": "Shell command to run, required for action=run. Example: go test ./... ."
+          "description": "Shell command to run. Example: du -sh"
         },
         "sessionId": {
           "type": "string",
-          "description": "Session ID from a background run, required for poll/read/kill. Example: sess_1712345678."
+          "description": "Session id for poll/read/kill. Example: sess_123"
         },
         "background": {
           "type": "boolean",
-          "description": "Run in background immediately and return a sessionId for poll/read. Default false.",
+          "description": "Run in background. Default false",
           "default": false
         },
         "cwd": {
           "type": "string",
-          "description": "Working directory inside the workspace. Default is the workspace root. Example: internal/ai."
+          "description": "Working folder. Example: sub. Default workspace root."
         },
         "timeout": {
           "type": "integer",
-          "description": "Timeout in seconds for action=run. Default 60, clamped 1-300.",
+          "description": "Timeout seconds. Example: 60, Default: 60",
           "default": 60,
           "minimum": 1,
           "maximum": 300
@@ -146,60 +146,60 @@
       }
     },
     "telegram_sendfile": {
-      "description": "Upload a workspace file to the current Telegram chat. Use when the user asks to receive a file, image, or generated artifact. Do NOT use to paste file contents in a message — use read_file and reply with text. Returns {success:true,path} on upload, or {error} when unavailable outside Telegram, too large, or blocked. Notes: sends a message to the user immediately and cannot be unsent — send only when the user asked for it. Max 20MB; filename defaults to the path basename.",
+      "description": "Send file to Telegram chat. Use this if user asks for a file.",
       "required": ["path"],
       "properties": {
         "path": {
           "type": "string",
-          "description": "Workspace-relative path of the file to upload. Relative paths resolve from the workspace root. Example: out/report.pdf."
+          "description": "Relative file path. Example: out/report.pdf"
         },
         "filename": {
           "type": "string",
-          "description": "Display filename shown in Telegram. Default is the basename of path."
+          "description": "Display filename. Default is file name."
         },
         "caption": {
           "type": "string",
-          "description": "Optional short caption shown under the file."
+          "description": "Caption under file. Example: monthly report"
         }
       }
     },
     "telegram_getuser": {
-      "description": "Look up a Telegram user's id, username, and name by numeric id. Use when you need to confirm who is talking or fetch details for a known user id. Do NOT use to search by @username — that is not supported; do NOT use to store profile data in memory — only lasting facts belong in MEMORY.md. Returns {id, username, first_name, last_name, bio} (bio only when fetched for another user), or {error} outside Telegram or for an unknown id. Read-only.",
+      "description": "Get Telegram user info. Use this if you want to know who is talking.",
       "properties": {
         "user_id": {
           "type": "integer",
-          "description": "Telegram user id to look up. Omit or 0 to return the current sender from the prompt context.",
+          "description": "User id. Example: 123456. Omit = current sender.",
           "minimum": 1
         }
       }
     },
     "get_env": {
-      "description": "Get runtime facts about this agent: OS, architecture, Go version, workspace path, jail mode, and memory use. Use when you need to check the platform before choosing commands. Do NOT use to read environment variables or secrets — despite the name, it returns none. Returns {os, arch, go_ver, workspace, restricted, memory_mb} with no parameters. Read-only.",
+      "description": "Get runtime info. Use this if you need OS, arch, memory.",
       "properties": {}
     },
     "web_fetch": {
-      "description": "Fetch one public http/https URL and return its content as text. Use when you already know the exact page URL, including following up a web_search result. Do NOT use to discover pages — use web_search; to read local files — use read_file. Returns lines start_line..end (default 100 lines, max 1000) or raw HTML lines with section=html; long pages tell you to call again with a larger start_line. Returns {success:false,error} for private/local hosts, non-http schemes, or timeouts (120s). Read-only; sends no data out except the GET request.",
+      "description": "Fetch URL content. Use this if you have exact page URL.",
       "required": ["url"],
       "properties": {
         "url": {
           "type": "string",
-          "description": "Public http/https URL to fetch. Local, private, and file:// URLs are rejected. Example: https://example.com/docs."
+          "description": "Public URL. Example: https://example.com"
         },
         "section": {
           "type": "string",
-          "description": "Content section: text (default, HTML stripped) or html (raw).",
+          "description": "Content type: text or html.",
           "enum": ["text", "html"]
         },
         "start_line": {
           "type": "integer",
-          "description": "Line number to start from, 1-based. Example: start_line 1 length 100, then start_line 101. Default 1.",
+          "description": "Line to start. Example: 1, 101. Default 1",
           "default": 1,
           "minimum": 1,
           "maximum": 1000000
         },
         "length": {
           "type": "integer",
-          "description": "Max lines to return. Default 100, max 1000.",
+          "description": "Max lines. Example: 100, Default: 100",
           "default": 100,
           "minimum": 1,
           "maximum": 1000
@@ -207,16 +207,16 @@
       }
     },
     "web_search": {
-      "description": "Search the web and return ranked result snippets. Use when you need current facts, news, docs, or anything not already known or in the workspace. Do NOT use to read a page you already have the URL for — use web_fetch. Returns text results (title, url, snippet); pass count for more or fewer (default 5, max 10). Returns {success:false,error} on empty query or provider failure (60s). Read-only, costs a third-party search API call.",
+      "description": "Search web. Use this if you need current info.",
       "required": ["query"],
       "properties": {
         "query": {
           "type": "string",
-          "description": "Search query, non-empty. Example: 'golang slog handler test'."
+          "description": "Search query. Example: weather jakarta"
         },
         "count": {
           "type": "integer",
-          "description": "Number of results to return. Default 5, clamped 1-10.",
+          "description": "Result count. Example: 5, Default: 5",
           "default": 5,
           "minimum": 1,
           "maximum": 10
@@ -224,7 +224,7 @@
       }
     },
     "manage_schedule": {
-      "description": "Create, inspect, and manage scheduled jobs that fire this agent as a turn later. Use when the user asks for a reminder, a recurring check, or a task at a specific time. Do NOT use for immediate work — just do it now with your other tools. Returns a job listing or confirmation text per action, or {success:false,error} when workspace is unset or arguments are incomplete. Notes: jobs persist in <workspace>/schedule/jobs.json and keep running after this chat, so confirm timing before adding; use action=remove to cancel. Times are wall-clock in timezone (default Asia/Jakarta).",
+      "description": "Manage scheduled jobs. Use this if user asks for reminder or routine task.",
       "required": ["action"],
       "properties": {
         "action": {
@@ -234,35 +234,35 @@
         },
         "name": {
           "type": "string",
-          "description": "Short job name (add only, optional)."
+          "description": "Job name. Example: morning check"
         },
         "prompt": {
           "type": "string",
-          "description": "What the agent should do when the job fires (add/update, required for add)."
+          "description": "What agent should do. Example: check weather"
         },
         "type": {
           "type": "string",
-          "description": "Schedule type: once, every, daily, cron (add/update).",
+          "description": "Schedule type: once, every, daily, cron",
           "enum": ["once", "every", "daily", "cron"]
         },
         "timezone": {
           "type": "string",
-          "description": "IANA timezone for wall-clock times (default Asia/Jakarta)."
+          "description": "Timezone. Example: Asia/Jakarta"
         },
         "run_once_at": {
           "type": "string",
-          "description": "One-time run time, e.g. 18:00, 2026-09-29 18:00 (once)."
+          "description": "One-time run. Example: 18:00"
         },
         "every_seconds": {
           "type": "integer",
-          "description": "Repeat interval in seconds for type=every. Default 3600, min 60, max under one year.",
+          "description": "Repeat seconds. Example: 3600, Default: 3600",
           "default": 3600,
           "minimum": 60,
           "maximum": 31622400
         },
         "daily_time": {
           "type": "string",
-          "description": "Daily time HH:MM 24-hour, e.g. 06:00 (daily)."
+          "description": "Daily time. Example: 06:00"
         },
         "weekdays": {
           "type": "array",
@@ -270,26 +270,26 @@
             "type": "string",
             "enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
           },
-          "description": "Weekdays to run on, e.g. [\"mon\",\"fri\"] (daily, optional). Omit for every day."
+          "description": "Days to run. Example: [\"mon\",\"fri\"]. Omit = every day."
         },
         "cron_expr": {
           "type": "string",
-          "description": "Cron expression, 5 fields minute hour dom month dow (cron)."
+          "description": "Cron 5 fields. Example: 0 6 * * *"
         },
         "end_at": {
           "type": "string",
-          "description": "Stop after this time, e.g. 2026-10-05 00:00 (optional, for a few days only)."
+          "description": "Stop time. Example: 2026-10-05 00:00"
         },
         "days": {
           "type": "integer",
-          "description": "Run only for N days from now, 0 = no end date (optional shortcut, sets end date).",
+          "description": "Run for N days. Example: 7, Default: 0 = no end",
           "default": 0,
           "minimum": 0,
           "maximum": 366
         },
         "max_runs": {
           "type": "integer",
-          "description": "Stop after N runs, 0 = unlimited (optional, for once or limited repeats, max 10000).",
+          "description": "Max runs. Example: 10, Default: 0 = unlimited",
           "default": 0,
           "minimum": 0,
           "maximum": 10000
@@ -301,60 +301,60 @@
       }
     },
     "spawn_agent": {
-      "description": "Spawn a synchronous sub-agent for one delegated task. Use when a task is independent and needs its own system prompt and limited tools (e.g. researcher, scraper). Runs inline (not in background) with the same model and max_iterations from config, then returns its final answer directly as \"Result from <agent_name>: ...\" (or a step-limit notice when capped). Do NOT use for trivial tasks you can do yourself. Capabilities are gated by four combinable flags: agent_read, agent_write, agent_exec, agent_search; all false/omitted = all parent tools except spawn_agent. Skill tools (use_skill, stop_skill) are always available. Notes: the child cannot spawn again (spawn_agent is stripped) and cannot use your chat or Telegram tools directly; omitting every agent_* flag gives the child shell and write access, so set only the flags the task needs; each spawn costs model time and shares your step budget, so batch tightly. Returns {success:false,error} when no model is configured, required args are empty, the flags match no tools, or the child errors.",
+      "description": "Spawn sub-agent for task. Use this for independent task.",
       "required": ["agent_name", "system_prompt", "task_prompt"],
       "properties": {
         "agent_name": {
           "type": "string",
-          "description": "Sub-agent name, non-empty. Example: researcher_01."
+          "description": "Agent name. Example: researcher_01"
         },
         "system_prompt": {
           "type": "string",
-          "description": "System prompt for the sub-agent: its role, rules, and output shape. Non-empty. Example: You are a researcher. Return 3 bullets with sources."
+          "description": "Role and rules. Example: You are researcher. Return 3 bullets."
         },
         "task_prompt": {
           "type": "string",
-          "description": "Task for the sub-agent to execute. Non-empty. Example: Summarize docs/api.md in 5 bullets."
+          "description": "Task to do. Example: Summarize note.txt in 3 bullets."
         },
         "agent_read": {
           "type": "boolean",
-          "description": "Read-only tools: read_file, list_dir, grep, get_env, telegram_getuser. Combinable with other agent_* flags.",
+          "description": "Give read tools. Default false",
           "default": false
         },
         "agent_write": {
           "type": "boolean",
-          "description": "Write tools: write_file, edit_file, append_file, telegram_sendfile. Combinable with other agent_* flags.",
+          "description": "Give write tools. Default false",
           "default": false
         },
         "agent_exec": {
           "type": "boolean",
-          "description": "Execution tools: run_shell_command, manage_schedule. Combinable with other agent_* flags.",
+          "description": "Give exec tools. Default false",
           "default": false
         },
         "agent_search": {
           "type": "boolean",
-          "description": "Search/fetch tools: web_fetch, web_search (when available). Combinable with other agent_* flags.",
+          "description": "Give search tools. Default false",
           "default": false
         }
       }
     },
     "use_skill": {
-      "description": "Activate a skill by its exact catalog name and load its full instructions for this and later turns. Use when a listed skill matches the request and its workflow should be followed. Do NOT use for skills already active in <skills> Active Skills, or to read a file — use read_file. Returns the skill name plus its full SKILL.md body, or {success:false,error} when the name is unknown, blocked by policy, or has no readable SKILL.md. Notes: persists per chat until stop_skill, so activate once and reuse it; ask before activating an unexpected skill.",
+      "description": "Activate skill. Use this if task matches skill.",
       "required": ["name"],
       "properties": {
         "name": {
           "type": "string",
-          "description": "Exact skill <name> from the <skills> catalog, case-insensitive. Example: find-skills."
+          "description": "Skill name. Example: find-skills"
         }
       }
     },
     "stop_skill": {
-      "description": "Deactivate a skill that is currently active for this chat. Use when its instructions no longer apply and you want its body out of the prompt. Do NOT use to read or list skills — use use_skill or the <skills> catalog. Returns a confirmation string, or {success:false,error} when there is no chat scope or the name was not runtime-active. Notes: skills activated by AGENTS.md frontmatter stay active and cannot be stopped this way.",
+      "description": "Deactivate skill. Use this if skill no longer needed.",
       "required": ["name"],
       "properties": {
         "name": {
           "type": "string",
-          "description": "Active skill name to deactivate, case-insensitive. Example: find-skills."
+          "description": "Skill name. Example: find-skills"
         }
       }
     }

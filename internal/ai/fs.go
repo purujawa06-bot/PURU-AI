@@ -383,7 +383,7 @@ func grepLocal(workspace string, restrict bool, p, keyword, ext string, maxResul
 	} else {
 		err = filepath.WalkDir(abs, func(fp string, d os.DirEntry, werr error) error {
 			if werr != nil {
-				return nil // ponytail: skip unreadable, keep going
+				return nil // skip unreadable, keep going
 			}
 			if d.IsDir() {
 				if d.Name() == ".git" {
@@ -398,7 +398,7 @@ func grepLocal(workspace string, restrict bool, p, keyword, ext string, maxResul
 				return nil
 			}
 			if info, err := d.Info(); err == nil && info.Size() > 2<<20 {
-				return nil // ponytail: skip files >2MB, read_file covers them
+				return nil // skip files >2MB, read_file covers them
 			}
 			files = append(files, fp)
 			return nil
@@ -470,7 +470,7 @@ func grepOneFile(sb *strings.Builder, workspace, fp, keyword string, budget int)
 		line++
 		text := sc.Text()
 		if strings.ContainsRune(text, 0) {
-			return hits, false, true // ponytail: binary file, skip silently
+			return hits, false, true // binary file, skip silently
 		}
 		if !strings.Contains(text, keyword) {
 			continue
