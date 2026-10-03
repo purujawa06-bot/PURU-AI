@@ -184,6 +184,30 @@ func TestSkillsCatalog(t *testing.T) {
 	}
 }
 
+func TestListSkillsFoldedFrontmatterDescription(t *testing.T) {
+	ws := t.TempDir()
+	if err := Ensure(ws); err != nil {
+		t.Fatal(err)
+	}
+	skillDir := filepath.Join(SkillsDir(ws), "ponytail")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "---\nname: ponytail\ndescription: >\n  Forces the laziest solution that actually works, simplest, shortest, most\n  minimal. Channels a senior dev who has seen everything.\nargument-hint: \"[lite|full|ultra]\"\nlicense: MIT\n---\n\n# Ponytail\n"
+	if err := os.WriteFile(filepath.Join(skillDir, FileSkill), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var desc string
+	for _, s := range ListSkills(ws) {
+		if s.Name == "ponytail" {
+			desc = s.Description
+		}
+	}
+	if !strings.Contains(desc, "Forces the laziest solution") || strings.Contains(desc, ">") || strings.Contains(desc, "argument-hint") {
+		t.Fatalf("folded description must be flattened, got %q", desc)
+	}
+}
+
 func TestLoadSkillsForContext(t *testing.T) {
 	ws := t.TempDir()
 	if err := Ensure(ws); err != nil {

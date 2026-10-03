@@ -506,16 +506,21 @@ func skillMetadata(dirName, content string) (name, description string) {
 	name = dirName
 	slug := ""
 	description = ""
-	for _, line := range strings.Split(frontmatter, "\n") {
-		trimmed := strings.TrimSpace(line)
+	lines := strings.Split(frontmatter, "\n")
+	for i := 0; i < len(lines); i++ {
+		trimmed := strings.TrimSpace(lines[i])
 		if rest, ok := cutPrefixFold(trimmed, "name:"); ok && strings.TrimSpace(rest) != "" {
 			name = strings.Trim(strings.TrimSpace(rest), `"'`)
 		}
 		if rest, ok := cutPrefixFold(trimmed, "slug:"); ok && strings.TrimSpace(rest) != "" {
 			slug = strings.Trim(strings.TrimSpace(rest), `"'`)
 		}
-		if rest, ok := cutPrefixFold(trimmed, "description:"); ok && strings.TrimSpace(rest) != "" {
-			description = strings.Trim(strings.TrimSpace(rest), `"'`)
+		if rest, ok := cutPrefixFold(trimmed, "description:"); ok {
+			value, consumed := parseYAMLScalar(strings.TrimSpace(rest), lines, i+1)
+			i += consumed
+			if value != "" {
+				description = strings.Trim(value, `"'`)
+			}
 		}
 	}
 	// Clawic-style frontmatter uses slug: instead of name:.
@@ -536,6 +541,43 @@ func skillMetadata(dirName, content string) (name, description string) {
 		return name, trimmed
 	}
 	return name, ""
+}
+
+// parseYAMLScalar resolves a YAML scalar value from the text after a
+// frontmatter key. It handles plain values, quoted values, and block
+// scalars (>, |, >-, |-, >+, |+) whose content lives on the following
+// indented lines, as well as plain multi-line values continued on
+// indented lines. rest is the text after the "key:" prefix; lines[i:]
+// are the frontmatter lines following the key line. It returns the
+// flattened value and how many extra lines were consumed.
+func parseYAMLScalar(rest string, lines []string, i int) (string, int) {
+	indented := func(line string) bool {
+		return line != "" && (line[0] == ' ' || line[0] == '\t') && strings.TrimSpace(line) != ""
+	}
+	block := rest
+	if strings.HasPrefix(block, ">") || strings.HasPrefix(block, "|") || block == "" {
+		literal := strings.HasPrefix(block, "|")
+		var parts []string
+		consumed := 0
+		for i < len(lines) && indented(lines[i]) {
+			parts = append(parts, strings.TrimSpace(lines[i]))
+			consumed++
+			i++
+		}
+		if literal {
+			return strings.Join(parts, "\n"), consumed
+		}
+		return strings.Join(parts, " "), consumed
+	}
+	// Plain scalar: absorb more-indented continuation lines.
+	parts := []string{rest}
+	consumed := 0
+	for i < len(lines) && indented(lines[i]) && !strings.Contains(strings.TrimSpace(lines[i]), ":") {
+		parts = append(parts, strings.TrimSpace(lines[i]))
+		consumed++
+		i++
+	}
+	return strings.Join(parts, " "), consumed
 }
 
 // splitFrontmatter splits a leading "---" YAML frontmatter block from the
