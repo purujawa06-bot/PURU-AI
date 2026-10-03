@@ -3,8 +3,9 @@
 // Files: ~/.puru/history/{chatID}.json (JSON array of messages).
 // No Firebase, no cache TTL complexity — small in-memory map + disk.
 // History is NEVER trimmed here; the app layer summarizes it with the model
-// into a memory/context/*.md file when the token limit is hit, wipes history,
-// and the newest summary is injected into the system prompt.
+// into a memory/context/*.md file when the token limit is hit, keeps only
+// the last user+assistant exchange, and the newest summary is injected
+// into the system prompt.
 package history
 
 import (
@@ -73,7 +74,7 @@ func (s *Store) Set(chatID int64, msgs []*messages.Message) error {
 	return os.Rename(tmp, path)
 }
 
-// Clear wipes history totally (used after memory compaction).
+// Clear wipes history totally (used by /clear command).
 func (s *Store) Clear(chatID int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

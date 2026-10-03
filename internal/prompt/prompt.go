@@ -599,7 +599,7 @@ func buildMemoryContent(memory string) string {
 	if strings.TrimSpace(memory) == "" {
 		return guidance + "\n\n## Conversation Context (memory/MEMORY.md)\n\n(empty)"
 	}
-	return guidance + "\n\n## Conversation Context (memory/MEMORY.md)\n\n<memory_data>\n" + memory + "\n</memory_data>"
+	return guidance + "\n\n## Conversation Context (memory/MEMORY.md)\n\n" + memory
 }
 
 func buildSummaryContent(summary string) string {

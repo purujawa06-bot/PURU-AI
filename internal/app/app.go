@@ -250,7 +250,7 @@ func (a *App) handleCommand(ctx context.Context, msg *telegram.Message) error {
 }
 
 // tokenInfo reports history usage vs the compaction limit: how full memory is
-// before it gets summarized (100%) and wiped.
+// before it gets summarized (100%) and compacted to summary + last exchange.
 func tokenInfo(used, limit int) string {
 	if limit <= 0 {
 		limit = 30000
@@ -264,7 +264,7 @@ func tokenInfo(used, limit int) string {
 		left = 0
 	}
 	return "📊 Token memory: " + fmtInt(used) + " / " + fmtInt(limit) +
-		" (" + fmtPct(pct) + ")\nSummarized + history cleared at 100% (" + fmtInt(left) + " left)."
+		" (" + fmtPct(pct) + ")\nSummarized, last exchange kept at 100% (" + fmtInt(left) + " left)."
 }
 
 // fmtInt formats n with ',' thousands separator: 30000 -> "30,000".
@@ -349,8 +349,9 @@ func (a *App) compactNeededFor(chatID int64, stored []*messages.Message) bool {
 	return history.TokenCountFull(a.renderedSystemFor(chatID), stored) >= limit
 }
 
-// runCompact summarizes history into memory/context, wipes history, and
-// returns the kept messages. On failure history is kept as-is for retry.
+// runCompact summarizes history into memory/context, keeps the last
+// user+assistant exchange, and returns the kept messages. On failure
+// history is kept as-is for retry.
 func (a *App) runCompact(ctx context.Context, userID int64, stored []*messages.Message) []*messages.Message {
 	if a.mem.Model == nil && a.agent != nil {
 		a.mem.Model = a.agent.Client
@@ -363,7 +364,7 @@ func (a *App) runCompact(ctx context.Context, userID int64, stored []*messages.M
 	if rel == "" {
 		return stored
 	}
-	kept := []*messages.Message{}
+	kept := messages.KeepLastExchange(stored)
 	if err := a.hist.Set(userID, kept); err != nil {
 		log.Printf("[memory] save note failed: %v", err)
 	}
@@ -383,9 +384,9 @@ func (a *App) editThinking(ctx context.Context, chatID, msgID int64, text string
 
 // maybeCompact checks the token trigger BEFORE the new prompt: when hit,
 // the model summarizes full history into memory/context/YYYY-MM-DD_HH-MM-SS.md,
-// history is wiped, and the new summary flows into the system prompt on the
-// next request (see memory.LatestSummary). On summarize failure history is
-// kept as-is and the next message retries.
+// history keeps only the last user+assistant exchange, and the new summary
+// flows into the system prompt on the next request (see memory.LatestSummary).
+// On summarize failure history is kept as-is and the next message retries.
 func (a *App) maybeCompact(ctx context.Context, userID int64, stored []*messages.Message) []*messages.Message {
 	if !a.compactNeededFor(userID, stored) {
 		return stored

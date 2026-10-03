@@ -56,6 +56,30 @@ func TestCapUserTurns(t *testing.T) {
 	}
 }
 
+func TestKeepLastExchange(t *testing.T) {
+	u1 := makeMsg("user", "u1")
+	a1 := makeMsg("assistant", "a1")
+	u2 := makeMsg("user", "u2")
+	a2 := makeMsg("assistant", "a2")
+	tool := mkParts("tool", []Part{
+		{"type": []byte(`"tool-result"`), "toolCallId": []byte(`"c1"`), "toolName": []byte(`"x"`), "output": []byte(`{"type":"text","value":"old"}`)},
+	})
+
+	got := KeepLastExchange([]*Message{u1, a1, u2, a2, tool})
+	if len(got) != 2 || got[0].Text() != "u2" || got[1].Text() != "a2" {
+		t.Fatalf("expected [u2 a2], got %+v", got)
+	}
+
+	got = KeepLastExchange([]*Message{u1, a1, u2})
+	if len(got) != 1 || got[0].Text() != "u2" {
+		t.Fatalf("trailing user must keep only user, got %+v", got)
+	}
+
+	if got := KeepLastExchange(nil); len(got) != 0 {
+		t.Fatalf("empty must stay empty, got %+v", got)
+	}
+}
+
 func TestEnsureStartsWithUser(t *testing.T) {
 	in := []*Message{
 		{Role: "system"},

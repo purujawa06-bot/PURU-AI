@@ -35,7 +35,7 @@ Release is manual only (`.github/workflows/release.yml`, Run workflow with `bump
 ## Conventions
 
 - All user/agent-visible strings are English. The system prompt (`internal/prompt/prompt.go`) already tells the agent to reply in the user's language — never hardcode Indonesian into outputs, commands, or `example.config.json` placeholders.
-- Never prune history: `PruneMessages`/`PruneTurn` are intentional no-ops, `SanitizeHistoryMessages` only truncates 8k-char messages. Trimming happens solely via `memory.Compact` at `history_token_limit`.
+- Never prune history: `PruneMessages`/`PruneTurn` are intentional no-ops, `SanitizeHistoryMessages` only truncates 8k-char messages. Trimming happens solely via `memory.Compact` at `history_token_limit`, keeping the last user+assistant exchange (`messages.KeepLastExchange`) plus the fresh summary.
 - Number formatting is EN style (`fmtInt` → `30,000`, `fmtPct` → `50.0%`); tests assert this.
 
 ## Gotchas

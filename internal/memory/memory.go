@@ -5,7 +5,7 @@
 //   - If history >= HistoryTokenLimit (default 30k), Compact is called:
 //     the model summarizes the full history into one markdown file under
 //     <workspace>/memory/context/YYYY-MM-DD_HH-MM-SS.md, only the newest 20
-//     files are kept, then history is wiped clean.
+//     files are kept, then history keeps only the last user+assistant exchange.
 //   - The NEWEST summary is injected into the system prompt on every
 //     request (see LatestSummary), so the AI keeps long-term context.
 //     Older summaries stay in memory/context/ for reference only.

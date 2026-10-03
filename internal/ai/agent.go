@@ -544,8 +544,8 @@ func (a *Agent) runOnce(ctx context.Context, system string, history []*messages.
 
 // ProcessMessage runs one request: NO history trimming here — the caller
 // (app layer) summarizes history with the model into a memory/context/*.md
-// file when the token limit is hit, wipes history, and the newest summary is
-// injected into the system prompt (see memory.LatestSummary).
+// file when the token limit is hit, keeps the last user+assistant exchange,
+// and the newest summary is injected into the system prompt (see memory.LatestSummary).
 // Single executor run, no provider fallback; API errors are retried per model
 // call (5x total, 2s delay) inside the model wrapper.
 // The system prompt is built picoclaw-style: kernel identity + workspace
