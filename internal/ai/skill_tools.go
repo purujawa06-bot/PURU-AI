@@ -118,6 +118,13 @@ func rejectActiveSkillExec(a *Agent, opts *ProcessOptions, command string) (stri
 
 // buildSkillTools returns the use_skill / stop_skill tools sharing the same
 // mk/errVal helpers as the file tools.
+//
+// use_skill modes (always_active bool, default false):
+//   - false (once): load SKILL.md for this turn only, never persist.
+//     When the turn ends with the final answer the skill idles automatically,
+//     no stop_skill needed.
+//   - true: persist via skillstate, injected as Active Skills every turn
+//     until stop_skill.
 func buildSkillTools(a *Agent, opts *ProcessOptions, mk func(string, func(context.Context, map[string]any) (any, error)) *Tool, errVal func(error) (any, error)) map[string]*Tool {
 	useSkill := mk("use_skill",
 		func(ctx context.Context, args map[string]any) (any, error) {
@@ -125,6 +132,7 @@ func buildSkillTools(a *Agent, opts *ProcessOptions, mk func(string, func(contex
 			if name == "" {
 				return errVal(fmt.Errorf("name is required (exact <name> from the <skills> catalog)"))
 			}
+			persist := argBool(args, "always_active")
 			ws := ""
 			if a != nil && a.Config != nil {
 				ws = a.Config.Workspace
@@ -146,6 +154,12 @@ func buildSkillTools(a *Agent, opts *ProcessOptions, mk func(string, func(contex
 			if strings.TrimSpace(body) == "" {
 				body = "(No extended instructions in SKILL.md; name and description from the catalog apply.)"
 			}
+			if !persist {
+				// Once mode (default): load for this turn only, never
+				// persist. When the turn ends with the final answer the
+				// skill idles automatically, no stop_skill needed.
+				return fmt.Sprintf("Skill %q loaded for this turn only (idle after final answer; pass always_active=true to persist).\n\n%s", canonical, body), nil
+			}
 			chatID := int64(0)
 			if opts != nil {
 				chatID = opts.ChatID
@@ -165,7 +179,7 @@ func buildSkillTools(a *Agent, opts *ProcessOptions, mk func(string, func(contex
 			if !added {
 				return fmt.Sprintf("Skill %q is already active.\n\n%s", canonical, body), nil
 			}
-			return fmt.Sprintf("Skill %q activated. Its full body is now injected as Active Skills and stays active until stop_skill.\n\n%s", canonical, body), nil
+			return fmt.Sprintf("Skill %q activated (always_active). Its full body is now injected as Active Skills and stays active until stop_skill.\n\n%s", canonical, body), nil
 		})
 	stopSkill := mk("stop_skill",
 		func(ctx context.Context, args map[string]any) (any, error) {

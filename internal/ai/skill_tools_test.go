@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/purujawa06-bot/PURU-AI/internal/config"
@@ -85,6 +86,21 @@ func TestSkillToolsRegistered(t *testing.T) {
 			t.Fatalf("%s must declare name param", name)
 		}
 	}
+	// use_skill must offer once vs always_active (bool, default false).
+	params, _ := tools["use_skill"].Parameters["properties"].(map[string]any)
+	alwaysProp, _ := params["always_active"].(map[string]any)
+	if alwaysProp == nil {
+		t.Fatalf("use_skill must declare always_active param")
+	}
+	if typ, _ := alwaysProp["type"].(string); typ != "boolean" {
+		t.Fatalf("always_active type = %v, want boolean", alwaysProp["type"])
+	}
+	req, _ := tools["use_skill"].Parameters["required"].([]string)
+	for _, r := range req {
+		if r == "always_active" {
+			t.Fatalf("always_active must be optional (default false), got required %v", req)
+		}
+	}
 }
 
 func TestUseSkillRejectsUnknown(t *testing.T) {
@@ -144,5 +160,44 @@ func TestUseSkillEmptyBody(t *testing.T) {
 	out, _ := tools["use_skill"].Run(context.Background(), map[string]any{"name": "empty-skill"})
 	if hasErrPicoclaw(out) {
 		t.Fatalf("frontmatter-only skill must activate, got %v", out)
+	}
+}
+
+func TestUseSkillOnceIdleByDefault(t *testing.T) {
+	ws := t.TempDir()
+	if err := workspace.Ensure(ws); err != nil {
+		t.Fatal(err)
+	}
+	a := skillTestAgent(ws)
+	tools := BuildTools(a, &ProcessOptions{ChatID: 42})
+	out, _ := tools["use_skill"].Run(context.Background(), map[string]any{"name": "find-skills"})
+	s, _ := out.(string)
+	if s == "" {
+		t.Fatalf("once mode must return string, got %v", out)
+	}
+	for _, want := range []string{"this turn only", "idle after final answer"} {
+		if !strings.Contains(strings.ToLower(s), strings.ToLower(want)) {
+			t.Fatalf("once message must contain %q, got %q", want, s)
+		}
+	}
+	if strings.Contains(strings.ToLower(s), "always_active") == false {
+		// Hint is optional, but once mode must never claim persistence.
+		if strings.Contains(strings.ToLower(s), "stays active until stop_skill") {
+			t.Fatalf("once mode must not persist, got %q", s)
+		}
+	}
+}
+
+func TestUseSkillAlwaysActiveNoChatScope(t *testing.T) {
+	ws := t.TempDir()
+	if err := workspace.Ensure(ws); err != nil {
+		t.Fatal(err)
+	}
+	a := skillTestAgent(ws)
+	tools := BuildTools(a, nil)
+	out, _ := tools["use_skill"].Run(context.Background(), map[string]any{"name": "find-skills", "always_active": true})
+	s, _ := out.(string)
+	if s == "" || !strings.Contains(strings.ToLower(s), "this turn only") {
+		t.Fatalf("always_active without chat scope must fall back to turn-only, got %v", out)
 	}
 }

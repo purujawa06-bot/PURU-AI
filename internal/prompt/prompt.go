@@ -749,7 +749,7 @@ func Build(req Request) (string, error) {
 		if catalog := workspace.BuildSkillsSummaryExcluding(req.Workspace, policy, activeNames); catalog != "" {
 			intro := "The following skills extend your capabilities. They are NOT loaded: only name and description are shown."
 			if includeToolUseRule && promptAllowsTool(req, "use_skill") {
-				intro += " To use a skill, call use_skill with its exact `name`; the full body loads automatically when active. Direct read_file of its SKILL.md is allowed for initial debugging but duplicates the body shown below."
+				intro += " To use a skill, call use_skill with its exact `name`; the full body loads automatically when active. Default is once (this turn only, idle after final answer); pass always_active=true to persist until stop_skill. Direct read_file of its SKILL.md is allowed for initial debugging but duplicates the body shown below."
 			}
 			add(PromptPart{
 				ID:      "capability.skill_catalog",

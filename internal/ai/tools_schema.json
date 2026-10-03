@@ -345,6 +345,11 @@
         "name": {
           "type": "string",
           "description": "Skill name. Example: find-skills"
+        },
+        "always_active": {
+          "type": "boolean",
+          "description": "Persist across turns. Default false = this turn only, idle after final answer.",
+          "default": false
         }
       }
     },
