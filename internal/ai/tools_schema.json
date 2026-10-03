@@ -1,23 +1,23 @@
 {
   "tools": {
     "read_file": {
-      "description": "Read a file from the workspace. Use when you need file contents before answering, editing, or summarizing. Do NOT use to list directories — use list_dir. Returns lines start_line..end with [file: ... read: lines a-b] header, plus start_line= next when truncated, or {success:false,error} when missing or blocked. Read-only, no writes.",
+      "description": "Read file from Workspace. Use this if you want to view the file contents.",
       "required": ["path"],
       "properties": {
         "path": {
           "type": "string",
-          "description": "Workspace-relative file path to read. Example: notes.txt, sub/a.txt."
+          "description": "Relative file path. Example: note.txt, sub/note.txt"
         },
         "start_line": {
           "type": "integer",
-          "description": "Line number to start reading from, 1-based. Example: 1 = from top, 101 = continue at line 101. Default 1.",
+          "description": "Line to start reading the file, example: 23, Default 1",
           "default": 1,
           "minimum": 1,
           "maximum": 1000000
         },
         "length": {
           "type": "integer",
-          "description": "Max lines to return. Default 200, max 2000.",
+          "description": "Length limit for reading file contents. Example: 200, Default: 200",
           "default": 200,
           "minimum": 1,
           "maximum": 2000
