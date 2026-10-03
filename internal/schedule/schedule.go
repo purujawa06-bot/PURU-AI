@@ -673,7 +673,7 @@ func ParseWeekdays(v any) ([]string, error) {
 		}
 		return normalizeWeekdayList(days)
 	default:
-		return nil, fmt.Errorf("weekdays must be a comma list like mon,wed,fri")
+		return nil, fmt.Errorf("weekdays must be an array like [\"mon\",\"wed\",\"fri\"]")
 	}
 }
 

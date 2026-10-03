@@ -551,7 +551,7 @@ func (a *App) safeReply(ctx context.Context, msg *telegram.Message, text string,
 func (a *App) safeSend(ctx context.Context, msg *telegram.Message, text string) error {
 	if len(text) > maxMessageLength {
 		_ = a.safeReply(ctx, msg, "⚠️ Response too long, sent as a file.", false)
-		return a.tg.SendFile(ctx, msg.Chat.ID, "respon.md", []byte(text), "Respon lengkap.")
+		return a.tg.SendFile(ctx, msg.Chat.ID, "response.md", []byte(text), "Full response.")
 	}
 	return a.safeReply(ctx, msg, text, true)
 }
