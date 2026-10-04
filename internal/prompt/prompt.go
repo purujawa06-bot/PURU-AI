@@ -531,7 +531,7 @@ func buildDynamicContext(channel, chatID, senderID, senderDisplayName, workspace
 	rt := fmt.Sprintf("%s %s, Go %s", runtime.GOOS, runtime.GOARCH, runtime.Version())
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "## Current Time\n%s\n\n## Runtime\n%s", now, rt)
-	fmt.Fprintf(&sb, "\n\n## Workspace Paths\nWorkspace root (cwd): %s\nAll tool path arguments must start with #cwd/ (shortcut for the workspace root), e.g. #cwd/sub/file.ext. #cwd alone refers to the workspace root. Use an absolute path to work outside the workspace.", workspacePath)
+	fmt.Fprintf(&sb, "\n\n## Workspace Paths\nWorkspace root (cwd): %s\nAll tool path arguments must start with #cwd/ (shortcut for the workspace root), e.g. #cwd/memory/MEMORY.md. #cwd alone refers to the workspace root. Use an absolute path to work outside the workspace.", workspacePath)
 	if channel != "" && chatID != "" {
 		fmt.Fprintf(&sb, "\n\n## Current Session\nChannel: %s\nChat ID: %s", channel, chatID)
 	}

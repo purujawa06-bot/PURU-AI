@@ -46,7 +46,7 @@ func resolvePath(workspace string, restrict bool, p string) (string, error) {
 			p = "."
 		}
 	} else if !filepath.IsAbs(p) && !strings.HasPrefix(p, "/") && !strings.HasPrefix(p, `\\`) {
-		return "", fmt.Errorf("path must start with #cwd/ (e.g. #cwd/sub/file.ext) or be an absolute path: %q", p)
+		return "", fmt.Errorf("path must start with #cwd/ (e.g. #cwd/memory/MEMORY.md) or be an absolute path: %q", p)
 	}
 	if restrict {
 		if filepath.IsAbs(p) {
