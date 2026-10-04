@@ -323,6 +323,7 @@ func (a *App) renderedSystemFor(chatID int64) string {
 		Summary:      summary,
 		ActiveSkills: ai.ActiveSkillsFor(a.agent, opts),
 		Policy:       a.cfg.SkillsPolicy(),
+		Obedient:     a.cfg.ObedientMode,
 	})
 	if err != nil {
 		return ""

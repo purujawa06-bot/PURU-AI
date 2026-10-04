@@ -14,7 +14,7 @@ func TestGetRendersMemory(t *testing.T) {
 	if err := workspace.Ensure(ws); err != nil {
 		t.Fatal(err)
 	}
-	out, err := Get("memory-x", "summary-y", ws, workspace.SkillsPolicy{})
+	out, err := Get("memory-x", "summary-y", ws, workspace.SkillsPolicy{}, false)
 	if err != nil {
 		t.Fatalf("template error: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestGetRendersActiveSkills(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(ws, workspace.FileAgents), []byte(agents), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	out, err := Get("", "", ws, workspace.SkillsPolicy{})
+	out, err := Get("", "", ws, workspace.SkillsPolicy{}, false)
 	if err != nil {
 		t.Fatalf("template error: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestGetSkillsOffSuppressesAll(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(ws, workspace.FileAgents), []byte(agents), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	out, err := Get("", "", ws, workspace.SkillsPolicy{Mode: workspace.SkillsModeOff})
+	out, err := Get("", "", ws, workspace.SkillsPolicy{Mode: workspace.SkillsModeOff}, false)
 	if err != nil {
 		t.Fatalf("template error: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestGetSkillsCustomAllowlist(t *testing.T) {
 		t.Fatal(err)
 	}
 	policy := workspace.SkillsPolicy{Mode: workspace.SkillsModeCustom, Allow: []string{"find-skills"}}
-	out, err := Get("", "", ws, policy)
+	out, err := Get("", "", ws, policy, false)
 	if err != nil {
 		t.Fatalf("template error: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestGetSelfHealsMissingFiles(t *testing.T) {
 			t.Fatalf("remove %s: %v", path, err)
 		}
 	}
-	if _, err := Get("", "", ws, workspace.SkillsPolicy{}); err != nil {
+	if _, err := Get("", "", ws, workspace.SkillsPolicy{}, false); err != nil {
 		t.Fatalf("template error: %v", err)
 	}
 	for _, path := range deleted {
@@ -379,5 +379,26 @@ func TestBuildOmitsOnboardingRuleEvenWithPlaceholders(t *testing.T) {
 	}
 	if strings.Contains(out, "**Onboarding placeholders**") {
 		t.Fatalf("onboarding rule must not be injected even while USER.md has placeholders")
+	}
+}
+
+func TestObedientModeInjectsRule(t *testing.T) {
+	ws := t.TempDir()
+	if err := workspace.Ensure(ws); err != nil {
+		t.Fatal(err)
+	}
+	on, err := Get("", "", ws, workspace.SkillsPolicy{}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(on, "**Obedience**") {
+		t.Fatalf("obedient=true must inject the obedience rule")
+	}
+	off, err := Get("", "", ws, workspace.SkillsPolicy{}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(off, "**Obedience**") {
+		t.Fatalf("obedient=false must not inject the obedience rule")
 	}
 }
