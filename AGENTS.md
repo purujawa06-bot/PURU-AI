@@ -4,6 +4,11 @@ Single Go binary Telegram bot. Module `github.com/purujawa06-bot/PURU-AI`, `go 1
 
 Code rule: English-only names, comments, logs, and error messages (no external skill required).
 
+## Mandatory Workflow
+
+- Before writing any code, read the `ponytail` skill (full) and the `rules-write-code` skill first.
+- Respond in Indonesian.
+
 ## Commands
 
 ```bash

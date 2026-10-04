@@ -6,7 +6,7 @@
       "properties": {
         "path": {
           "type": "string",
-          "description": "Path to the file to read. Relative paths are resolved from the workspace root."
+          "description": "Path to the file to read. Must start with #cwd/ (workspace root shortcut), e.g. #cwd/sub/file.ext. Absolute paths also allowed."
         },
         "start_line": {
           "type": "integer",
@@ -30,7 +30,7 @@
       "properties": {
         "path": {
           "type": "string",
-          "description": "Path to the file to write. Relative paths are resolved from the workspace root."
+          "description": "Path to the file to write. Must start with #cwd/ (workspace root shortcut), e.g. #cwd/sub/file.ext. Absolute paths also allowed."
         },
         "content": {
           "type": "string",
@@ -49,7 +49,7 @@
       "properties": {
         "path": {
           "type": "string",
-          "description": "Path to the folder to list. Relative paths are resolved from the workspace root."
+          "description": "Path to the folder to list. Must start with #cwd/ (workspace root shortcut), e.g. #cwd/sub/file.ext. Absolute paths also allowed."
         }
       }
     },
@@ -59,7 +59,7 @@
       "properties": {
         "path": {
           "type": "string",
-          "description": "File or folder to search. Relative paths are resolved from the workspace root."
+          "description": "File or folder to search. Must start with #cwd/ (workspace root shortcut), e.g. #cwd/sub/file.ext. Absolute paths also allowed."
         },
         "keyword": {
           "type": "string",
@@ -84,7 +84,7 @@
       "properties": {
         "path": {
           "type": "string",
-          "description": "Path to the file to edit. Relative paths are resolved from the workspace root."
+          "description": "Path to the file to edit. Must start with #cwd/ (workspace root shortcut), e.g. #cwd/sub/file.ext. Absolute paths also allowed."
         },
         "old_string": {
           "type": "string",
@@ -102,7 +102,7 @@
       "properties": {
         "path": {
           "type": "string",
-          "description": "Path to the file to append to. Relative paths are resolved from the workspace root."
+          "description": "Path to the file to append to. Must start with #cwd/ (workspace root shortcut), e.g. #cwd/sub/file.ext. Absolute paths also allowed."
         },
         "content": {
           "type": "string",
@@ -134,7 +134,7 @@
         },
         "cwd": {
           "type": "string",
-          "description": "Working directory for the command. Defaults to the workspace root."
+          "description": "Working directory for the command. Defaults to the workspace root. Must start with #cwd/ or be an absolute path."
         },
         "timeout": {
           "type": "integer",
@@ -151,7 +151,7 @@
       "properties": {
         "path": {
           "type": "string",
-          "description": "Path to the local file to send. Relative paths are resolved from the workspace root."
+          "description": "Path to the local file to send. Must start with #cwd/ (workspace root shortcut), e.g. #cwd/sub/file.ext. Absolute paths also allowed."
         },
         "filename": {
           "type": "string",

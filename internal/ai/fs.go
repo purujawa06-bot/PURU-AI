@@ -40,6 +40,14 @@ func resolvePath(workspace string, restrict bool, p string) (string, error) {
 	if p == "" {
 		return "", fmt.Errorf("path is empty")
 	}
+	if p == "#cwd" || strings.HasPrefix(p, "#cwd/") || strings.HasPrefix(p, "#cwd\\") {
+		p = strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(p, "#cwd/"), "#cwd\\"), "#cwd")
+		if p == "" {
+			p = "."
+		}
+	} else if !filepath.IsAbs(p) && !strings.HasPrefix(p, "/") && !strings.HasPrefix(p, `\\`) {
+		return "", fmt.Errorf("path must start with #cwd/ (e.g. #cwd/sub/file.ext) or be an absolute path: %q", p)
+	}
 	if restrict {
 		if filepath.IsAbs(p) {
 			// Allow absolute paths only when already inside workspace.
@@ -304,7 +312,7 @@ func appendLocalFile(workspace string, restrict bool, p, content string) error {
 // "FILE: y" lines. Empty path = workspace root.
 func listLocalDir(workspace string, restrict bool, p string) (string, error) {
 	if strings.TrimSpace(p) == "" {
-		p = "."
+		p = "#cwd"
 	}
 	abs, err := resolvePath(workspace, restrict, p)
 	if err != nil {
@@ -357,7 +365,7 @@ func grepLocal(workspace string, restrict bool, p, keyword, ext string, maxResul
 		return "", fmt.Errorf("keyword is required")
 	}
 	if strings.TrimSpace(p) == "" {
-		p = "."
+		p = "#cwd"
 	}
 	if maxResults <= 0 {
 		maxResults = 50

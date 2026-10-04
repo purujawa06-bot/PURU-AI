@@ -137,10 +137,10 @@ func TestActiveSkillDirectEditAllowed(t *testing.T) {
 	a := skillTestAgent(ws)
 	tools := BuildTools(a, &ProcessOptions{ChatID: 42})
 	ctx := context.Background()
-	if out, _ := tools["write_file"].Run(ctx, map[string]any{"path": "skills/find-skills/notes.md", "content": "hi"}); hasErrPicoclaw(out) {
+	if out, _ := tools["write_file"].Run(ctx, map[string]any{"path": "#cwd/skills/find-skills/notes.md", "content": "hi"}); hasErrPicoclaw(out) {
 		t.Fatalf("write to active skill must be allowed, got %v", out)
 	}
-	if out, _ := tools["read_file"].Run(ctx, map[string]any{"path": "skills/find-skills/SKILL.md"}); hasErrPicoclaw(out) {
+	if out, _ := tools["read_file"].Run(ctx, map[string]any{"path": "#cwd/skills/find-skills/SKILL.md"}); hasErrPicoclaw(out) {
 		t.Fatalf("read of active SKILL.md must be allowed, got %v", out)
 	}
 }

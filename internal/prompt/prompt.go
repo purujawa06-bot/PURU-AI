@@ -526,11 +526,12 @@ func formatSenderLine(senderID, senderDisplayName string) string {
 	}
 }
 
-func buildDynamicContext(channel, chatID, senderID, senderDisplayName string) string {
+func buildDynamicContext(channel, chatID, senderID, senderDisplayName, workspacePath string) string {
 	now := time.Now().Format("2006-01-02 15:04 (Monday)")
 	rt := fmt.Sprintf("%s %s, Go %s", runtime.GOOS, runtime.GOARCH, runtime.Version())
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "## Current Time\n%s\n\n## Runtime\n%s", now, rt)
+	fmt.Fprintf(&sb, "\n\n## Workspace Paths\nWorkspace root (cwd): %s\nAll tool path arguments must start with #cwd/ (shortcut for the workspace root), e.g. #cwd/sub/file.ext. #cwd alone refers to the workspace root. Use an absolute path to work outside the workspace.", workspacePath)
 	if channel != "" && chatID != "" {
 		fmt.Fprintf(&sb, "\n\n## Current Session\nChannel: %s\nChat ID: %s", channel, chatID)
 	}
@@ -736,7 +737,7 @@ func Build(req Request) (string, error) {
 		Slot:    PromptSlotRuntime,
 		Source:  PromptSource{ID: PromptSourceRuntime, Name: "runtime"},
 		Title:   "runtime context",
-		Content: buildDynamicContext(req.Channel, req.ChatID, req.SenderID, req.SenderDisplayName),
+		Content: buildDynamicContext(req.Channel, req.ChatID, req.SenderID, req.SenderDisplayName, req.Workspace),
 		Stable:  false,
 		Cache:   PromptCacheNone,
 	})
