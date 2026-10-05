@@ -300,44 +300,6 @@
         }
       }
     },
-    "spawn_agent": {
-      "description": "Spawn a sub-agent to handle a specific, self-contained task independently and return its result. The sub-agent runs with its own system prompt and a restricted set of tools granted via the agent_* flags.",
-      "required": ["agent_name", "system_prompt", "task_prompt"],
-      "properties": {
-        "agent_name": {
-          "type": "string",
-          "description": "Name for the sub-agent (e.g. researcher_01)."
-        },
-        "system_prompt": {
-          "type": "string",
-          "description": "The sub-agent's role and rules (e.g. \"You are a researcher. Return 3 bullets.\")."
-        },
-        "task_prompt": {
-          "type": "string",
-          "description": "The task for the sub-agent to complete."
-        },
-        "agent_read": {
-          "type": "boolean",
-          "description": "Grant the sub-agent read-only file tools.",
-          "default": false
-        },
-        "agent_write": {
-          "type": "boolean",
-          "description": "Grant the sub-agent file write tools.",
-          "default": false
-        },
-        "agent_exec": {
-          "type": "boolean",
-          "description": "Grant the sub-agent shell execution tools.",
-          "default": false
-        },
-        "agent_search": {
-          "type": "boolean",
-          "description": "Grant the sub-agent web search tools.",
-          "default": false
-        }
-      }
-    },
     "use_skill": {
       "description": "Activate a skill by name so its instructions are loaded into the active skills section of the prompt.",
       "required": ["name"],

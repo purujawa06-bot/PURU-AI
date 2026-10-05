@@ -48,10 +48,10 @@ func TestToolSchemasValid(t *testing.T) {
 
 func TestToolCount(t *testing.T) {
 	tools := BuildTools(testAgent(t.TempDir()), nil)
-	if len(tools) != 15 {
-		t.Fatalf("tools = %d, want exactly 15 (web_search opt-in)", len(tools))
+	if len(tools) != 14 {
+		t.Fatalf("tools = %d, want exactly 14 (web_search opt-in)", len(tools))
 	}
-	for _, n := range []string{"read_file", "write_file", "list_dir", "grep", "edit_file", "append_file", "run_shell_command", "telegram_sendfile", "telegram_getuser", "get_env", "web_fetch", "manage_schedule", "spawn_agent", "use_skill", "stop_skill"} {
+	for _, n := range []string{"read_file", "write_file", "list_dir", "grep", "edit_file", "append_file", "run_shell_command", "telegram_sendfile", "telegram_getuser", "get_env", "web_fetch", "manage_schedule", "use_skill", "stop_skill"} {
 		if tools[n] == nil {
 			t.Fatalf("tool %s missing", n)
 		}
@@ -62,14 +62,14 @@ func TestToolCount(t *testing.T) {
 	if tools["edit_file_replace_string"] != nil || tools["edit_file_replace_line"] != nil || tools["edit_file_apply_patch"] != nil {
 		t.Fatalf("old edit tools must be gone (use single edit_file)")
 	}
-	// Opt-in: active aistudio adds web_search as the 16th tool.
+	// Opt-in: active aistudio adds web_search as the 15th tool.
 	searchAgent := testAgent(t.TempDir())
 	searchAgent.Config.WebSearch.AIStudio.Active = true
 	searchAgent.Config.WebSearch.AIStudio.Model = "gemini-2.5-flash"
 	searchAgent.Config.WebSearch.AIStudio.APIKey = "test-key"
 	enabled := BuildTools(searchAgent, nil)
-	if len(enabled) != 16 {
-		t.Fatalf("enabled tools = %d, want 16", len(enabled))
+	if len(enabled) != 15 {
+		t.Fatalf("enabled tools = %d, want 15", len(enabled))
 	}
 	if enabled["web_search"] == nil {
 		t.Fatalf("web_search missing when aistudio active")
@@ -79,7 +79,6 @@ func TestToolCount(t *testing.T) {
 // Deklarasi tools: read_file(path, start_line, length),
 // write_file(path, content, overwrite), list_dir(path),
 // edit_file(path, old_string, new_string),
-// spawn_agent(agent_name, system_prompt, task_prompt, agent_read, agent_write, agent_exec, agent_search),
 // run_shell_command(action wajib; opsional command, sessionId, background, cwd, timeout).
 func TestPicoclawParamDeclarations(t *testing.T) {
 	tools := BuildTools(testAgent(t.TempDir()), nil)
@@ -89,7 +88,6 @@ func TestPicoclawParamDeclarations(t *testing.T) {
 		"list_dir":    {"path"},
 		"grep":        {"path", "keyword", "ext", "limit"},
 		"edit_file":   {"path", "old_string", "new_string"},
-		"spawn_agent": {"agent_name", "system_prompt", "task_prompt", "agent_read", "agent_write", "agent_exec", "agent_search"},
 		"append_file": {"path", "content"},
 		"run_shell_command":        {"action", "command", "sessionId", "background", "cwd", "timeout"},
 	}
@@ -99,7 +97,6 @@ func TestPicoclawParamDeclarations(t *testing.T) {
 		"list_dir":    {"path"},
 		"grep":        {"path", "keyword"},
 		"edit_file":   {"path", "old_string", "new_string"},
-		"spawn_agent": {"agent_name", "system_prompt", "task_prompt"},
 		"append_file": {"path", "content"},
 		"run_shell_command":        {"action"},
 	}
@@ -406,122 +403,5 @@ func TestEditSingle(t *testing.T) {
 	// empty old_string must fail
 	if r, _ := tools["edit_file"].Run(ctx, map[string]any{"path": "a.txt", "old_string": "", "new_string": "y"}); !hasErrPicoclaw(r) {
 		t.Fatalf("empty old_string must fail: %v", r)
-	}
-}
-
-func TestSpawnAgentSchema(t *testing.T) {
-	tools := BuildTools(testAgent(t.TempDir()), nil)
-	sp := tools["spawn_agent"]
-	if sp == nil {
-		t.Fatalf("spawn_agent missing")
-	}
-	params, _ := sp.Parameters["properties"].(map[string]any)
-	for _, p := range []string{"agent_name", "system_prompt", "task_prompt", "agent_read", "agent_write", "agent_exec", "agent_search"} {
-		if params[p] == nil {
-			t.Errorf("spawn_agent param %s missing", p)
-		}
-		if typ, _ := params[p].(map[string]any)["type"].(string); p != "agent_name" && p != "system_prompt" && p != "task_prompt" && typ != "boolean" {
-			t.Errorf("spawn_agent param %s type = %v, want boolean", p, typ)
-		}
-	}
-	if params["allowed_tools"] != nil {
-		t.Errorf("spawn_agent must not have allowed_tools anymore")
-	}
-	req, _ := sp.Parameters["required"].([]string)
-	got := map[string]bool{}
-	for _, r := range req {
-		got[r] = true
-	}
-	for _, r := range []string{"agent_name", "system_prompt", "task_prompt"} {
-		if !got[r] {
-			t.Errorf("spawn_agent required %s missing (got %v)", r, req)
-		}
-	}
-}
-
-func TestSpawnAgentValidation(t *testing.T) {
-	a := testAgent(t.TempDir())
-	tools := BuildTools(a, nil)
-	ctx := context.Background()
-	// no model -> unavailable (no panic)
-	if r, _ := tools["spawn_agent"].Run(ctx, map[string]any{"agent_name": "r1", "system_prompt": "s", "task_prompt": "t"}); !hasErrPicoclaw(r) {
-		t.Fatalf("no-model spawn must fail: %v", r)
-	}
-	// empty agent_name must fail even without model check order: model nil first, so use fake client path?
-	// filterSpawnTools: no flags/all-false = all except spawn_agent; each
-	// true flag adds its group (union, combinable); skill tools always on.
-	full := map[string]*Tool{
-		"read_file":        {Name: "read_file"},
-		"list_dir":         {Name: "list_dir"},
-		"grep":             {Name: "grep"},
-		"get_env":          {Name: "get_env"},
-		"telegram_getuser": {Name: "telegram_getuser"},
-		"write_file":       {Name: "write_file"},
-		"edit_file":        {Name: "edit_file"},
-		"append_file":      {Name: "append_file"},
-		"telegram_sendfile": {Name: "telegram_sendfile"},
-		"run_shell_command":             {Name: "run_shell_command"},
-		"manage_schedule":  {Name: "manage_schedule"},
-		"web_fetch":        {Name: "web_fetch"},
-		"web_search":       {Name: "web_search"},
-		"use_skill":        {Name: "use_skill"},
-		"stop_skill":       {Name: "stop_skill"},
-		"spawn_agent":      {Name: "spawn_agent"},
-	}
-	got := filterSpawnTools(full, nil)
-	if len(got) != 15 || got["spawn_agent"] != nil {
-		t.Fatalf("nil args must give all except spawn_agent: %v", got)
-	}
-	got = filterSpawnTools(full, map[string]any{})
-	if len(got) != 15 || got["spawn_agent"] != nil {
-		t.Fatalf("empty args must give all except spawn_agent: %v", got)
-	}
-	got = filterSpawnTools(full, map[string]any{"agent_read": false, "agent_write": false, "agent_exec": false, "agent_search": false})
-	if len(got) != 15 || got["spawn_agent"] != nil {
-		t.Fatalf("all-false must give all except spawn_agent: %v", got)
-	}
-	// read only: 5 read + 2 skill
-	got = filterSpawnTools(full, map[string]any{"agent_read": true})
-	for _, n := range []string{"read_file", "list_dir", "grep", "get_env", "telegram_getuser", "use_skill", "stop_skill"} {
-		if got[n] == nil {
-			t.Fatalf("agent_read must include %s: %v", n, got)
-		}
-	}
-	if len(got) != 7 {
-		t.Fatalf("agent_read = %v, want 7 tools", got)
-	}
-	// write only: 4 write + 2 skill
-	got = filterSpawnTools(full, map[string]any{"agent_write": true})
-	if len(got) != 6 || got["write_file"] == nil || got["edit_file"] == nil || got["append_file"] == nil || got["telegram_sendfile"] == nil {
-		t.Fatalf("agent_write = %v, want 4 write + 2 skill", got)
-	}
-	// exec only: 2 exec + 2 skill
-	got = filterSpawnTools(full, map[string]any{"agent_exec": true})
-	if len(got) != 4 || got["run_shell_command"] == nil || got["manage_schedule"] == nil {
-		t.Fatalf("agent_exec = %v, want run_shell_command+manage_schedule+2 skill", got)
-	}
-	// search only: 2 search + 2 skill
-	got = filterSpawnTools(full, map[string]any{"agent_search": true})
-	if len(got) != 4 || got["web_fetch"] == nil || got["web_search"] == nil {
-		t.Fatalf("agent_search = %v, want web_fetch+web_search+2 skill", got)
-	}
-	// combination read+search: 5+2+2 skill = 9, never spawn_agent
-	got = filterSpawnTools(full, map[string]any{"agent_read": true, "agent_search": true})
-	if len(got) != 9 || got["spawn_agent"] != nil || got["read_file"] == nil || got["grep"] == nil || got["web_fetch"] == nil || got["use_skill"] == nil {
-		t.Fatalf("read+search combo = %v, want 9 tools", got)
-	}
-	// all true: everything except spawn_agent
-	got = filterSpawnTools(full, map[string]any{"agent_read": true, "agent_write": true, "agent_exec": true, "agent_search": true})
-	if len(got) != 15 || got["spawn_agent"] != nil {
-		t.Fatalf("all-true must give all except spawn_agent: %v", got)
-	}
-	// missing tool in parent is skipped, not error: search without web_search
-	noSearch := map[string]*Tool{
-		"web_fetch": {Name: "web_fetch"},
-		"use_skill": {Name: "use_skill"},
-	}
-	got = filterSpawnTools(noSearch, map[string]any{"agent_search": true})
-	if len(got) != 2 || got["web_fetch"] == nil || got["use_skill"] == nil {
-		t.Fatalf("search without web_search parent = %v, want web_fetch+use_skill", got)
 	}
 }
