@@ -41,7 +41,7 @@ func TestTelegramToolsNeedContext(t *testing.T) {
 	if r, _ := tools["telegram_getuser"].Run(ctx, map[string]any{}); !hasErr(r) {
 		t.Errorf("getuser tanpa user harus error, got %v", r)
 	}
-	if r, _ := tools["telegram_sendfile"].Run(ctx, map[string]any{"path": "#cwd/a.txt"}); !hasErr(r) {
+	if r, _ := tools["telegram_sendfile"].Run(ctx, map[string]any{"path": "a.txt"}); !hasErr(r) {
 		t.Errorf("sendfile tanpa sender harus error, got %v", r)
 	}
 }
@@ -89,7 +89,7 @@ func TestTelegramSendFile(t *testing.T) {
 	a.Telegram = sender
 	opts := &ProcessOptions{ChatID: 9}
 	tools := BuildTools(a, opts)
-	r, _ := tools["telegram_sendfile"].Run(context.Background(), map[string]any{"path": "#cwd/doc.txt", "caption": "nih"})
+	r, _ := tools["telegram_sendfile"].Run(context.Background(), map[string]any{"path": "doc.txt", "caption": "nih"})
 	if m, _ := r.(map[string]any); m["success"] != true {
 		t.Fatalf("sendfile failed: %v", r)
 	}
@@ -109,7 +109,7 @@ func TestOnToolHookFires(t *testing.T) {
 	tools := BuildTools(a, opts)
 	ctx := context.Background()
 	_, _ = tools["run_shell_command"].Run(ctx, map[string]any{"action": "run", "command": "echo hook"})
-	_, _ = tools["edit_file"].Run(ctx, map[string]any{"path": "#cwd/h.txt", "old_string": "x", "new_string": "y"})
+	_, _ = tools["edit_file"].Run(ctx, map[string]any{"path": "h.txt", "old_string": "x", "new_string": "y"})
 	if len(calls) != 2 || calls[0] != "run_shell_command" || calls[1] != "edit_file" {
 		t.Fatalf("hook calls = %v", calls)
 	}

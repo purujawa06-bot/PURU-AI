@@ -15,7 +15,7 @@ func TestGrepSingleFile(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(ws, "a.txt"), []byte("l1\nhello world\nl3\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	out, _ := tools["grep"].Run(ctx, map[string]any{"path": "#cwd/a.txt", "keyword": "hello"})
+	out, _ := tools["grep"].Run(ctx, map[string]any{"path": "a.txt", "keyword": "hello"})
 	s, _ := out.(string)
 	if !strings.Contains(s, "a.txt:2:") || !strings.Contains(s, "hello world") {
 		t.Fatalf("single-file grep = %q", s)
@@ -35,7 +35,7 @@ func TestGrepFolderRecursiveWithExt(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(ws, "sub", "c.md"), []byte("BuildTools in md\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	out, _ := tools["grep"].Run(ctx, map[string]any{"path": "#cwd/sub", "keyword": "BuildTools", "ext": "go"})
+	out, _ := tools["grep"].Run(ctx, map[string]any{"path": "sub", "keyword": "BuildTools", "ext": "go"})
 	s, _ := out.(string)
 	if !strings.Contains(s, "b.go:2:") {
 		t.Fatalf("folder grep must hit b.go: %q", s)
@@ -44,7 +44,7 @@ func TestGrepFolderRecursiveWithExt(t *testing.T) {
 		t.Fatalf("ext filter must skip c.md: %q", s)
 	}
 	// no ext filter hits both
-	out, _ = tools["grep"].Run(ctx, map[string]any{"path": "#cwd/sub", "keyword": "BuildTools"})
+	out, _ = tools["grep"].Run(ctx, map[string]any{"path": "sub", "keyword": "BuildTools"})
 	s, _ = out.(string)
 	if !strings.Contains(s, "b.go") || !strings.Contains(s, "c.md") {
 		t.Fatalf("unfiltered grep must hit both: %q", s)
@@ -58,15 +58,15 @@ func TestGrepNoMatchesAndValidation(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(ws, "a.txt"), []byte("abc\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	out, _ := tools["grep"].Run(ctx, map[string]any{"path": "#cwd/a.txt", "keyword": "zzz-nope"})
+	out, _ := tools["grep"].Run(ctx, map[string]any{"path": "a.txt", "keyword": "zzz-nope"})
 	if s, _ := out.(string); s != "(no matches)" {
 		t.Fatalf("no match must return (no matches): %q", s)
 	}
-	out, _ = tools["grep"].Run(ctx, map[string]any{"path": "#cwd/a.txt", "keyword": ""})
+	out, _ = tools["grep"].Run(ctx, map[string]any{"path": "a.txt", "keyword": ""})
 	if !hasErrPicoclaw(out) {
 		t.Fatalf("empty keyword must fail: %v", out)
 	}
-	out, _ = tools["grep"].Run(ctx, map[string]any{"path": "#cwd/missing", "keyword": "x"})
+	out, _ = tools["grep"].Run(ctx, map[string]any{"path": "missing", "keyword": "x"})
 	if !hasErrPicoclaw(out) {
 		t.Fatalf("missing path must fail: %v", out)
 	}

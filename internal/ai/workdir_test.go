@@ -12,7 +12,7 @@ import (
 func TestResolveWorkdirValidatesDir(t *testing.T) {
 	ws := t.TempDir()
 
-	if _, err := resolveWorkdir(ws, true, "#cwd/tak-ada"); err == nil ||
+	if _, err := resolveWorkdir(ws, true, "tak-ada"); err == nil ||
 		!strings.Contains(err.Error(), "cwd not found") {
 		t.Fatalf("cwd tak ada harus ditolak jelas, got %v", err)
 	}
@@ -20,7 +20,7 @@ func TestResolveWorkdirValidatesDir(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(ws, "f.txt"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := resolveWorkdir(ws, true, "#cwd/f.txt"); err == nil ||
+	if _, err := resolveWorkdir(ws, true, "f.txt"); err == nil ||
 		!strings.Contains(err.Error(), "cwd is not a directory") {
 		t.Fatalf("cwd file harus ditolak jelas, got %v", err)
 	}
@@ -28,7 +28,7 @@ func TestResolveWorkdirValidatesDir(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(ws, "sub"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := resolveWorkdir(ws, true, "#cwd/sub"); err != nil || got == "" {
+	if got, err := resolveWorkdir(ws, true, "sub"); err != nil || got == "" {
 		t.Fatalf("cwd subdir valid harus lolos: %v %q", err, got)
 	}
 	if got, err := resolveWorkdir(ws, true, ""); err != nil || got != ws {

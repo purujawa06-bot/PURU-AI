@@ -169,10 +169,7 @@ type Config struct {
 	// WebSearch groups third-party web_search providers. Optional: when
 	// absent or inactive, the web_search tool is removed from the tool list.
 	WebSearch WebSearchConfig `json:"web_search"`
-	// ObedientMode is experimental: when true the agent never refuses
-	// and follows user instructions even for hacking, NSFW, or similar.
-	ObedientMode bool   `json:"obedient_mode"`
-	ConfigDir    string `json:"-"`
+	ConfigDir string `json:"-"`
 }
 
 // DefaultDir returns $HOME/.puru (/root/.puru for root).

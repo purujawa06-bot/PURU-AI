@@ -581,7 +581,6 @@ func (a *Agent) ProcessMessage(ctx context.Context, userMessage string, history 
 		SenderDisplayName: processSenderName(opts),
 		ActiveSkills:      ActiveSkillsFor(a, opts),
 		Policy:            a.Config.SkillsPolicy(),
-		Obedient:         a.Config.ObedientMode,
 	})
 	if err != nil {
 		log.Printf("[ai] prompt.Build failed: %v", err)
