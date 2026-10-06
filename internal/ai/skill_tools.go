@@ -86,7 +86,7 @@ func isActiveSkillPath(a *Agent, opts *ProcessOptions, p string) (string, bool) 
 // rejectActiveSkillExec detects shell commands that would modify an active
 // skill tree. Detection helper only: exec no longer blocks these commands
 // since direct edits of active skills are allowed. Read-only inspection
-// (ls, cat, grep) was always allowed.
+// (ls, cat) was always allowed.
 func rejectActiveSkillExec(a *Agent, opts *ProcessOptions, command string) (string, bool) {
 	cmd := strings.TrimSpace(command)
 	if cmd == "" {

@@ -48,10 +48,10 @@ func TestToolSchemasValid(t *testing.T) {
 
 func TestToolCount(t *testing.T) {
 	tools := BuildTools(testAgent(t.TempDir()), nil)
-	if len(tools) != 14 {
-		t.Fatalf("tools = %d, want exactly 14 (web_search opt-in)", len(tools))
+	if len(tools) != 13 {
+		t.Fatalf("tools = %d, want exactly 13 (web_search opt-in)", len(tools))
 	}
-	for _, n := range []string{"read_file", "write_file", "list_dir", "grep", "edit_file", "append_file", "run_shell_command", "telegram_sendfile", "telegram_getuser", "get_env", "web_fetch", "manage_schedule", "use_skill", "stop_skill"} {
+	for _, n := range []string{"read_file", "write_file", "list_dir", "edit_file", "append_file", "run_shell_command", "telegram_sendfile", "telegram_getuser", "get_env", "web_fetch", "manage_schedule", "use_skill", "stop_skill"} {
 		if tools[n] == nil {
 			t.Fatalf("tool %s missing", n)
 		}
@@ -62,14 +62,14 @@ func TestToolCount(t *testing.T) {
 	if tools["edit_file_replace_string"] != nil || tools["edit_file_replace_line"] != nil || tools["edit_file_apply_patch"] != nil {
 		t.Fatalf("old edit tools must be gone (use single edit_file)")
 	}
-	// Opt-in: active aistudio adds web_search as the 15th tool.
+	// Opt-in: active aistudio adds web_search as the 14th tool.
 	searchAgent := testAgent(t.TempDir())
 	searchAgent.Config.WebSearch.AIStudio.Active = true
 	searchAgent.Config.WebSearch.AIStudio.Model = "gemini-2.5-flash"
 	searchAgent.Config.WebSearch.AIStudio.APIKey = "test-key"
 	enabled := BuildTools(searchAgent, nil)
-	if len(enabled) != 15 {
-		t.Fatalf("enabled tools = %d, want 15", len(enabled))
+	if len(enabled) != 14 {
+		t.Fatalf("enabled tools = %d, want 14", len(enabled))
 	}
 	if enabled["web_search"] == nil {
 		t.Fatalf("web_search missing when aistudio active")
@@ -86,7 +86,6 @@ func TestPicoclawParamDeclarations(t *testing.T) {
 		"read_file":   {"path", "start_line", "length"},
 		"write_file":  {"path", "content", "overwrite"},
 		"list_dir":    {"path"},
-		"grep":        {"path", "keyword", "ext", "limit"},
 		"edit_file":   {"path", "old_string", "new_string"},
 		"append_file": {"path", "content"},
 		"run_shell_command":        {"action", "command", "sessionId", "background", "cwd", "timeout"},
@@ -95,7 +94,6 @@ func TestPicoclawParamDeclarations(t *testing.T) {
 		"read_file":   {"path"},
 		"write_file":  {"path", "content"},
 		"list_dir":    {"path"},
-		"grep":        {"path", "keyword"},
 		"edit_file":   {"path", "old_string", "new_string"},
 		"append_file": {"path", "content"},
 		"run_shell_command":        {"action"},
@@ -278,7 +276,7 @@ func TestExecBackgroundSessions(t *testing.T) {
 	}
 }
 
-// Respons gaya picoclaw: read_file header [file: ...], write/edit/append
+// read_file polos LINE|content, write/edit/append
 // teks ringkas, list_dir baris DIR:/FILE:.
 func TestPicoclawStyleResponses(t *testing.T) {
 	ws := t.TempDir()
@@ -289,8 +287,8 @@ func TestPicoclawStyleResponses(t *testing.T) {
 	}
 	r, _ := tools["read_file"].Run(ctx, map[string]any{"path": "r.txt"})
 	s, _ := r.(string)
-	if !strings.Contains(s, "[file: r.txt |") || !strings.Contains(s, "[END OF FILE") || !strings.Contains(s, "1|abc") {
-		t.Fatalf("read_file header = %q", s)
+	if s != "1|abc" {
+		t.Fatalf("read_file = %q, want 1|abc", s)
 	}
 	w, _ := tools["write_file"].Run(ctx, map[string]any{"path": "w.txt", "content": "x"})
 	if ws2, _ := w.(string); ws2 != "File written: w.txt" {

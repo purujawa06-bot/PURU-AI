@@ -53,31 +53,6 @@
         }
       }
     },
-    "grep": {
-      "description": "Search file contents for a keyword; narrow by path/ext. Max matches default 50, max 200.",
-      "required": ["path", "keyword"],
-      "properties": {
-        "path": {
-          "type": "string",
-          "description": "File or folder to search; relative resolves from workspace root."
-        },
-        "keyword": {
-          "type": "string",
-          "description": "Text to find in file contents."
-        },
-        "ext": {
-          "type": "string",
-          "description": "Only files with this extension (e.g. txt); empty means all."
-        },
-        "limit": {
-          "type": "integer",
-          "description": "Max matches; default 50, max 200.",
-          "default": 50,
-          "minimum": 1,
-          "maximum": 200
-        }
-      }
-    },
     "edit_file": {
       "description": "Replace old_string with new_string; old_string must match exactly once. JSON escaping applies: \\n newline, \\\\n literal backslash-n.",
       "required": ["path", "old_string", "new_string"],

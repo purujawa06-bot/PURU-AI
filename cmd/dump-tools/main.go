@@ -55,7 +55,6 @@ func main() {
 		{"read_file", map[string]any{"path": "hello.txt"}},
 		{"write_file", map[string]any{"path": "written.txt", "content": "hi\nthere\n", "overwrite": true}},
 		{"list_dir", map[string]any{"path": "."}},
-		{"grep", map[string]any{"path": ".", "keyword": "hello"}},
 		{"edit_file", map[string]any{"path": "editme.txt", "old_string": "world", "new_string": "Puru"}},
 		{"append_file", map[string]any{"path": "appendme.txt", "content": "\nappended"}},
 		{"run_shell_command", map[string]any{"action": "run", "command": "echo hi", "timeout": 30}},

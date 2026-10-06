@@ -189,9 +189,6 @@ func editLocalFile(workspace string, restrict bool, p, oldStr, newStr string) er
 }
 
 // readLocalFile reads path with line pagination.
-// Returns the full LLM text: "[file: base | total: N lines | read: lines a-b]"
-// header + "LINE|content" lines + "[TRUNCATED ... start_line=X ...]" / "[END OF FILE ...]" trailer, or
-// "[END OF FILE - no content at this start_line]" when start_line is past the end.
 func readLocalFile(workspace string, restrict bool, p string, startLine, length int64) (string, error) {
 	abs, err := resolvePath(workspace, restrict, p)
 	if err != nil {
@@ -239,7 +236,7 @@ func readLocalFile(workspace string, restrict bool, p string, startLine, length 
 	}
 	total := len(all)
 	if total == 0 || startLine > int64(total) {
-		return "[END OF FILE - no content at this start_line]", nil
+		return "", nil
 	}
 	startIdx := int(startLine - 1)
 	endIdx := startIdx + int(length)
@@ -251,16 +248,7 @@ func readLocalFile(workspace string, restrict bool, p string, startLine, length 
 	for i, line := range page {
 		numbered[i] = fmt.Sprintf("%d|%s", startIdx+i+1, line)
 	}
-	data := strings.Join(numbered, "\n")
-	readEnd := int64(startIdx + len(page))
-	header := fmt.Sprintf("[file: %s | total: %d lines | read: lines %d-%d]",
-		filepath.Base(p), total, startLine, readEnd)
-	if endIdx < total {
-		header += fmt.Sprintf("\n[TRUNCATED - file has more content. Call read_file again with start_line=%d to continue.]", endIdx+1)
-	} else {
-		header += "\n[END OF FILE - no further content.]"
-	}
-	return header + "\n\n" + data, nil
+	return strings.Join(numbered, "\n"), nil
 }
 
 // writeLocalFile writes content, replacing any existing file (picoclaw
@@ -349,146 +337,6 @@ func listLocalDir(workspace string, restrict bool, p string) (string, error) {
 		return "(empty directory)", nil
 	}
 	return sb.String(), nil
-}
-
-// grepLocal searches a file or a directory tree for a literal keyword.
-// path may point at one file (single-file search) or a directory
-// (recursive walk including subfolders). ext optionally filters by
-// extension, e.g. "go" or ".go,.md" (empty = all files).
-// Returns "rel:line: text" lines, or "(no matches)" when nothing matches.
-func grepLocal(workspace string, restrict bool, p, keyword, ext string, maxResults int) (string, error) {
-	if strings.TrimSpace(keyword) == "" {
-		return "", fmt.Errorf("keyword is required")
-	}
-	if strings.TrimSpace(p) == "" {
-		p = "."
-	}
-	if maxResults <= 0 {
-		maxResults = 50
-	}
-	if maxResults > 200 {
-		maxResults = 200
-	}
-	abs, err := resolvePath(workspace, restrict, p)
-	if err != nil {
-		return "", err
-	}
-	st, err := os.Stat(abs)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return "", fmt.Errorf("path not found: %s", p)
-		}
-		return "", fmt.Errorf("cannot access path: %w", err)
-	}
-	exts := parseGrepExt(ext)
-	var files []string
-	if !st.IsDir() {
-		files = []string{abs}
-	} else {
-		err = filepath.WalkDir(abs, func(fp string, d os.DirEntry, werr error) error {
-			if werr != nil {
-				return nil // skip unreadable, keep going
-			}
-			if d.IsDir() {
-				if d.Name() == ".git" {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			if len(exts) > 0 && !exts[strings.ToLower(filepath.Ext(d.Name()))] {
-				return nil
-			}
-			if restrict && !insideDir(fp, workspace) {
-				return nil
-			}
-			if info, err := d.Info(); err == nil && info.Size() > 2<<20 {
-				return nil // skip files >2MB, read_file covers them
-			}
-			files = append(files, fp)
-			return nil
-		})
-		if err != nil {
-			return "", fmt.Errorf("failed to walk directory: %w", err)
-		}
-		sort.Strings(files)
-	}
-	var sb strings.Builder
-	matched := 0
-	truncated := false
-	for _, fp := range files {
-		if len(exts) > 0 && !st.IsDir() && !exts[strings.ToLower(filepath.Ext(fp))] {
-			continue
-		}
-		n, done, _ := grepOneFile(&sb, workspace, fp, keyword, maxResults-matched)
-		matched += n
-		if done {
-			truncated = true
-			break
-		}
-	}
-	if matched == 0 {
-		return "(no matches)", nil
-	}
-	out := sb.String()
-	if truncated {
-		out += fmt.Sprintf("... [truncated at %d matches, narrow path/ext/keyword]\n", maxResults)
-	}
-	return out, nil
-}
-
-// parseGrepExt normalizes "go" / ".go,.md" into a set like {".go":true}.
-func parseGrepExt(ext string) map[string]bool {
-	out := map[string]bool{}
-	for _, e := range strings.Split(ext, ",") {
-		e = strings.ToLower(strings.TrimSpace(e))
-		if e == "" {
-			continue
-		}
-		if !strings.HasPrefix(e, ".") {
-			e = "." + e
-		}
-		out[e] = true
-	}
-	return out
-}
-
-// grepOneFile appends "rel:line: text" hits from one file.
-// Returns (newHits, hitLimit, skippedBinary).
-func grepOneFile(sb *strings.Builder, workspace, fp, keyword string, budget int) (int, bool, bool) {
-	f, err := os.Open(fp)
-	if err != nil {
-		return 0, false, false
-	}
-	defer f.Close()
-	rel := fp
-	if workspace != "" {
-		if r, err := filepath.Rel(workspace, fp); err == nil && r != ".." && !strings.HasPrefix(r, ".."+string(os.PathSeparator)) {
-			rel = filepath.ToSlash(r)
-		}
-	}
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 64*1024), 256*1024)
-	hits := 0
-	line := 0
-	for sc.Scan() {
-		line++
-		text := sc.Text()
-		if strings.ContainsRune(text, 0) {
-			return hits, false, true // binary file, skip silently
-		}
-		if !strings.Contains(text, keyword) {
-			continue
-		}
-		if len(text) > 500 {
-			text = text[:500] + "…"
-		}
-		sb.WriteString(fmt.Sprintf("%s:%d: %s\n", rel, line, text))
-		hits++
-		if hits >= budget {
-			return hits, true, false
-		}
-	}
-	return hits, false, false
 }
 
 func defaultShell() (string, []string) {
