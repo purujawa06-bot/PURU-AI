@@ -17,6 +17,6 @@
   "memory_mb": 0,
   "os": "linux",
   "restricted": true,
-  "workspace": "/tmp/puru-tools-dump-3973032115"
+  "workspace": "/tmp/puru-tools-dump-810574887"
 }
 ```
