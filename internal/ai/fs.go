@@ -4,6 +4,7 @@
 // Config.RestrictWorkspace is true) — declarations mirror picoclaw:
 //   - read_file (path, start_line, length), write_file (path, content, overwrite),
 //     list_dir (path), edit_file (path, old_string, new_string),
+//     edit_file_by_line (path, start_line, end_line, content),
 //     run_shell_command (action
 //     wajib: run/list/poll/read/kill; command, sessionId, background, cwd,
 //     timeout opsional)
@@ -186,6 +187,48 @@ func editLocalFile(workspace string, restrict bool, p, oldStr, newStr string) er
 	}
 
 	return fmt.Errorf("old_string not found in %s. Make sure the text exists exactly (including indentation and spacing)", p)
+}
+
+func editLocalFileByLine(workspace string, restrict bool, p string, startLine, endLine int64, content string) error {
+	abs, err := resolvePath(workspace, restrict, p)
+	if err != nil {
+		return err
+	}
+	b, err := os.ReadFile(abs)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", p, err)
+	}
+	s := string(b)
+	hasNL := strings.HasSuffix(s, "\n")
+	var lines []string
+	if s == "" {
+		lines = []string{}
+	} else {
+		lines = strings.Split(strings.TrimSuffix(s, "\n"), "\n")
+	}
+	if startLine <= 0 {
+		return fmt.Errorf("start_line must be >= 1")
+	}
+	if endLine == 0 {
+		endLine = startLine
+	}
+	if endLine < startLine {
+		return fmt.Errorf("end_line (%d) < start_line (%d)", endLine, startLine)
+	}
+	if startLine > int64(len(lines)) || endLine > int64(len(lines)) {
+		return fmt.Errorf("line range %d-%d out of bounds (file has %d lines)", startLine, endLine, len(lines))
+	}
+	var rep []string
+	if content != "" {
+		rep = strings.Split(strings.TrimSuffix(content, "\n"), "\n")
+	}
+	s1, e1 := int(startLine-1), int(endLine)
+	newLines := append(append(append([]string{}, lines[:s1]...), rep...), lines[e1:]...)
+	out := strings.Join(newLines, "\n")
+	if hasNL && len(newLines) > 0 {
+		out += "\n"
+	}
+	return os.WriteFile(abs, []byte(out), 0o644)
 }
 
 // readLocalFile reads path with line pagination.

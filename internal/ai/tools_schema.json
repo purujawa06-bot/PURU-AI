@@ -59,7 +59,7 @@
       "properties": {
         "path": {
           "type": "string",
-          "description": "File to edit; relative resolves from workspace root."
+          "description": "Absolute path of the file to edit."
         },
         "old_string": {
           "type": "string",
@@ -71,13 +71,39 @@
         }
       }
     },
+    "edit_file_by_line": {
+      "description": "Replace lines start_line..end_line (1-based, inclusive) with content; single line when end_line omitted.",
+      "required": ["path", "start_line", "content"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Absolute path of the file to edit."
+        },
+        "start_line": {
+          "type": "integer",
+          "description": "First line to replace; 1-based, inclusive.",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "end_line": {
+          "type": "integer",
+          "description": "Last line to replace; defaults to start_line.",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "content": {
+          "type": "string",
+          "description": "Replacement text; may contain newlines, empty string deletes the lines."
+        }
+      }
+    },
     "append_file": {
       "description": "Append content to end of file; creates it when absent. JSON escaping applies: \\n newline, \\\\n literal backslash-n.",
       "required": ["path", "content"],
       "properties": {
         "path": {
           "type": "string",
-          "description": "File to append to; relative resolves from workspace root."
+          "description": "Absolute path of the file to append to."
         },
         "content": {
           "type": "string",
@@ -126,7 +152,7 @@
       "properties": {
         "path": {
           "type": "string",
-          "description": "Local file to send; relative resolves from workspace root."
+          "description": "Absolute path of the local file to send."
         },
         "filename": {
           "type": "string",

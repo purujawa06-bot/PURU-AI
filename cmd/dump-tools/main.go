@@ -56,6 +56,7 @@ func main() {
 		{"write_file", map[string]any{"path": "written.txt", "content": "hi\nthere\n", "overwrite": true}},
 		{"list_dir", map[string]any{"path": "."}},
 		{"edit_file", map[string]any{"path": "editme.txt", "old_string": "world", "new_string": "Puru"}},
+		{"edit_file_by_line", map[string]any{"path": "hello.txt", "start_line": 2, "content": "LINE-DUA"}},
 		{"append_file", map[string]any{"path": "appendme.txt", "content": "\nappended"}},
 		{"run_shell_command", map[string]any{"action": "run", "command": "echo hi", "timeout": 30}},
 		{"get_env", map[string]any{}},

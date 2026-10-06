@@ -48,10 +48,10 @@ func TestToolSchemasValid(t *testing.T) {
 
 func TestToolCount(t *testing.T) {
 	tools := BuildTools(testAgent(t.TempDir()), nil)
-	if len(tools) != 13 {
-		t.Fatalf("tools = %d, want exactly 13 (web_search opt-in)", len(tools))
+	if len(tools) != 14 {
+		t.Fatalf("tools = %d, want exactly 14 (web_search opt-in)", len(tools))
 	}
-	for _, n := range []string{"read_file", "write_file", "list_dir", "edit_file", "append_file", "run_shell_command", "telegram_sendfile", "telegram_getuser", "get_env", "web_fetch", "manage_schedule", "use_skill", "stop_skill"} {
+	for _, n := range []string{"read_file", "write_file", "list_dir", "edit_file", "edit_file_by_line", "append_file", "run_shell_command", "telegram_sendfile", "telegram_getuser", "get_env", "web_fetch", "manage_schedule", "use_skill", "stop_skill"} {
 		if tools[n] == nil {
 			t.Fatalf("tool %s missing", n)
 		}
@@ -62,14 +62,14 @@ func TestToolCount(t *testing.T) {
 	if tools["edit_file_replace_string"] != nil || tools["edit_file_replace_line"] != nil || tools["edit_file_apply_patch"] != nil {
 		t.Fatalf("old edit tools must be gone (use single edit_file)")
 	}
-	// Opt-in: active aistudio adds web_search as the 14th tool.
+	// Opt-in: active aistudio adds web_search as the 15th tool.
 	searchAgent := testAgent(t.TempDir())
 	searchAgent.Config.WebSearch.AIStudio.Active = true
 	searchAgent.Config.WebSearch.AIStudio.Model = "gemini-2.5-flash"
 	searchAgent.Config.WebSearch.AIStudio.APIKey = "test-key"
 	enabled := BuildTools(searchAgent, nil)
-	if len(enabled) != 14 {
-		t.Fatalf("enabled tools = %d, want 14", len(enabled))
+	if len(enabled) != 15 {
+		t.Fatalf("enabled tools = %d, want 15", len(enabled))
 	}
 	if enabled["web_search"] == nil {
 		t.Fatalf("web_search missing when aistudio active")
@@ -87,6 +87,7 @@ func TestPicoclawParamDeclarations(t *testing.T) {
 		"write_file":  {"path", "content", "overwrite"},
 		"list_dir":    {"path"},
 		"edit_file":   {"path", "old_string", "new_string"},
+		"edit_file_by_line": {"path", "start_line", "end_line", "content"},
 		"append_file": {"path", "content"},
 		"run_shell_command":        {"action", "command", "sessionId", "background", "cwd", "timeout"},
 	}
@@ -95,6 +96,7 @@ func TestPicoclawParamDeclarations(t *testing.T) {
 		"write_file":  {"path", "content"},
 		"list_dir":    {"path"},
 		"edit_file":   {"path", "old_string", "new_string"},
+		"edit_file_by_line": {"path", "start_line", "content"},
 		"append_file": {"path", "content"},
 		"run_shell_command":        {"action"},
 	}

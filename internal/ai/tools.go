@@ -38,12 +38,12 @@ type TelegramClient interface {
 // maxSendFileBytes caps telegram_sendfile uploads (Telegram bots allow 50MB).
 const maxSendFileBytes = 20 << 20
 
-// BuildTools returns 13 tools by default: file tools (read_file, write_file,
-// list_dir, edit_file, append_file) + run_shell_command + Telegram tools
+// BuildTools returns 14 tools by default: file tools (read_file, write_file,
+// list_dir, edit_file, edit_file_by_line, append_file) + run_shell_command + Telegram tools
 // (telegram_sendfile, telegram_getuser) + get_env + web_fetch + manage_schedule
 // + skill tools (use_skill, stop_skill). web_search
 // (third-party, opt-in: Google AI Studio with googleSearch grounding and/or
-// Exa) is added as the 14th tool only when at least one web_search provider
+// Exa) is added as the 15th tool only when at least one web_search provider
 // is ready (active + credentials) in config.json. No PuruBoy API anywhere.
 // opts carries workspace config, current chat/user, and the OnTool preview hook.
 func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
@@ -113,6 +113,19 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 					return errVal(fmt.Errorf("new_string is required"))
 				}
 				if err := editLocalFile(ws, restrict, argStr(args, "path"), oldText, newText); err != nil {
+					return errVal(err)
+				}
+				return fmt.Sprintf("File edited: %s", argStr(args, "path")), nil
+			}),
+		"edit_file_by_line": mk("edit_file_by_line",
+			func(ctx context.Context, args map[string]any) (any, error) {
+				content, ok := args["content"].(string)
+				if !ok {
+					return errVal(fmt.Errorf("content is required"))
+				}
+				start := argInt(args, "start_line")
+				end := argInt(args, "end_line")
+				if err := editLocalFileByLine(ws, restrict, argStr(args, "path"), start, end, content); err != nil {
 					return errVal(err)
 				}
 				return fmt.Sprintf("File edited: %s", argStr(args, "path")), nil
