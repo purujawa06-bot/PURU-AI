@@ -21,7 +21,7 @@ import (
 	"github.com/purujawa06-bot/PURU-AI/internal/workspace"
 )
 
-const sampleMemory = `# Long-term Memory
+const sampleMemory = `# Long-Term Memory
 
 - User name: Ricky (20 tahun)
 - Timezone: Asia/Jakarta (WIB, UTC+7)
@@ -61,7 +61,7 @@ func main() {
 	fmt.Printf("out=%s chars=%d parts=%d time=%s\n", *outPath, len(rendered), len(parts), time.Now().Format(time.RFC3339))
 	fmt.Printf("markers:\n")
 	for _, marker := range []string{
-		"# PuruClaw 🦞",
+		"You are a personal assistant running inside PuruClaw.",
 		"## " + workspace.FileAgents,
 		"## " + workspace.FileSoul,
 		"## " + workspace.FileUser,
@@ -76,7 +76,7 @@ func main() {
 		"## Current Session",
 		"Channel: telegram",
 		"CONTEXT_SUMMARY:",
-		"ALWAYS use tools",
+		"## Execution Bias",
 	} {
 		fmt.Printf("  has %-28q %v\n", marker, strings.Contains(rendered, marker))
 	}

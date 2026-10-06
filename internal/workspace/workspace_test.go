@@ -120,8 +120,8 @@ func TestLoadBootstrap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(memoryData), "PLACEHOLDER") {
-		t.Fatalf("Memory template must use PLACEHOLDER token, got %q", memoryData)
+	if !strings.Contains(string(memoryData), "# Long-Term Memory") {
+		t.Fatalf("Memory template must start with the long-term header, got %q", memoryData)
 	}
 	boot := def.Bootstrap()
 	for _, label := range []string{"## " + FileAgents, "## " + FileSoul, "## " + FileUser} {
