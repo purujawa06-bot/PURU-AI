@@ -1,23 +1,23 @@
 {
   "tools": {
     "read_file": {
-      "description": "Read the contents of a text file from the workspace. Output includes line numbers in the format `LINE_NUMBER|LINE_CONTENT` (1-indexed). Supports partial reads via `start_line` and `length` for large files.",
+      "description": "Read text file; line-numbered output `LINE|content`, 1-based. Partial reads via start_line/length (default 200, max 2000).",
       "required": ["path"],
       "properties": {
         "path": {
           "type": "string",
-          "description": "Path to the file to read. Relative paths are resolved from the workspace root, e.g. `memory/MEMORY.md`."
+          "description": "File to read; relative resolves from workspace root, e.g. `memory/MEMORY.md`."
         },
         "start_line": {
           "type": "integer",
-          "description": "Line number to start reading from (1-indexed, inclusive).",
+          "description": "Start line; 1-based, inclusive.",
           "default": 1,
           "minimum": 1,
           "maximum": 1000000
         },
         "length": {
           "type": "integer",
-          "description": "Maximum number of lines to read (default: 200, max: 2000).",
+          "description": "Max lines; default 200, max 2000.",
           "default": 200,
           "minimum": 1,
           "maximum": 2000
@@ -25,53 +25,53 @@
       }
     },
     "write_file": {
-      "description": "Write content to a file, replacing any existing content when overwrite is set. Content is written byte-for-byte after argument decoding. Standard JSON escaping applies: \\n for newline and \\\\n for a literal backslash-n. If the file already exists you must set overwrite=true, which replaces the ENTIRE file.",
+      "description": "Write file; creates parent dirs. overwrite=true replaces the ENTIRE file. JSON escaping applies: \\n newline, \\\\n literal backslash-n.",
       "required": ["path", "content"],
       "properties": {
         "path": {
           "type": "string",
-          "description": "Path to the file to write. Relative paths are resolved from the workspace root, e.g. `memory/MEMORY.md`."
+          "description": "File to write; relative resolves from workspace root, e.g. `memory/MEMORY.md`."
         },
         "content": {
           "type": "string",
-          "description": "Content to write to the file. Standard JSON escaping applies: \\n for newline and \\\\n for a literal backslash-n."
+          "description": "Content to write; JSON escaping applies: \\n newline, \\\\n literal backslash-n."
         },
         "overwrite": {
           "type": "boolean",
-          "description": "Set to true to replace an existing file in full. This discards the file's current contents.",
+          "description": "Replace an existing file in full; discards current contents. Default false.",
           "default": false
         }
       }
     },
     "list_dir": {
-      "description": "List files and directories in a folder.",
+      "description": "List files and dirs in a folder.",
       "required": ["path"],
       "properties": {
         "path": {
           "type": "string",
-          "description": "Path to the folder to list. Relative paths are resolved from the workspace root, e.g. `memory/MEMORY.md`."
+          "description": "Folder to list; relative resolves from workspace root, e.g. `memory`."
         }
       }
     },
     "grep": {
-      "description": "Search file contents for a keyword across the workspace. Can be narrowed to a single file/folder and a file extension, and limited to a maximum number of matches.",
+      "description": "Search file contents for a keyword; narrow by path/ext. Max matches default 50, max 200.",
       "required": ["path", "keyword"],
       "properties": {
         "path": {
           "type": "string",
-          "description": "File or folder to search. Relative paths are resolved from the workspace root, e.g. `memory/MEMORY.md`."
+          "description": "File or folder to search; relative resolves from workspace root."
         },
         "keyword": {
           "type": "string",
-          "description": "The text to find in file contents."
+          "description": "Text to find in file contents."
         },
         "ext": {
           "type": "string",
-          "description": "Only search files with this extension (e.g. txt). Empty means all files."
+          "description": "Only files with this extension (e.g. txt); empty means all."
         },
         "limit": {
           "type": "integer",
-          "description": "Maximum number of matches to return (default: 50, max: 200).",
+          "description": "Max matches; default 50, max 200.",
           "default": 50,
           "minimum": 1,
           "maximum": 200
@@ -79,66 +79,66 @@
       }
     },
     "edit_file": {
-      "description": "Edit a file by replacing old_string with new_string. The old_string must exist exactly once in the file. Standard JSON escaping applies: \\n for newline and \\\\n for a literal backslash-n.",
+      "description": "Replace old_string with new_string; old_string must match exactly once. JSON escaping applies: \\n newline, \\\\n literal backslash-n.",
       "required": ["path", "old_string", "new_string"],
       "properties": {
         "path": {
           "type": "string",
-          "description": "Path to the file to edit. Relative paths are resolved from the workspace root, e.g. `memory/MEMORY.md`."
+          "description": "File to edit; relative resolves from workspace root."
         },
         "old_string": {
           "type": "string",
-          "description": "The exact text to find and replace. Standard JSON escaping applies: \\n for newline and \\\\n for a literal backslash-n."
+          "description": "Exact text to find; must exist exactly once in the file."
         },
         "new_string": {
           "type": "string",
-          "description": "The text to replace it with. Standard JSON escaping applies: \\n for newline and \\\\n for a literal backslash-n. Empty string deletes the match."
+          "description": "Replacement text; empty string deletes the match."
         }
       }
     },
     "append_file": {
-      "description": "Append content to the end of a file. Standard JSON escaping applies: \\n for newline and \\\\n for a literal backslash-n.",
+      "description": "Append content to end of file; creates it when absent. JSON escaping applies: \\n newline, \\\\n literal backslash-n.",
       "required": ["path", "content"],
       "properties": {
         "path": {
           "type": "string",
-          "description": "Path to the file to append to. Relative paths are resolved from the workspace root, e.g. `memory/MEMORY.md`."
+          "description": "File to append to; relative resolves from workspace root."
         },
         "content": {
           "type": "string",
-          "description": "Content to append to the end of the file. Standard JSON escaping applies: \\n for newline and \\\\n for a literal backslash-n."
+          "description": "Content to append; JSON escaping applies: \\n newline, \\\\n literal backslash-n."
         }
       }
     },
     "run_shell_command": {
-      "description": "Execute shell commands in the workspace. Use background=true for long-running commands (returns a sessionId). Use poll/read/kill with the sessionId to manage background sessions.",
+      "description": "Run shell in workspace. background=true returns a sessionId; manage via poll/read/kill/list.",
       "required": ["action"],
       "properties": {
         "action": {
           "type": "string",
-          "description": "Action to perform: run (execute command), list (show sessions), poll (check status), read (get output), kill (terminate).",
+          "description": "run: execute command; list: show sessions; poll: check status; read: get output; kill: terminate.",
           "enum": ["run", "list", "poll", "read", "kill"]
         },
         "command": {
           "type": "string",
-          "description": "Shell command to execute (required for run)."
+          "description": "Shell command; required for run."
         },
         "sessionId": {
           "type": "string",
-          "description": "Session ID returned by a background run (required for poll/read/kill)."
+          "description": "Session ID from a background run; required for poll/read/kill."
         },
         "background": {
           "type": "boolean",
-          "description": "Run in background immediately.",
+          "description": "Run in background immediately; default false.",
           "default": false
         },
         "cwd": {
           "type": "string",
-          "description": "Working directory for the command. Defaults to the workspace root, e.g. `memory`."
+          "description": "Working dir; default workspace root."
         },
         "timeout": {
           "type": "integer",
-          "description": "Timeout in seconds (default: 60, max: 300).",
+          "description": "Timeout seconds; default 60, max 300.",
           "default": 60,
           "minimum": 1,
           "maximum": 300
@@ -146,60 +146,60 @@
       }
     },
     "telegram_sendfile": {
-      "description": "Send a local file (image, document, etc.) to the user on the current Telegram chat.",
+      "description": "Send a local file (image, document, etc.) to the current Telegram chat; max 20MB.",
       "required": ["path"],
       "properties": {
         "path": {
           "type": "string",
-          "description": "Path to the local file to send. Relative paths are resolved from the workspace root, e.g. `memory/MEMORY.md`."
+          "description": "Local file to send; relative resolves from workspace root."
         },
         "filename": {
           "type": "string",
-          "description": "Optional display filename. Defaults to the base name of path."
+          "description": "Display filename; default base name of path."
         },
         "caption": {
           "type": "string",
-          "description": "Optional caption shown under the file."
+          "description": "Caption under the file; optional."
         }
       }
     },
     "telegram_getuser": {
-      "description": "Look up Telegram user info (name, username, id, bio) for a given user ID.",
+      "description": "Telegram user info (name, username, id, bio) for a user ID; omit for current sender.",
       "properties": {
         "user_id": {
           "type": "integer",
-          "description": "User ID to look up. Omit to get the current sender.",
+          "description": "User ID to look up; omit for current sender.",
           "minimum": 1
         }
       }
     },
     "get_env": {
-      "description": "Get runtime environment info such as workspace path, platform, model, and current date/time.",
+      "description": "Runtime env: workspace, platform, Go version, memory usage.",
       "properties": {}
     },
     "web_fetch": {
-      "description": "Fetch a URL and extract readable content (HTML to text). Use this to get weather info, news, articles, or any web content. Only public http/https URLs are allowed.",
+      "description": "Fetch URL; HTML stripped to readable text. Public http/https only; no local/private hosts. Paginate via start_line/length (default 100, max 1000).",
       "required": ["url"],
       "properties": {
         "url": {
           "type": "string",
-          "description": "URL to fetch. Must be a public http/https URL."
+          "description": "Public http/https URL to fetch."
         },
         "section": {
           "type": "string",
-          "description": "Which representation to return: text (HTML stripped to plain text) or html (raw HTML).",
+          "description": "text: stripped plain text; html: raw HTML.",
           "enum": ["text", "html"]
         },
         "start_line": {
           "type": "integer",
-          "description": "Line number to start reading from (1-indexed, inclusive).",
+          "description": "Start line; 1-based, inclusive.",
           "default": 1,
           "minimum": 1,
           "maximum": 1000000
         },
         "length": {
           "type": "integer",
-          "description": "Maximum number of lines to return (default: 100, max: 1000).",
+          "description": "Max lines; default 100, max 1000.",
           "default": 100,
           "minimum": 1,
           "maximum": 1000
@@ -207,7 +207,7 @@
       }
     },
     "web_search": {
-      "description": "Search the web for current information. Returns titles, URLs, and snippets from search results.",
+      "description": "Search current web; returns titles, URLs, snippets. Count default 5, max 10.",
       "required": ["query"],
       "properties": {
         "query": {
@@ -216,7 +216,7 @@
         },
         "count": {
           "type": "integer",
-          "description": "Number of results (default: 5, max: 10).",
+          "description": "Result count; default 5, max 10.",
           "default": 5,
           "minimum": 1,
           "maximum": 10
@@ -224,21 +224,21 @@
       }
     },
     "manage_schedule": {
-      "description": "Schedule, inspect, and update reminders, tasks, or agent prompts.\nIMPORTANT: When the user asks to be reminded or to schedule something, you MUST call this tool.\nUse type 'once' with run_once_at for one-time reminders, 'every' with every_seconds ONLY for recurring tasks, 'daily' with daily_time for daily schedules, and 'cron' with cron_expr for complex schedules.",
+      "description": "Schedule, inspect, and update reminders, tasks, or agent prompts.\nReminder/schedule request: you MUST call this tool.\nTypes: once (run_once_at), every (every_seconds, recurring only), daily (daily_time), cron (cron_expr).",
       "required": ["action"],
       "properties": {
         "action": {
           "type": "string",
-          "description": "Action to perform: add, list, get, update, remove, enable, disable. Use 'get' before editing and 'update' to change an existing job without losing its payload.",
+          "description": "add, list, get, update, remove, enable, disable. Use get before editing; update changes a job without losing its payload.",
           "enum": ["add", "list", "get", "update", "remove", "enable", "disable"]
         },
         "name": {
           "type": "string",
-          "description": "Optional job display name for add or update."
+          "description": "Job display name; optional for add/update."
         },
         "prompt": {
           "type": "string",
-          "description": "The instruction the agent should execute when the job triggers."
+          "description": "Instruction the agent executes when the job triggers."
         },
         "type": {
           "type": "string",
@@ -247,22 +247,22 @@
         },
         "timezone": {
           "type": "string",
-          "description": "IANA timezone for daily or cron schedules (e.g. Asia/Jakarta)."
+          "description": "IANA timezone for daily/cron (e.g. Asia/Jakarta)."
         },
         "run_once_at": {
           "type": "string",
-          "description": "When a one-time job should run (for type 'once'). Example: 18:00."
+          "description": "When a once job runs (e.g. 18:00)."
         },
         "every_seconds": {
           "type": "integer",
-          "description": "Recurring interval in seconds (e.g. 3600 for every hour). Use ONLY for recurring tasks.",
+          "description": "Recurring interval seconds (3600 = hourly); recurring tasks only.",
           "default": 3600,
           "minimum": 60,
           "maximum": 31622400
         },
         "daily_time": {
           "type": "string",
-          "description": "Time of day for type 'daily' (e.g. 06:00)."
+          "description": "Time of day for daily (e.g. 06:00)."
         },
         "weekdays": {
           "type": "array",
@@ -270,47 +270,47 @@
             "type": "string",
             "enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
           },
-          "description": "Days of the week the job runs (e.g. [\"mon\",\"fri\"]). Omit to run every day."
+          "description": "Days the job runs (e.g. [\"mon\",\"fri\"]); omit for every day."
         },
         "cron_expr": {
           "type": "string",
-          "description": "Cron expression with 5 fields for complex schedules (e.g. '0 6 * * *' for daily at 06:00)."
+          "description": "5-field cron (e.g. '0 6 * * *' = daily at 06:00)."
         },
         "end_at": {
           "type": "string",
-          "description": "Optional stop time after which the job no longer runs (e.g. 2026-10-05 00:00)."
+          "description": "Stop time after which the job no longer runs (e.g. 2026-10-05 00:00)."
         },
         "days": {
           "type": "integer",
-          "description": "Optional number of days the job stays active. 0 means no end.",
+          "description": "Days the job stays active; 0 = no end.",
           "default": 0,
           "minimum": 0,
           "maximum": 366
         },
         "max_runs": {
           "type": "integer",
-          "description": "Maximum number of runs. 0 means unlimited.",
+          "description": "Max runs; 0 = unlimited.",
           "default": 0,
           "minimum": 0,
           "maximum": 10000
         },
         "job_id": {
           "type": "string",
-          "description": "Job ID (required for get/update/remove/enable/disable)."
+          "description": "Job ID; required for get/update/remove/enable/disable."
         }
       }
     },
     "use_skill": {
-      "description": "Activate a skill by name so its instructions are loaded into the active skills section of the prompt.",
+      "description": "Activate a skill by name; its instructions load into the Active Skills section.",
       "required": ["name"],
       "properties": {
         "name": {
           "type": "string",
-          "description": "Name of the skill to activate."
+          "description": "Skill to activate."
         },
         "always_active": {
           "type": "boolean",
-          "description": "Keep the skill active across turns. Defaults to false: the skill lasts for the current turn only and is deactivated after the final answer.",
+          "description": "Keep active across turns; default false = current turn only, deactivated after the final answer.",
           "default": false
         }
       }
@@ -321,7 +321,7 @@
       "properties": {
         "name": {
           "type": "string",
-          "description": "Name of the skill to deactivate."
+          "description": "Skill to deactivate."
         }
       }
     }

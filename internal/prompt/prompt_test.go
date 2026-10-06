@@ -39,7 +39,7 @@ func TestGetRendersMemory(t *testing.T) {
 	}
 	// puruClaw identity (picoclaw personality, renamed): no leftover
 	// picoclaw/Pico references allowed.
-	for _, name := range []string{"PuruClaw", "You are PuruClaw, a helpful AI assistant."} {
+	for _, name := range []string{"PuruClaw", "You are a personal assistant running inside PuruClaw."} {
 		if !strings.Contains(out, name) {
 			t.Fatalf("identity %q missing in prompt", name)
 		}
@@ -50,10 +50,12 @@ func TestGetRendersMemory(t *testing.T) {
 		}
 	}
 	for _, section := range []string{
-		"ALWAYS use tools",
-		"Be helpful and accurate",
-		"Context summaries",
-		"**Memory** - When interacting with me if something seems memorable, update",
+		"Always use tools",
+		"## Execution Bias",
+		"## Tool Call Style",
+		"## Care",
+		"## Context Summaries",
+		"## Memory Updates",
 		"# Skills",
 		"The following skills extend your capabilities.",
 		"To use a skill, read its SKILL.md file using the read_file tool.",
@@ -226,10 +228,10 @@ func TestBuildOrdersLayersLikePicoclaw(t *testing.T) {
 		t.Fatalf("build error: %v", err)
 	}
 	order := []string{
-		"# PuruClaw 🦞",
+		"You are a personal assistant running inside PuruClaw.",
 		"## " + workspace.FileAgents,
 		"# Skills",
-		"# Memory",
+		"\n# Memory\n",
 		"## Current Time",
 		"CONTEXT_SUMMARY:",
 	}
@@ -264,7 +266,7 @@ func TestBuildSuppressFlags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build error: %v", err)
 	}
-	if strings.Contains(out, "**ALWAYS use tools**") {
+	if strings.Contains(out, "**Always use tools**") {
 		t.Fatalf("tool use rule must be suppressed")
 	}
 	overlay := PromptPart{
@@ -282,14 +284,14 @@ func TestBuildSuppressFlags(t *testing.T) {
 	if !strings.Contains(out, "follow the subturn profile") {
 		t.Fatalf("overlay must survive suppressed system prompt")
 	}
-	if strings.Contains(out, "# PuruClaw 🦞") {
+	if strings.Contains(out, "You are a personal assistant running inside PuruClaw.") {
 		t.Fatalf("kernel identity must be suppressed")
 	}
 	out, err = Build(Request{SuppressDefaultSystemPrompt: true, ToolUseFallback: true})
 	if err != nil {
 		t.Fatalf("build error: %v", err)
 	}
-	if !strings.Contains(out, "**ALWAYS use tools**") {
+	if !strings.Contains(out, "**Always use tools**") {
 		t.Fatalf("tool use fallback must render when system prompt is suppressed")
 	}
 }

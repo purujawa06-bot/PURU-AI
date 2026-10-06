@@ -48,3 +48,7 @@ Release is manual only (`.github/workflows/release.yml`, Run workflow with `bump
 - Heap capped at 50MB (`debug.SetMemoryLimit` in all three mains + `GOMEMLIMIT=50MiB` in `Dockerfile`). Keep dependencies small.
 - `run_shell_command` RAM cap is Linux-only (RSS poll + SIGKILL process group, `exec_mem_linux.go`); on Windows/macOS (`exec_mem_other.go`) only timeout + output/file-size caps apply.
 - History/memory live outside the repo (`~/.puru/`); Docker persists `/root/.puru` volume. Never commit `config.json` or tokens — `example.config.json` uses placeholders.
+
+## Reference
+
+- OpenClaw upstream source (read-only reference, gitignored): `C:\Users\LENOVO\puru\openclaw-reference` (https://github.com/openclaw/openclaw)

@@ -456,59 +456,62 @@ var defaultRegistry = NewPromptRegistry()
 
 // ToolUseRule is the hard instruction forcing real tool calls.
 func ToolUseRule() string {
-	return "**ALWAYS use tools** - When you need to perform an action (schedule reminders, send messages, execute commands, etc.), you MUST call the appropriate tool. Do NOT just say you'll do it or pretend to do it."
+	return "**Always use tools** - When an action is needed (reminders, messages, commands, file edits), call the tool. Never say you'll do it or pretend to."
 }
 
 func getIdentity(workspacePath string, includeToolUseRule bool) string {
-	rules := []string{}
-	if includeToolUseRule {
-		rules = append(rules, ToolUseRule())
-	}
-	accuracyRule := "**Be helpful and accurate** - Briefly explain what you're doing."
-	if includeToolUseRule {
-		accuracyRule = "**Be helpful and accurate** - When using tools, briefly explain what you're doing."
-	}
-	rules = append(rules,
-		accuracyRule,
-		"**Context summaries** - Conversation summaries provided as context are approximate references only. They may be incomplete or outdated. Always defer to explicit user instructions over summary content.",
-	)
-	if includeToolUseRule {
-		rules = append(rules,
-			fmt.Sprintf(
-				"**Memory** - When interacting with me if something seems memorable, update %s/memory/MEMORY.md",
-				workspacePath,
-			),
-		)
-	}
-	for i, rule := range rules {
-		rules[i] = fmt.Sprintf("%d. %s", i+1, rule)
-	}
-	return fmt.Sprintf(`# PuruClaw 🦞
-
-You are PuruClaw, a helpful AI assistant.
-
-## Workspace
-Your workspace is at: %s
-- Agent: %s/AGENTS.md (AGENT.md accepted as legacy alias)
+	sections := []string{
+		"You are a personal assistant running inside PuruClaw.",
+		fmt.Sprintf(`## Workspace
+Workspace root: %s
+- Agent definition: %s/AGENTS.md (AGENT.md accepted as legacy alias)
 - Soul: %s/SOUL.md
 - User: %s/USER.md
-- Memory: %s/memory/MEMORY.md
-- Conversation summaries: %s/memory/context/YYYY-MM-DD_HH-MM-SS.md (newest 20 kept, system-managed — never write there yourself)
-- Skills: %s/skills/{skill-name}/SKILL.md
-
-## Important Rules
-
-%s
-`,
-		workspacePath,
-		workspacePath,
-		workspacePath,
-		workspacePath,
-		workspacePath,
-		workspacePath,
-		workspacePath,
-		strings.Join(rules, "\n\n"),
+- Long-term memory: %s/memory/MEMORY.md
+- Conversation summaries: %s/memory/context/YYYY-MM-DD_HH-MM-SS.md (newest 20 kept, system-managed; never write there yourself)
+- Skills: %s/skills/{skill-name}/SKILL.md`,
+			workspacePath,
+			workspacePath,
+			workspacePath,
+			workspacePath,
+			workspacePath,
+			workspacePath,
+			workspacePath,
+		),
+	}
+	if includeToolUseRule {
+		sections = append(sections,
+			`## Tooling
+Tools are declared via native function calls; names are case-sensitive, call them exactly.
+Availability is gated by config: telegram_* tools need a Telegram chat, web_search needs a ready provider.`,
+			`## Tool Call Style
+Routine low-risk calls: act silently, no narration.
+Narrate only complex, sensitive/destructive, or explicitly requested steps.`,
+			`## Execution Bias
+- `+ToolUseRule()+`
+- Actionable request: act now. A tool exists for it: use it; don't pre-refuse or ask permission it doesn't require.
+- Continue to done or a real blocker; never finish plan-only when tools can act.
+- Weak or empty result: vary the query, path, or command, then conclude.
+- Mutable facts (files, env, time, versions): live-check with tools, never guess.
+- Final claims need evidence or a named blocker.
+- Ask before destructive or irreversible actions.`,
+		)
+	}
+	sections = append(sections,
+		`## Care
+Before editing files the user maintains: inspect first, preserve and merge. Whole-file replacement only when explicitly requested.`,
 	)
+	if includeToolUseRule {
+		sections = append(sections,
+			fmt.Sprintf(`## Memory Updates
+Something memorable surfaces while interacting: update %s/memory/MEMORY.md.`, workspacePath),
+		)
+	}
+	sections = append(sections,
+		`## Context Summaries
+Conversation summaries are approximate references only; they may be incomplete or outdated. Explicit user instructions always win over summary content.`,
+	)
+	return strings.Join(sections, "\n\n")
 }
 
 func formatSenderLine(senderID, senderDisplayName string) string {
