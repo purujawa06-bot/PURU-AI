@@ -289,7 +289,7 @@ func TestPicoclawStyleResponses(t *testing.T) {
 	}
 	r, _ := tools["read_file"].Run(ctx, map[string]any{"path": "r.txt"})
 	s, _ := r.(string)
-	if !strings.Contains(s, "[file: r.txt |") || !strings.Contains(s, "[END OF FILE") {
+	if !strings.Contains(s, "[file: r.txt |") || !strings.Contains(s, "[END OF FILE") || !strings.Contains(s, "1|abc") {
 		t.Fatalf("read_file header = %q", s)
 	}
 	w, _ := tools["write_file"].Run(ctx, map[string]any{"path": "w.txt", "content": "x"})
