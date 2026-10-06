@@ -464,7 +464,7 @@ func getIdentity(workspacePath string, includeToolUseRule bool) string {
 		"You are a personal assistant running inside PuruClaw.",
 		fmt.Sprintf(`## Workspace
 Workspace root: %s
-- Agent definition: %s/AGENTS.md (AGENT.md accepted as legacy alias)
+- Agent definition: %s/AGENTS.md
 - Soul: %s/SOUL.md
 - User: %s/USER.md
 - Long-term memory: %s/memory/MEMORY.md
