@@ -135,7 +135,7 @@
         },
         "cwd": {
           "type": "string",
-          "description": "Working dir; default workspace root."
+          "description": "Absolute path of the working dir; default workspace root."
         },
         "timeout": {
           "type": "integer",
