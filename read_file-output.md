@@ -13,9 +13,6 @@
 ## output
 
 ```
-[file: hello.txt | total: 3 lines | read: lines 1-3]
-[END OF FILE - no further content.]
-
 1|hello world
 2|line two
 3|line three
