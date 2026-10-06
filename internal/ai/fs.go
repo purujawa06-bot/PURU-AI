@@ -190,7 +190,7 @@ func editLocalFile(workspace string, restrict bool, p, oldStr, newStr string) er
 
 // readLocalFile reads path with line pagination.
 // Returns the full LLM text: "[file: base | total: N lines | read: lines a-b]"
-// header + "[TRUNCATED ... start_line=X ...]" / "[END OF FILE ...]" trailer, or
+// header + "LINE|content" lines + "[TRUNCATED ... start_line=X ...]" / "[END OF FILE ...]" trailer, or
 // "[END OF FILE - no content at this start_line]" when start_line is past the end.
 func readLocalFile(workspace string, restrict bool, p string, startLine, length int64) (string, error) {
 	abs, err := resolvePath(workspace, restrict, p)
@@ -247,7 +247,11 @@ func readLocalFile(workspace string, restrict bool, p string, startLine, length 
 		endIdx = total
 	}
 	page := all[startIdx:endIdx]
-	data := strings.Join(page, "\n")
+	numbered := make([]string, len(page))
+	for i, line := range page {
+		numbered[i] = fmt.Sprintf("%d|%s", startIdx+i+1, line)
+	}
+	data := strings.Join(numbered, "\n")
 	readEnd := int64(startIdx + len(page))
 	header := fmt.Sprintf("[file: %s | total: %d lines | read: lines %d-%d]",
 		filepath.Base(p), total, startLine, readEnd)
