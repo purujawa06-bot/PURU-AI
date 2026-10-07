@@ -33,41 +33,25 @@ const (
 	maxReadFileLines     = 2000
 )
 
-// resolvePath maps a tool path to an absolute filesystem path.
-// When restrict is true the result is jailed inside workspace:
-// absolute paths and ../ escapes are rejected.
+// resolvePath maps an absolute tool path to a cleaned absolute filesystem
+// path. When restrict is true the result is jailed inside workspace.
+// Relative paths are rejected: every tool receives absolute paths only.
 func resolvePath(workspace string, restrict bool, p string) (string, error) {
 	p = strings.TrimSpace(p)
 	if p == "" {
 		return "", fmt.Errorf("path is empty")
 	}
+	if !filepath.IsAbs(p) {
+		return "", fmt.Errorf("path must be absolute: %q", p)
+	}
 	if restrict {
-		if filepath.IsAbs(p) {
-			// Allow absolute paths only when already inside workspace.
-			abs := filepath.Clean(p)
-			if !insideDir(abs, workspace) {
-				return "", fmt.Errorf("outside workspace: %q", p)
-			}
-			return abs, nil
-		}
-		joined := filepath.Join(workspace, filepath.FromSlash(p))
-		abs, err := filepath.Abs(joined)
-		if err != nil {
-			return "", err
-		}
+		abs := filepath.Clean(p)
 		if !insideDir(abs, workspace) {
 			return "", fmt.Errorf("outside workspace: %q", p)
 		}
 		return abs, nil
 	}
-	if filepath.IsAbs(p) {
-		return filepath.Clean(p), nil
-	}
-	abs, err := filepath.Abs(filepath.Join(workspace, filepath.FromSlash(p)))
-	if err != nil {
-		return "", err
-	}
-	return abs, nil
+	return filepath.Clean(p), nil
 }
 
 func insideDir(abs, dir string) bool {

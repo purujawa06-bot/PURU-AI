@@ -52,12 +52,12 @@ func main() {
 	a := &ai.Agent{Config: &config.Config{Workspace: ws, RestrictWorkspace: true}}
 	tools := ai.BuildTools(a, nil)
 	cases := []dumpCase{
-		{"read_file", map[string]any{"path": "hello.txt"}},
-		{"write_file", map[string]any{"path": "written.txt", "content": "hi\nthere\n", "overwrite": true}},
-		{"list_dir", map[string]any{"path": "."}},
-		{"edit_file", map[string]any{"path": "editme.txt", "old_string": "world", "new_string": "Puru"}},
-		{"edit_file_by_line", map[string]any{"path": "hello.txt", "start_line": 2, "content": "LINE-DUA"}},
-		{"append_file", map[string]any{"path": "appendme.txt", "content": "\nappended"}},
+		{"read_file", map[string]any{"path": filepath.Join(ws, "hello.txt")}},
+		{"write_file", map[string]any{"path": filepath.Join(ws, "written.txt"), "content": "hi\nthere\n", "overwrite": true}},
+		{"list_dir", map[string]any{"path": ws}},
+		{"edit_file", map[string]any{"path": filepath.Join(ws, "editme.txt"), "old_string": "world", "new_string": "Puru"}},
+		{"edit_file_by_line", map[string]any{"path": filepath.Join(ws, "hello.txt"), "start_line": 2, "content": "LINE-DUA"}},
+		{"append_file", map[string]any{"path": filepath.Join(ws, "appendme.txt"), "content": "\nappended"}},
 		{"run_shell_command", map[string]any{"action": "run", "command": "echo hi", "timeout": 30}},
 		{"get_env", map[string]any{}},
 		{"manage_schedule", map[string]any{"action": "list"}},

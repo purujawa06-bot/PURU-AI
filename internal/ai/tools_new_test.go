@@ -145,8 +145,8 @@ func TestWorkspaceJail(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(ws, "sub", "a.txt"), []byte("halo"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	er, _ := tools["edit_file"].Run(ctx, map[string]any{"path": "sub/a.txt", "old_string": "halo", "new_string": "hai"})
-	if s, _ := er.(string); s != "File edited: sub/a.txt" {
+	er, _ := tools["edit_file"].Run(ctx, map[string]any{"path": filepath.Join(ws, "sub", "a.txt"), "old_string": "halo", "new_string": "hai"})
+	if s, _ := er.(string); s != "File edited: "+filepath.Join(ws, "sub", "a.txt") {
 		t.Fatalf("edit failed: %v", er)
 	}
 	if b, _ := os.ReadFile(filepath.Join(ws, "sub", "a.txt")); string(b) != "hai" {
@@ -159,11 +159,11 @@ func TestWorkspaceJail(t *testing.T) {
 	}
 	// Try editing with different spacing/newline
 	er, _ = tools["edit_file"].Run(ctx, map[string]any{
-		"path":     "fuzzy.txt",
+		"path":     filepath.Join(ws, "fuzzy.txt"),
 		"old_string": "line1\nline2", // missing spaces and different newline handling
 		"new_string": "replaced",
 	})
-	if s, _ := er.(string); s != "File edited: fuzzy.txt" {
+	if s, _ := er.(string); s != "File edited: "+filepath.Join(ws, "fuzzy.txt") {
 		t.Fatalf("fuzzy edit failed: %v", er)
 	}
 	if b, _ := os.ReadFile(filepath.Join(ws, "fuzzy.txt")); !strings.HasPrefix(string(b), "replaced\nline3") {
@@ -171,7 +171,7 @@ func TestWorkspaceJail(t *testing.T) {
 	}
 
 	// edit outside must fail
-	wo, _ := tools["edit_file"].Run(ctx, map[string]any{"path": "../out.txt", "old_string": "x", "new_string": "y"})
+	wo, _ := tools["edit_file"].Run(ctx, map[string]any{"path": filepath.Join(ws, "..", "out.txt"), "old_string": "x", "new_string": "y"})
 	if m, _ := wo.(map[string]any); m["success"] != false {
 		t.Fatalf("escape edit must fail: %v", wo)
 	}
@@ -179,8 +179,8 @@ func TestWorkspaceJail(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(ws, "b.txt"), []byte("aaa"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	er, _ = tools["edit_file"].Run(ctx, map[string]any{"path": "b.txt", "old_string": "aaa", "new_string": "bbb"})
-	if s, _ := er.(string); s != "File edited: b.txt" {
+	er, _ = tools["edit_file"].Run(ctx, map[string]any{"path": filepath.Join(ws, "b.txt"), "old_string": "aaa", "new_string": "bbb"})
+	if s, _ := er.(string); s != "File edited: "+filepath.Join(ws, "b.txt") {
 		t.Fatalf("edit failed: %v", er)
 	}
 }
@@ -287,39 +287,39 @@ func TestPicoclawStyleResponses(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(ws, "r.txt"), []byte("abc"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	r, _ := tools["read_file"].Run(ctx, map[string]any{"path": "r.txt"})
+	r, _ := tools["read_file"].Run(ctx, map[string]any{"path": filepath.Join(ws, "r.txt")})
 	s, _ := r.(string)
 	if s != "1|abc" {
 		t.Fatalf("read_file = %q, want 1|abc", s)
 	}
-	w, _ := tools["write_file"].Run(ctx, map[string]any{"path": "w.txt", "content": "x"})
-	if ws2, _ := w.(string); ws2 != "File written: w.txt" {
+	w, _ := tools["write_file"].Run(ctx, map[string]any{"path": filepath.Join(ws, "w.txt"), "content": "x"})
+	if ws2, _ := w.(string); ws2 != "File written: "+filepath.Join(ws, "w.txt") {
 		t.Fatalf("write_file = %q", w)
 	}
-	if r, _ := tools["write_file"].Run(ctx, map[string]any{"path": "w.txt", "content": "y"}); hasErrPicoclaw(r) == false {
+	if r, _ := tools["write_file"].Run(ctx, map[string]any{"path": filepath.Join(ws, "w.txt"), "content": "y"}); hasErrPicoclaw(r) == false {
 		t.Fatalf("write tanpa overwrite harus error: %v", r)
 	}
-	l, _ := tools["list_dir"].Run(ctx, map[string]any{"path": "."})
+	l, _ := tools["list_dir"].Run(ctx, map[string]any{"path": ws})
 	if ls, _ := l.(string); !strings.Contains(ls, "FILE: w.txt") {
 		t.Fatalf("list_dir = %q", l)
 	}
-	le, _ := tools["list_dir"].Run(ctx, map[string]any{"path": "kosong-sub-test"})
+	le, _ := tools["list_dir"].Run(ctx, map[string]any{"path": filepath.Join(ws, "kosong-sub-test")})
 	if hasErrPicoclaw(le) == false {
 		t.Fatalf("list_dir path tak ada harus error: %v", le)
 	}
 	if err := os.MkdirAll(filepath.Join(ws, "kosong"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	le, _ = tools["list_dir"].Run(ctx, map[string]any{"path": "kosong"})
+	le, _ = tools["list_dir"].Run(ctx, map[string]any{"path": filepath.Join(ws, "kosong")})
 	if les, _ := le.(string); les == "" {
 		t.Fatalf("list_dir dir kosong tidak boleh string kosong (bikin model looping)")
 	}
-	e, _ := tools["edit_file"].Run(ctx, map[string]any{"path": "w.txt", "old_string": "x", "new_string": "y"})
-	if es, _ := e.(string); es != "File edited: w.txt" {
+	e, _ := tools["edit_file"].Run(ctx, map[string]any{"path": filepath.Join(ws, "w.txt"), "old_string": "x", "new_string": "y"})
+	if es, _ := e.(string); es != "File edited: "+filepath.Join(ws, "w.txt") {
 		t.Fatalf("edit_file = %q", e)
 	}
-	p, _ := tools["append_file"].Run(ctx, map[string]any{"path": "w.txt", "content": "z"})
-	if ps, _ := p.(string); ps != "Appended to w.txt" {
+	p, _ := tools["append_file"].Run(ctx, map[string]any{"path": filepath.Join(ws, "w.txt"), "content": "z"})
+	if ps, _ := p.(string); ps != "Appended to "+filepath.Join(ws, "w.txt") {
 		t.Fatalf("append_file = %q", p)
 	}
 }
@@ -379,7 +379,7 @@ func TestEditSingle(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(ws, "a.txt"), []byte("l1\nl2\nl3\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if r, _ := tools["edit_file"].Run(ctx, map[string]any{"path": "a.txt", "old_string": "l2", "new_string": "L2"}); r.(string) != "File edited: a.txt" {
+	if r, _ := tools["edit_file"].Run(ctx, map[string]any{"path": filepath.Join(ws, "a.txt"), "old_string": "l2", "new_string": "L2"}); r.(string) != "File edited: "+filepath.Join(ws, "a.txt") {
 		t.Fatalf("edit: %v", r)
 	}
 	if b, _ := os.ReadFile(filepath.Join(ws, "a.txt")); string(b) != "l1\nL2\nl3\n" {
@@ -389,19 +389,19 @@ func TestEditSingle(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(ws, "b.txt"), []byte("x\nx\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if r, _ := tools["edit_file"].Run(ctx, map[string]any{"path": "b.txt", "old_string": "x", "new_string": "y"}); !hasErrPicoclaw(r) {
+	if r, _ := tools["edit_file"].Run(ctx, map[string]any{"path": filepath.Join(ws, "b.txt"), "old_string": "x", "new_string": "y"}); !hasErrPicoclaw(r) {
 		t.Fatalf("ambiguous must fail: %v", r)
 	}
 	// missing must fail
-	if r, _ := tools["edit_file"].Run(ctx, map[string]any{"path": "a.txt", "old_string": "nope", "new_string": "y"}); !hasErrPicoclaw(r) {
+	if r, _ := tools["edit_file"].Run(ctx, map[string]any{"path": filepath.Join(ws, "a.txt"), "old_string": "nope", "new_string": "y"}); !hasErrPicoclaw(r) {
 		t.Fatalf("missing must fail: %v", r)
 	}
 	// jail escape must fail
-	if r, _ := tools["edit_file"].Run(ctx, map[string]any{"path": "../x.txt", "old_string": "x", "new_string": "y"}); !hasErrPicoclaw(r) {
+	if r, _ := tools["edit_file"].Run(ctx, map[string]any{"path": filepath.Join(ws, "..", "x.txt"), "old_string": "x", "new_string": "y"}); !hasErrPicoclaw(r) {
 		t.Fatalf("escape must fail: %v", r)
 	}
 	// empty old_string must fail
-	if r, _ := tools["edit_file"].Run(ctx, map[string]any{"path": "a.txt", "old_string": "", "new_string": "y"}); !hasErrPicoclaw(r) {
+	if r, _ := tools["edit_file"].Run(ctx, map[string]any{"path": filepath.Join(ws, "a.txt"), "old_string": "", "new_string": "y"}); !hasErrPicoclaw(r) {
 		t.Fatalf("empty old_string must fail: %v", r)
 	}
 }
