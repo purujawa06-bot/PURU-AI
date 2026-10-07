@@ -1,6 +1,6 @@
 # get_env output
 
-> Runtime env: workspace, platform, Go version, memory usage.
+> Runtime env.
 
 ## args
 
@@ -17,6 +17,6 @@
   "memory_mb": 0,
   "os": "linux",
   "restricted": true,
-  "workspace": "/tmp/puru-tools-dump-810574887"
+  "workspace": "/tmp/puru-tools-dump-453622555"
 }
 ```

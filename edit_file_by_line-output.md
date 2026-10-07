@@ -1,6 +1,6 @@
 # edit_file_by_line output
 
-> Replace lines start_line..end_line (1-based, inclusive) with content; single line when end_line omitted.
+> Replace lines in file.
 
 ## args
 

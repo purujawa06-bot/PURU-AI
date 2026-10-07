@@ -1,6 +1,6 @@
 # write_file output
 
-> Write file; creates parent dirs. overwrite=true replaces the ENTIRE file. JSON escaping applies: \n newline, \\n literal backslash-n.
+> Write file.
 
 ## args
 

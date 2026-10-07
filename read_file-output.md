@@ -1,6 +1,6 @@
 # read_file output
 
-> Read text file; line-numbered output `LINE|content`, 1-based. Partial reads via start_line/length (default 200, max 2000).
+> Read text file.
 
 ## args
 

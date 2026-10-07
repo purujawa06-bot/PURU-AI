@@ -1,6 +1,6 @@
 # run_shell_command output
 
-> Run shell in workspace. background=true returns a sessionId; manage via poll/read/kill/list.
+> Run shell.
 
 ## args
 

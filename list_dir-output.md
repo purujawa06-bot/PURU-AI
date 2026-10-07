@@ -1,6 +1,6 @@
 # list_dir output
 
-> List files and dirs in a folder.
+> List folder.
 
 ## args
 
