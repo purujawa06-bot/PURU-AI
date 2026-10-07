@@ -54,8 +54,7 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 		restrict = a.Config.RestrictWorkspace
 	}
 	mk := func(name string, run func(ctx context.Context, args map[string]any) (any, error)) *Tool {
-		// Single source of truth: internal/ai/tools_schema.json.
-		// Edit the JSON only to change what the model sees.
+		// Single source of truth: allParamsDesc + allToolsDesc in tools_schema.go.
 		desc := toolDescription(name)
 		params := toolParameters(name)
 		return &Tool{Name: name, Description: desc, Parameters: params, Run: func(ctx context.Context, args map[string]any) (any, error) {
