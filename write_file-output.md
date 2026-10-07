@@ -8,12 +8,12 @@
 {
   "content": "hi\nthere\n",
   "overwrite": true,
-  "path": "/tmp/puru-tools-dump-4113842846/written.txt"
+  "path": "/tmp/puru-tools-dump-2243941877/written.txt"
 }
 ```
 
 ## output
 
 ```
-File written: /tmp/puru-tools-dump-4113842846/written.txt
+File written: /tmp/puru-tools-dump-2243941877/written.txt
 ```
