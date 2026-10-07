@@ -1,18 +1,19 @@
 ?   	github.com/purujawa06-bot/PURU-AI	[no test files]
 ?   	github.com/purujawa06-bot/PURU-AI/cmd/cli	[no test files]
 ?   	github.com/purujawa06-bot/PURU-AI/cmd/dump-prompt	[no test files]
-ok  	github.com/purujawa06-bot/PURU-AI/cmd/puru	0.011s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/ai	15.784s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/ai/openai	0.012s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/app	0.063s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/config	0.019s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/health	0.008s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/history	0.020s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/memory	0.007s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/messages	0.008s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/prompt	0.021s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/schedule	0.042s
+?   	github.com/purujawa06-bot/PURU-AI/cmd/dump-tools	[no test files]
+ok  	github.com/purujawa06-bot/PURU-AI/cmd/puru	0.009s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/ai	15.779s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/ai/openai	0.013s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/app	0.043s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/config	0.010s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/health	0.005s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/history	0.024s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/memory	0.008s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/messages	0.012s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/prompt	0.015s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/schedule	0.059s
 ok  	github.com/purujawa06-bot/PURU-AI/internal/skillstate	0.004s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/telegram	0.028s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/tokens	0.023s
-ok  	github.com/purujawa06-bot/PURU-AI/internal/workspace	0.020s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/telegram	0.031s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/tokens	0.022s
+ok  	github.com/purujawa06-bot/PURU-AI/internal/workspace	0.019s
