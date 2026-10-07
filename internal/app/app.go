@@ -499,10 +499,8 @@ func (a *App) previewHook(ctx context.Context, chatID, msgID int64) func(string,
 // toolArgPreview shows the most relevant arg for a tool call.
 func toolArgPreview(name string, args map[string]any) string {
 	switch name {
-	case "read_file", "write_file", "list_dir", "edit_file", "append_file", "telegram_sendfile":
+	case "read_file", "write_file", "list_dir", "edit_file", "edit_file_by_line", "append_file", "telegram_sendfile":
 		return previewStr(args["path"])
-	case "grep":
-		return previewStr(args["keyword"])
 	case "use_skill", "stop_skill":
 		return previewStr(args["name"])
 	case "run_shell_command":

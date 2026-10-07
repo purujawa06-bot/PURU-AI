@@ -39,7 +39,7 @@ type TelegramClient interface {
 const maxSendFileBytes = 20 << 20
 
 // BuildTools returns 14 tools by default: file tools (read_file, write_file,
-// list_dir, grep, edit_file, append_file) + run_shell_command + Telegram tools
+// list_dir, edit_file, edit_file_by_line, append_file) + run_shell_command + Telegram tools
 // (telegram_sendfile, telegram_getuser) + get_env + web_fetch + manage_schedule
 // + skill tools (use_skill, stop_skill). web_search
 // (third-party, opt-in: Google AI Studio with googleSearch grounding and/or
@@ -54,8 +54,7 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 		restrict = a.Config.RestrictWorkspace
 	}
 	mk := func(name string, run func(ctx context.Context, args map[string]any) (any, error)) *Tool {
-		// Single source of truth: internal/ai/tools_schema.json.
-		// Edit the JSON only to change what the model sees.
+		// Single source of truth: allParamsDesc + allToolsDesc in tools_schema.go.
 		desc := toolDescription(name)
 		params := toolParameters(name)
 		return &Tool{Name: name, Description: desc, Parameters: params, Run: func(ctx context.Context, args map[string]any) (any, error) {
@@ -102,18 +101,6 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 				}
 				return text, nil
 			}),
-		"grep": mk("grep",
-			func(ctx context.Context, args map[string]any) (any, error) {
-				limit := int64(50)
-				if _, ok := args["limit"]; ok {
-					limit = argInt(args, "limit")
-				}
-				text, err := grepLocal(ws, restrict, argStr(args, "path"), argStr(args, "keyword"), argStr(args, "ext"), int(limit))
-				if err != nil {
-					return errVal(err)
-				}
-				return text, nil
-			}),
 		"edit_file": mk("edit_file",
 			func(ctx context.Context, args map[string]any) (any, error) {
 				oldText, ok := args["old_string"].(string)
@@ -125,6 +112,19 @@ func BuildTools(a *Agent, opts *ProcessOptions) map[string]*Tool {
 					return errVal(fmt.Errorf("new_string is required"))
 				}
 				if err := editLocalFile(ws, restrict, argStr(args, "path"), oldText, newText); err != nil {
+					return errVal(err)
+				}
+				return fmt.Sprintf("File edited: %s", argStr(args, "path")), nil
+			}),
+		"edit_file_by_line": mk("edit_file_by_line",
+			func(ctx context.Context, args map[string]any) (any, error) {
+				content, ok := args["content"].(string)
+				if !ok {
+					return errVal(fmt.Errorf("content is required"))
+				}
+				start := argInt(args, "start_line")
+				end := argInt(args, "end_line")
+				if err := editLocalFileByLine(ws, restrict, argStr(args, "path"), start, end, content); err != nil {
 					return errVal(err)
 				}
 				return fmt.Sprintf("File edited: %s", argStr(args, "path")), nil

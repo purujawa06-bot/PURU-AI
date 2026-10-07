@@ -96,3 +96,62 @@ jobs:
             echo "push race, retry $i..."
             sleep 5
           done
+
+  # Debug helper: runs representative tool calls via cmd/dump-tools,
+  # uploads per-tool markdowns (e.g. read_file-output.md) as artifacts,
+  # and pushes them to the debug-output-tools branch.
+  dump-tools:
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: dump-tools-debug-output-tools
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+
+      - name: Build tools dump
+        run: go run ./cmd/dump-tools --out tool-dump
+
+      - name: Show summary
+        run: |
+          ls -l tool-dump
+          head -n 40 tool-dump/read_file-output.md
+
+      - name: Upload tool dumps
+        uses: actions/upload-artifact@v5
+        with:
+          name: TOOL-DUMP
+          path: tool-dump/*.md
+          if-no-files-found: error
+
+      - name: Push to debug-output-tools branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          mkdir -p /tmp/tooldump
+          cp "$GITHUB_WORKSPACE/tool-dump/"*.md /tmp/tooldump/
+          rm -rf "$GITHUB_WORKSPACE/tool-dump"
+          for i in 1 2 3 4 5; do
+            git fetch origin debug-output-tools || true
+            if git rev-parse --verify origin/debug-output-tools >/dev/null 2>&1; then
+              git checkout -B debug-output-tools origin/debug-output-tools
+            else
+              git checkout --orphan debug-output-tools
+              git rm -rf . || true
+            fi
+            cp /tmp/tooldump/*.md ./
+            git add *.md
+            git commit -m "Update tool outputs from ${GITHUB_SHA:0:7}" || break
+            if git push origin debug-output-tools; then
+              break
+            fi
+            echo "push race, retry $i..."
+            sleep 5
+          done
