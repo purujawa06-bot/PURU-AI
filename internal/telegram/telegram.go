@@ -7,7 +7,12 @@ package telegram
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
+	"mime"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -21,6 +26,7 @@ import (
 // API wraps a telego bot.
 type API struct {
 	bot *telego.Bot
+	hc  *http.Client
 }
 
 // New builds the bot with the shared HTTP client.
@@ -42,7 +48,7 @@ func newWithServer(token string, hc *http.Client, serverURL string) (*API, error
 	if err != nil {
 		return nil, err
 	}
-	return &API{bot: bot}, nil
+	return &API{bot: bot, hc: hc}, nil
 }
 
 // TelegramError is a non-OK response from the Bot API.
@@ -100,6 +106,17 @@ type Message struct {
 	From      *User
 	Chat      *Chat
 	Text      string
+	// Attachment is set when the user sends a file/photo; Text carries the
+	// message text or the media caption.
+	Attachment *Attachment
+}
+
+// Attachment is a user-sent file (document or photo) to be downloaded.
+type Attachment struct {
+	FileID   string
+	Filename string
+	MimeType string
+	Size     int64
 }
 
 func toUpdate(u telego.Update) Update {
@@ -119,10 +136,40 @@ func toMessage(m *telego.Message) *Message {
 		Text:      m.Text,
 		Chat:      &Chat{ID: m.Chat.ID, Type: m.Chat.Type},
 	}
+	if out.Text == "" {
+		out.Text = m.Caption
+	}
 	if m.From != nil {
 		out.From = &User{ID: m.From.ID, Username: m.From.Username, FirstName: m.From.FirstName, LastName: m.From.LastName}
 	}
+	switch {
+	case m.Document != nil && m.Document.FileID != "":
+		name := m.Document.FileName
+		if name == "" {
+			name = "file_" + m.Document.FileUniqueID + extForMime(m.Document.MimeType)
+		}
+		out.Attachment = &Attachment{FileID: m.Document.FileID, Filename: name, MimeType: m.Document.MimeType, Size: m.Document.FileSize}
+	case len(m.Photo) > 0:
+		largest := m.Photo[0]
+		for _, p := range m.Photo[1:] {
+			if p.Width*p.Height > largest.Width*largest.Height {
+				largest = p
+			}
+		}
+		out.Attachment = &Attachment{FileID: largest.FileID, Filename: "photo_" + largest.FileUniqueID + ".jpg", MimeType: "image/jpeg", Size: int64(largest.FileSize)}
+	}
 	return out
+}
+
+// extForMime maps a MIME type to a preferred extension, defaulting to .bin.
+func extForMime(mimeType string) string {
+	if mimeType == "" {
+		return ".bin"
+	}
+	if exts, err := mime.ExtensionsByType(mimeType); err == nil && len(exts) > 0 {
+		return exts[0]
+	}
+	return ".bin"
 }
 
 // ---------------------------------------------------------------------------
@@ -240,6 +287,37 @@ func (a *API) SendFile(ctx context.Context, chatID int64, filename string, data 
 		Caption:  caption,
 	})
 	return wrapErr("sendDocument", err)
+}
+
+// DownloadFile fetches a user-uploaded file by file ID and writes it to
+// destPath, creating parent dirs. Telegram limits bot downloads to 20MB.
+func (a *API) DownloadFile(ctx context.Context, fileID, destPath string) error {
+	f, err := a.bot.GetFile(ctx, &telego.GetFileParams{FileID: fileID})
+	if err != nil {
+		return wrapErr("getFile", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, a.bot.FileDownloadURL(f.FilePath), nil)
+	if err != nil {
+		return err
+	}
+	resp, err := a.hc.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("download failed: %s", resp.Status)
+	}
+	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+		return err
+	}
+	out, err := os.Create(destPath)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	_, err = io.Copy(out, resp.Body)
+	return err
 }
 
 func optInt(v any) int64 {

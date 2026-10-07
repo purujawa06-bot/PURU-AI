@@ -158,7 +158,7 @@ func TestHandleBlocksUnauthorized(t *testing.T) {
 	}
 }
 
-// /stop tanpa proses berjalan harus false (tak ada yang dihentikan).
+// /stop with no running process should be false (nothing stopped).
 func TestStopUserIdle(t *testing.T) {
 	ws := t.TempDir()
 	a := New(&config.Config{Workspace: ws}, nil, history.New(t.TempDir()), nil, memory.New(ws))
@@ -167,8 +167,8 @@ func TestStopUserIdle(t *testing.T) {
 	}
 }
 
-// /stop harus memanggil cancel sesi dan melepas busy-guard; sesi baru yang
-// mulai setelahnya tidak boleh ikut terlepas oleh goroutine lama.
+// /stop must cancel the session and release the busy guard; a newer session
+// started afterwards must not be evicted by the old goroutine.
 func TestStopUserCancelsAndReleases(t *testing.T) {
 	ws := t.TempDir()
 	a := New(&config.Config{Workspace: ws}, nil, history.New(t.TempDir()), nil, memory.New(ws))
@@ -203,7 +203,7 @@ func TestStopUserCancelsAndReleases(t *testing.T) {
 	}
 }
 
-// Ronde 21: grup diam kecuali /ai. isCommand tetap 4 command instan.
+// Round 21: groups stay silent except /ai. isCommand keeps 4 instant commands.
 func TestIsCommandIgnoresAI(t *testing.T) {
 	for _, c := range []string{"/ai halo", "/ai@bot halo", "/ai"} {
 		if isCommand(c) {

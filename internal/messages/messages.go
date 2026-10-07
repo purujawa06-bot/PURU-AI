@@ -281,21 +281,20 @@ func NetLen(m *Message) int {
 }
 
 // ---------------------------------------------------------------------------
-// Prune dinonaktifkan: history disimpan apa adanya (reasoning, tool-call,
-// tool-result, dan respon kosong dipertahankan persis setelah turn).
-// Pemangkasan hanya via compact (memory.Compact) saat kena history_token_limit.
-// PruneMessages/PruneTurn dipertahankan sebagai no-op agar pemanggil lama
-// tidak rusak.
+// Pruning is disabled: history is kept as-is (reasoning, tool-call,
+// tool-result, and empty responses preserved exactly after each turn).
+// Reduction only via compact (memory.Compact) when history_token_limit hits.
+// PruneMessages/PruneTurn are kept as no-ops so old callers don't break.
 // ---------------------------------------------------------------------------
 
-// PruneMessages adalah no-op: kembalikan input apa adanya tanpa menghapus
-// reasoning, tool parts, maupun pesan kosong.
+// PruneMessages is a no-op: return the input as-is without dropping
+// reasoning, tool parts, or empty messages.
 func PruneMessages(msgs []*Message) []*Message {
 	return msgs
 }
 
-// PruneTurn adalah no-op: kembalikan input apa adanya. Jangan strip reasoning
-// maupun drop pesan kosong — biarkan compact yang bekerja saat kena limit.
+// PruneTurn is a no-op: return the input as-is. Don't strip reasoning or
+// drop empty messages — let compaction handle it when the limit hits.
 func PruneTurn(msgs []*Message) []*Message {
 	return msgs
 }
@@ -427,10 +426,10 @@ func CapUserTurns(history []*Message) []*Message {
 	return EnsureStartsWithUser(result)
 }
 
-// SanitizeHistoryMessages hanya membatasi ukuran (8k char per message/part)
-// agar tool output besar tidak menumpuk. Tidak menghapus apa pun: reasoning,
-// tool-call/tool-result, dan respon kosong (whitespace/null) dipertahankan
-// apa adanya agar agent tidak halusinasi. Pemangkasan hanya via compact.
+// SanitizeHistoryMessages only caps sizes (8k chars per message/part)
+// so large tool outputs don't pile up. It drops nothing: reasoning,
+// tool-call/tool-result, and empty responses (whitespace/null) are
+// preserved as-is so the agent can't hallucinate. Reduction only via compact.
 func SanitizeHistoryMessages(msgs []*Message) []*Message {
 	out := make([]*Message, 0, len(msgs))
 	for _, m := range msgs {
@@ -504,7 +503,7 @@ func SanitizeMessage(m *Message) *Message {
 			out = append(out, *p)
 		}
 		if len(out) == 0 {
-			// Pertahankan pesan kosong apa adanya (jangan di-drop).
+			// Keep empty messages as-is (do not drop).
 			return c
 		}
 		SetContentParts(c, out)

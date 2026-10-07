@@ -62,7 +62,7 @@ func TestCompactSummarizesToMD(t *testing.T) {
 	if !strings.Contains(string(b), "## Done") {
 		t.Fatalf("file harus ringkasan model: %q", b)
 	}
-	// Ringkasan terbaru tersedia untuk inject ke system prompt.
+	// Latest summary is available for injection into the system prompt.
 	if got := m.Latest(); !strings.Contains(got, "## Done") {
 		t.Fatalf("Latest = %q", got)
 	}
@@ -71,7 +71,7 @@ func TestCompactSummarizesToMD(t *testing.T) {
 	if got := empty.Latest(); got != "" {
 		t.Fatalf("Latest kosong = %q", got)
 	}
-	// MEMORY.md tidak boleh disentuh compactor.
+	// MEMORY.md must not be touched by the compactor.
 	if _, err := os.Stat(filepath.Join(ws, "memory", "MEMORY.md")); !os.IsNotExist(err) {
 		t.Errorf("MEMORY.md tidak boleh ditulis compactor")
 	}

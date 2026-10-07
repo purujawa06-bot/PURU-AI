@@ -50,7 +50,7 @@ func groupRSS(pgid int) int64 {
 		}
 		b, err := os.ReadFile("/proc/" + e.Name() + "/stat")
 		if err != nil {
-			continue // proses sudah mati / tak terlihat
+			continue // process already dead / not visible
 		}
 		g, rss, ok := parseProcStat(b)
 		if ok && g == pgid {

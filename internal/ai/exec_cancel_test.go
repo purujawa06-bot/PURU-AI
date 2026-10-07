@@ -16,28 +16,28 @@ func sleepCmd() string {
 	return "sleep 30"
 }
 
-// Cancel dari /stop (parent ctx) harus menghentikan run blocking dengan
-// cepat — bukan menunggu timeout sendiri. Bukan timeout: flag TimedOut
-// harus false agar diagnosis tidak menyesatkan.
+// Cancel from /stop (parent ctx) must stop a blocking run quickly — not by
+// waiting out its own timeout. Not a timeout: TimedOut must be false so the
+// diagnosis stays truthful.
 func TestRunExecParentCancelStopsBlocking(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	time.AfterFunc(500*time.Millisecond, cancel)
 	start := time.Now()
 	res, _ := runExec(ctx, t.TempDir(), sleepCmd(), 120, 64, false)
 	if elapsed := time.Since(start); elapsed > 60*time.Second {
-		t.Fatalf("cancel tak menghentikan run blocking: %v", elapsed)
+		t.Fatalf("cancel did not stop blocking run: %v", elapsed)
 	}
 	m, _ := res.(execResult)
 	if m.Success {
-		t.Fatalf("run yang dibatalkan harus gagal: %+v", res)
+		t.Fatalf("cancelled run should fail: %+v", res)
 	}
 	if m.TimedOut {
 		t.Fatalf("cancel user bukan timeout: %+v", res)
 	}
 }
 
-// Sesi background hidup lintas request (dipoll/dikill belakangan), jadi
-// cancel request (/stop) tidak boleh membunuhnya — matikan via kill.
+// Background sessions live across requests (polled/killed later), so a
+// request cancel (/stop) must not kill them — use kill instead.
 func TestRunExecBackgroundSurvivesParentCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -45,13 +45,13 @@ func TestRunExecBackgroundSurvivesParentCancel(t *testing.T) {
 	m, _ := out.(map[string]any)
 	sid, _ := m["sessionId"].(string)
 	if m["success"] != true || sid == "" {
-		t.Fatalf("background dengan parent cancel harus tetap jalan: %v", out)
+		t.Fatalf("background with parent cancel should still run: %v", out)
 	}
 	defer killExec(sid)
 	p, _ := pollExec(sid)
 	pm, _ := p.(map[string]any)
 	if pm["status"] != "running" {
-		t.Fatalf("background harus tetap running walau parent cancel: %v", p)
+		t.Fatalf("background must stay running despite parent cancel: %v", p)
 	}
 	if _, err := killExec(sid); err != nil {
 		t.Fatal(err)

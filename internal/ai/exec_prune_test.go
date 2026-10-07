@@ -7,8 +7,8 @@ import (
 	"time"
 )
 
-// Map sesi exec tidak boleh tumbuh tanpa batas: sesi selesai terlama
-// di-evict bila melebihi maxExecSessions, sesi running tak pernah di-evict.
+// The exec session map must not grow unbounded: the oldest finished
+// sessions are evicted beyond maxExecSessions; running ones are never evicted.
 func TestPruneSessionsCapsFinished(t *testing.T) {
 	sessionsMu.Lock()
 	saved := sessions
@@ -28,16 +28,16 @@ func TestPruneSessionsCapsFinished(t *testing.T) {
 		t.Fatalf("sesi = %d, want <= %d", len(sessions), maxExecSessions)
 	}
 	if _, ok := sessions["sess_prune_running"]; !ok {
-		t.Fatalf("sesi running tidak boleh di-evict")
+		t.Fatalf("running session must not be evicted")
 	}
 	if _, ok := sessions["sess_prune_000"]; ok {
-		t.Fatalf("sesi selesai terlama harus di-evict lebih dulu")
+		t.Fatalf("oldest finished session should be evicted first")
 	}
 }
 
-// exec read harus membawa status diagnosis yang sama dengan poll: status,
-// timed_out, memory_limited — agar AI tahu kenapa proses berhenti tanpa
-// dua kali panggil.
+// exec read must carry the same diagnosis fields as poll: status,
+// timed_out, memory_limited — so the AI knows why a process stopped
+// without a second call.
 func TestReadExecCarriesStatusFlags(t *testing.T) {
 	sessionsMu.Lock()
 	saved := sessions
@@ -72,16 +72,16 @@ func TestReadExecCarriesStatusFlags(t *testing.T) {
 		t.Fatalf("flag diagnosis hilang: %v", m)
 	}
 	if _, ok := m["output"]; !ok {
-		t.Fatalf("output harus tetap ada: %v", m)
+		t.Fatalf("output must be kept: %v", m)
 	}
 	if _, err := readExec("sess_tidak_ada"); err == nil {
-		t.Fatalf("read sesi tak dikenal harus error")
+		t.Fatalf("read on unknown session should error")
 	}
 }
 
-// killExec harus langsung menandai sesi selesai: tanpa ini sesi killed tetap
-// running=true sampai watcher cmd.Wait() jalan, sehingga poll/read/list
-// menyesatkan di jeda tersebut.
+// killExec must mark the session finished immediately: without this a
+// killed session stays running=true until the cmd.Wait() watcher fires,
+// misleading poll/read/list during that gap.
 func TestKillExecMarksFinishedImmediately(t *testing.T) {
 	sessionsMu.Lock()
 	saved := sessions
@@ -114,10 +114,10 @@ func TestKillExecMarksFinishedImmediately(t *testing.T) {
 	}
 	sess, _ := lookupSession("sess_kill_now")
 	if running, _, _, _ := sess.snapshot(); running {
-		t.Fatalf("sesi killed harus langsung finished (running=false)")
+		t.Fatalf("killed session must be finished immediately (running=false)")
 	}
 
-	// Sesi yang sudah selesai tak boleh dilaporkan killed ulang.
+	// An already-finished session must not be reported as killed again.
 	got2, err := killExec("sess_kill_now")
 	if err != nil {
 		t.Fatalf("killExec kedua: %v", err)
@@ -127,6 +127,6 @@ func TestKillExecMarksFinishedImmediately(t *testing.T) {
 		t.Fatalf("status = %v, want already finished", m2["status"])
 	}
 	if _, err := killExec("sess_tidak_ada"); err == nil {
-		t.Fatalf("kill sesi tak dikenal harus error")
+		t.Fatalf("kill on unknown session should error")
 	}
 }

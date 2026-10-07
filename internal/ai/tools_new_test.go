@@ -15,7 +15,7 @@ func testAgent(ws string) *Agent {
 	return &Agent{Config: &config.Config{Workspace: ws, RestrictWorkspace: true}}
 }
 
-// Setiap tool harus punya schema parameters yang valid JSON object (provider
+// Every tool must have a valid JSON object as parameters schema (provider
 // OpenAI-compatible strict menolak properties:null / parameters null).
 func TestToolSchemasValid(t *testing.T) {
 	tools := BuildTools(testAgent(t.TempDir()), nil)
@@ -333,7 +333,7 @@ func hasErrPicoclaw(v any) bool {
 	return strings.TrimSpace(e) != ""
 }
 
-// Output exec dipotong saat capture: buffer tidak pernah lebih dari cap,
+// Exec output is truncated at capture: buffer never exceeds cap,
 // kelebihan ditandai ...[truncated, total X].
 func TestCappedWriterTruncates(t *testing.T) {
 	w := &cappedWriter{max: 100}

@@ -1,5 +1,5 @@
 // Package app: slim Telegram handler for the lightweight local assistant.
-// Text only. No uploads, no vision, no web, no usage tracking.
+// Text + user file uploads (saved to <workspace>/user_upload).
 // Includes Picoclaw cron-like scheduled tasks via the schedule tool + runner.
 package app
 
@@ -8,6 +8,7 @@ import (
 	"errors"
 	"log"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -120,7 +121,7 @@ func (a *App) Handle(ctx context.Context, upd *telegram.Update) error {
 		return a.safeReply(ctx, msg, "⛔ Sorry, you are not registered to use this bot.", true)
 	}
 
-	if strings.TrimSpace(msg.Text) == "" {
+	if strings.TrimSpace(msg.Text) == "" && msg.Attachment == nil {
 		return nil
 	}
 
@@ -138,7 +139,7 @@ func (a *App) Handle(ctx context.Context, upd *telegram.Update) error {
 		if !ok {
 			return nil
 		}
-		if strings.TrimSpace(rest) == "" {
+		if strings.TrimSpace(rest) == "" && msg.Attachment == nil {
 			if a.tg == nil {
 				return nil
 			}
@@ -410,9 +411,50 @@ func (a *App) maybeCompactWithFeedback(ctx context.Context, userID int64, stored
 	return kept
 }
 
+// uniqueUploadName sanitizes a user filename (strips path components) and
+// picks a non-colliding name inside <workspace>/user_upload by appending
+// "-N" before the extension.
+func uniqueUploadName(workspace, name string) string {
+	name = filepath.Base(strings.TrimSpace(name))
+	if name == "" || name == "." || name == string(filepath.Separator) {
+		name = "upload.bin"
+	}
+	ext := filepath.Ext(name)
+	stem := strings.TrimSuffix(name, ext)
+	dir := filepath.Join(workspace, "user_upload")
+	for i := 0; ; i++ {
+		candidate := name
+		if i > 0 {
+			candidate = stem + "-" + strconv.Itoa(i) + ext
+		}
+		if _, err := os.Stat(filepath.Join(dir, candidate)); os.IsNotExist(err) {
+			return candidate
+		}
+	}
+}
+
 func (a *App) processMessage(ctx context.Context, msg *telegram.Message, userMessage string) error {
 	userID := msg.From.ID
 	stored := a.hist.Get(userID)
+
+	if msg.Attachment != nil && a.tg != nil && a.cfg != nil {
+		ws := a.cfg.Workspace
+		if strings.TrimSpace(ws) == "" {
+			ws = "."
+		}
+		dest := filepath.Join(ws, "user_upload", uniqueUploadName(ws, msg.Attachment.Filename))
+		if abs, err := filepath.Abs(dest); err == nil {
+			dest = abs
+		}
+		if err := a.tg.DownloadFile(ctx, msg.Attachment.FileID, dest); err != nil {
+			log.Printf("[app] download attachment user %d: %v", userID, err)
+			return a.safeReply(ctx, msg, "⛔ Failed to download the uploaded file: "+err.Error(), true)
+		}
+		if strings.TrimSpace(userMessage) != "" {
+			userMessage += "\n\n"
+		}
+		userMessage += "User uploaded file in " + dest
+	}
 
 	thID, err := a.sendThinking(ctx, msg)
 	if err != nil {

@@ -7,8 +7,8 @@ import (
 	"testing"
 )
 
-// resolveWorkdir harus menolak cwd yang tak ada / bukan direktori dengan
-// pesan jelas, agar exec tak gagal di cmd.Start dengan error chdir generik.
+// resolveWorkdir must reject a missing/non-directory cwd with a clear
+// message, so exec doesn't fail inside cmd.Start with a generic chdir error.
 func TestResolveWorkdirValidatesDir(t *testing.T) {
 	ws := t.TempDir()
 

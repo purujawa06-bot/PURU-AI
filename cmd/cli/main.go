@@ -102,7 +102,7 @@ func process(ctx context.Context, agent *ai.Agent, hist *history.Store, mem *mem
 	}
 	res := agent.ProcessMessage(ctx, prompt, stored, opts)
 	saved := append(append([]*messages.Message{}, stored...), userMsg(prompt)...)
-	// Simpan apa adanya; tanpa prune — biarkan compact yang bekerja.
+	// Keep as-is; no pruning — let compaction handle it.
 	saved = append(saved, messages.SanitizeHistoryMessages(res.ResponseMessages)...)
 	_ = hist.Set(chatID, saved)
 	return res.Text

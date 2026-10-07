@@ -63,8 +63,8 @@ func insideDir(abs, dir string) bool {
 }
 
 // resolveWorkdir jails exec workdir the same way. Empty = workspace.
-// Hasil selalu dipastikan ada dan berupa direktori agar cmd.Start tak gagal
-// dengan pesan chdir generik — AI dapat pesan jelas untuk koreksi mandiri.
+// Result is guaranteed to exist and be a directory so cmd.Start doesn't fail
+// with a generic chdir message — the AI gets a clear message for self-correction.
 func resolveWorkdir(workspace string, restrict bool, w string) (string, error) {
 	if strings.TrimSpace(w) == "" {
 		if strings.TrimSpace(workspace) == "" {

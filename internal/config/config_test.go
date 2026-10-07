@@ -9,7 +9,7 @@ import (
 
 func writeCfg(t *testing.T, content string) string {
 	t.Helper()
-	// Pastikan ambient CONFIG env (CI/PaaS) tidak membajak Load berbasis file.
+	// Ensure ambient CONFIG env (CI/PaaS) does not hijack file-based Load.
 	t.Setenv("CONFIG", "")
 	dir := t.TempDir()
 	p := filepath.Join(dir, "config.json")
@@ -93,7 +93,7 @@ func TestLoadRejectsEmptyToken(t *testing.T) {
 
 func TestLoadFromEnvCONFIG(t *testing.T) {
 	t.Setenv("CONFIG", `{"telegram_bot_token":"env-token","model":{"base_url":"http://m/v1","model":"puru"}}`)
-	// Path sengaja ngaco — harus diabaikan saat CONFIG set.
+	// Bogus path on purpose — must be ignored when CONFIG is set.
 	c, err := Load("/tmp/does-not-exist-xyz.json")
 	if err != nil {
 		t.Fatal(err)
@@ -104,12 +104,12 @@ func TestLoadFromEnvCONFIG(t *testing.T) {
 	if c.MaxIterations != DefaultMaxIterations {
 		t.Errorf("defaults harus diterapkan dari env, got %d", c.MaxIterations)
 	}
-	// Invalid JSON di CONFIG harus error.
+	// Invalid JSON in CONFIG must error.
 	t.Setenv("CONFIG", `{bukan-json`)
 	if _, err := Load("/tmp/does-not-exist-xyz.json"); err == nil {
 		t.Errorf("expected error untuk CONFIG invalid JSON")
 	}
-	// CONFIG kosong = fallback ke file seperti biasa.
+	// Empty CONFIG = fall back to file as usual.
 	t.Setenv("CONFIG", "")
 	p := writeCfg(t, `{"telegram_bot_token":"x","model":{"base_url":"http://m/v1","model":"puru"}}`)
 	if _, err := Load(p); err != nil {

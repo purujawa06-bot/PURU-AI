@@ -78,7 +78,7 @@ func TestWebFetchRejectsNonHTTP(t *testing.T) {
 	out, _ := tools["web_fetch"].Run(context.Background(), map[string]any{"url": "file:///etc/passwd"})
 	m, _ := out.(map[string]any)
 	if m["success"] != false {
-		t.Fatalf("web_fetch file:// harus success=false: %v", out)
+		t.Fatalf("web_fetch file:// should be success=false: %v", out)
 	}
 }
 
@@ -543,7 +543,7 @@ func TestFetchDirectPagination(t *testing.T) {
 
 func TestFetchDirectRejects(t *testing.T) {
 	if _, err := fetchDirectFetch(context.Background(), "file:///etc/passwd", "text", 1, 100); err == nil {
-		t.Fatalf("file:// harus ditolak")
+		t.Fatalf("file:// should be rejected")
 	}
 	if _, err := runWebFetch(context.Background(), "file:///etc/passwd", "text", 1, 100); err == nil {
 		t.Fatalf("host non-http harus ditolak")

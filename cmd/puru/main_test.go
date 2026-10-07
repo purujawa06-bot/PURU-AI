@@ -82,7 +82,7 @@ func TestWriteConfigJSON(t *testing.T) {
 		t.Fatalf("unexpected token: %v", got)
 	}
 	fi, _ := os.Stat(path)
-	// Windows tidak menerapkan mode unix 0600 (selalu 0666) — skip di sana.
+	// Windows does not apply unix mode 0600 (always 0666) — skip there.
 	if runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600 {
 		t.Fatalf("expected 0600, got %o", fi.Mode().Perm())
 	}

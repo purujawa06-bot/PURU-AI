@@ -199,9 +199,9 @@ func runExec(parent context.Context, dir, command string, timeoutSec, memMB int,
 		parent = context.Background()
 	}
 	if background {
-		// Sesi background hidup lintas request (dipoll/diread/dikill belakangan),
-		// jadi timeout-nya dilepas dari cancel request: /stop hanya menghentikan
-		// run agent yang sedang berjalan, bukan sesi background (pakai kill).
+		// Background sessions live across requests (polled/read/killed later),
+		// so their timeout is detached from the request cancel context: /stop only
+		// stops the running agent, not a background session (use kill for that).
 		parent = context.WithoutCancel(parent)
 	}
 	memMB = clampMemMB(memMB)
@@ -270,9 +270,9 @@ func runExec(parent context.Context, dir, command string, timeoutSec, memMB int,
 		return map[string]any{"success": true, "sessionId": sessionID, "status": "running"}, nil
 	}
 
-	// Wait for completion if not background. /stop (parent ctx cancel) ikut
-	// membunuh grup proses agar run blocking langsung berhenti, bukan nunggu
-	// timeout sendiri (maks 300 dtk).
+	// Wait for completion if not background. /stop (parent ctx cancel) also
+	// kills the process group so a blocking run stops immediately instead of
+	// waiting out its own timeout (max 300s).
 	for {
 		running, _, _, start := sess.snapshot()
 		if !running {
@@ -394,8 +394,8 @@ func killExec(sessionID string) (any, error) {
 		if sess.Cmd != nil && sess.Cmd.Process != nil {
 			sess.requestTerminate(sess.Cmd.Process.Pid)
 		}
-		// Tandai selesai langsung agar poll/read/list tak lagi lihat
-		// running=true selama jeda sampai watcher cmd.Wait() jalan.
+		// Mark finished immediately so poll/read/list no longer report
+		// running=true during the gap before the cmd.Wait() watcher fires.
 		sess.finish(timedOut, memLimited)
 		return map[string]any{"sessionId": sessionID, "status": "killed"}, nil
 	}
