@@ -1,6 +1,6 @@
 # get_env output
 
-> Runtime env.
+> Return runtime environment information: OS, architecture, Go version, workspace path, workspace-restriction flag, and Go memory usage (MB). Use to diagnose the environment instead of shelling out.
 
 ## args
 
@@ -17,6 +17,6 @@
   "memory_mb": 0,
   "os": "linux",
   "restricted": true,
-  "workspace": "/tmp/puru-tools-dump-3047584055"
+  "workspace": "/tmp/puru-tools-dump-4113842846"
 }
 ```

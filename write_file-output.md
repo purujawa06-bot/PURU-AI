@@ -1,6 +1,6 @@
 # write_file output
 
-> Write file.
+> Write text to a file, creating parent directories as needed. Fails if the file exists unless overwrite is true. Use edit_file for targeted changes to existing files.
 
 ## args
 
@@ -8,12 +8,12 @@
 {
   "content": "hi\nthere\n",
   "overwrite": true,
-  "path": "written.txt"
+  "path": "/tmp/puru-tools-dump-4113842846/written.txt"
 }
 ```
 
 ## output
 
 ```
-File written: written.txt
+File written: /tmp/puru-tools-dump-4113842846/written.txt
 ```

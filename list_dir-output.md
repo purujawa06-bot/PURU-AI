@@ -1,12 +1,12 @@
 # list_dir output
 
-> List folder.
+> List the entries of a directory (files and subfolders). Path follows the same absolute-path rules as read_file. Prefer this over run_shell_command ls for browsing the workspace.
 
 ## args
 
 ```json
 {
-  "path": "."
+  "path": "/tmp/puru-tools-dump-4113842846"
 }
 ```
 

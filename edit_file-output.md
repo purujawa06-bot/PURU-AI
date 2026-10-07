@@ -1,6 +1,6 @@
 # edit_file output
 
-> Replace text in file.
+> Replace an exact occurrence of old_string with new_string in a file. old_string must match exactly once; include surrounding context to make it unique. Use edit_file_by_line when you only know line numbers.
 
 ## args
 
@@ -8,12 +8,12 @@
 {
   "new_string": "Puru",
   "old_string": "world",
-  "path": "editme.txt"
+  "path": "/tmp/puru-tools-dump-4113842846/editme.txt"
 }
 ```
 
 ## output
 
 ```
-File edited: editme.txt
+File edited: /tmp/puru-tools-dump-4113842846/editme.txt
 ```
