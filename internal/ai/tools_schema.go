@@ -6,7 +6,7 @@ import "fmt"
 // description. Each param name is defined once here and reused by all
 // tools — path is path everywhere, start_line is start_line everywhere.
 var allParamsDesc = map[string]string{
-	"path":          "Absolute path on the host filesystem. Relative paths are rejected. When the workspace jail is active, the path must still live inside the workspace.",
+	"path":          "Absolute path to the workspace. If get_env restricted is true, it may only point to the workspace and must not point outside it.",
 	"start_line":    "1-based line number to start from. Default 1.",
 	"length":        "Maximum number of lines to return.",
 	"content":       "Text content to write or insert.",
