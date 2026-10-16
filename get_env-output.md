@@ -13,10 +13,10 @@
 ```
 {
   "arch": "amd64",
-  "go_ver": "go1.26.8",
+  "go_ver": "go1.26.9",
   "memory_mb": 0,
   "os": "linux",
   "restricted": true,
-  "workspace": "/tmp/puru-tools-dump-1072193900"
+  "workspace": "/tmp/puru-tools-dump-853184445"
 }
 ```
