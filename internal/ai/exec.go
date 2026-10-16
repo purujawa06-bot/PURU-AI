@@ -165,7 +165,7 @@ func (w *cappedWriter) String() string {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.cut {
-		return string(w.buf) + fmt.Sprintf("\n...[truncated, total %s]", formatSize(int64(w.total)))
+		return string(w.buf) + outputf("run_shell_command.truncated", formatSize(int64(w.total)))
 	}
 	return string(w.buf)
 }
@@ -193,7 +193,7 @@ func (s *execSession) finish(timedOut bool, memLimited bool) {
 // the shell — children can't leak RAM.
 func runExec(parent context.Context, dir, command string, timeoutSec, memMB int, background bool) (any, error) {
 	if strings.TrimSpace(command) == "" {
-		return execResult{Success: false, ExitCode: -1, Output: "command is empty"}, nil
+		return execResult{Success: false, ExitCode: -1, Output: outputText("run_shell_command.empty_command")}, nil
 	}
 	if parent == nil {
 		parent = context.Background()
@@ -343,13 +343,13 @@ func pruneSessionsLocked() {
 func pollExec(sessionID string) (any, error) {
 	sess, ok := lookupSession(sessionID)
 	if !ok {
-		return nil, fmt.Errorf("session not found: %s", sessionID)
+		return nil, outputErr("run_shell_command.session_not_found", sessionID)
 	}
 
 	running, timedOut, memLimited, _ := sess.snapshot()
-	status := "running"
+	status := outputText("run_shell_command.status_running")
 	if !running {
-		status = "finished"
+		status = outputText("run_shell_command.status_finished")
 	}
 
 	return map[string]any{
@@ -364,13 +364,13 @@ func pollExec(sessionID string) (any, error) {
 func readExec(sessionID string) (any, error) {
 	sess, ok := lookupSession(sessionID)
 	if !ok {
-		return nil, fmt.Errorf("session not found: %s", sessionID)
+		return nil, outputErr("run_shell_command.session_not_found", sessionID)
 	}
 
 	running, timedOut, memLimited, _ := sess.snapshot()
-	status := "running"
+	status := outputText("run_shell_command.status_running")
 	if !running {
-		status = "finished"
+		status = outputText("run_shell_command.status_finished")
 	}
 	return map[string]any{
 		"sessionId":      sess.ID,
@@ -385,7 +385,7 @@ func readExec(sessionID string) (any, error) {
 func killExec(sessionID string) (any, error) {
 	sess, ok := lookupSession(sessionID)
 	if !ok {
-		return nil, fmt.Errorf("session not found: %s", sessionID)
+		return nil, outputErr("run_shell_command.session_not_found", sessionID)
 	}
 
 	running, timedOut, memLimited, _ := sess.snapshot()
@@ -397,9 +397,9 @@ func killExec(sessionID string) (any, error) {
 		// Mark finished immediately so poll/read/list no longer report
 		// running=true during the gap before the cmd.Wait() watcher fires.
 		sess.finish(timedOut, memLimited)
-		return map[string]any{"sessionId": sessionID, "status": "killed"}, nil
+		return map[string]any{"sessionId": sessionID, "status": outputText("run_shell_command.status_killed")}, nil
 	}
-	return map[string]any{"sessionId": sessionID, "status": "already finished"}, nil
+	return map[string]any{"sessionId": sessionID, "status": outputText("run_shell_command.status_already_finished")}, nil
 }
 
 func listSessions() any {
@@ -415,7 +415,7 @@ func listSessions() any {
 		})
 	}
 	if len(list) == 0 {
-		return "No active sessions."
+		return outputText("run_shell_command.no_sessions")
 	}
 	sort.Slice(list, func(i, j int) bool {
 		si, _ := list[i]["sessionId"].(string)

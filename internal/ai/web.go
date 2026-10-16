@@ -31,8 +31,8 @@ const (
 	defaultSearchN   = 5
 	// Default paginated fetch length (lines).
 	defaultFetchLines = 100
-	maxFetchLines = 1000
-	webBrowserUA       = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+	maxFetchLines     = 1000
+	webBrowserUA      = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
 )
 
 // aistudioAPIBase is a var (not const) so tests
@@ -64,7 +64,7 @@ type aistudioPart struct {
 
 type aistudioGenerateRequest struct {
 	Contents []aistudioContent `json:"contents"`
-	Tools    []map[string]any `json:"tools"`
+	Tools    []map[string]any  `json:"tools"`
 }
 
 type aistudioWebLink struct {
@@ -139,7 +139,7 @@ func clampFetchLength(n int64) int {
 
 func validateSearchQuery(q string) error {
 	if strings.TrimSpace(q) == "" {
-		return fmt.Errorf("query is required")
+		return outputErr("web_search.query_required")
 	}
 	return nil
 }
@@ -148,21 +148,21 @@ func validateSearchQuery(q string) error {
 func validateFetchURL(raw string) (string, error) {
 	s := strings.TrimSpace(raw)
 	if s == "" {
-		return "", fmt.Errorf("url is required")
+		return "", outputErr("web_fetch.url_required")
 	}
 	u, err := url.Parse(s)
 	if err != nil {
-		return "", fmt.Errorf("invalid url: %v", err)
+		return "", outputErr("web_fetch.invalid_url", err)
 	}
 	if u.Scheme != "http" && u.Scheme != "https" {
-		return "", fmt.Errorf("url must be http/https (rejected %s)", u.Scheme)
+		return "", outputErr("web_fetch.scheme_rejected", u.Scheme)
 	}
 	if u.Host == "" {
-		return "", fmt.Errorf("url must have a host")
+		return "", outputErr("web_fetch.host_required")
 	}
 	host := u.Hostname()
 	if !allowPrivateFetchHost && isPrivateHost(host) {
-		return "", fmt.Errorf("local/private host rejected: %s", host)
+		return "", outputErr("web_fetch.private_rejected", host)
 	}
 	return s, nil
 }
@@ -241,7 +241,7 @@ func fetchAIStudioSearch(ctx context.Context, cfg config.AIStudioSearchConfig, q
 	model := strings.TrimSpace(cfg.Model)
 	key := strings.TrimSpace(cfg.APIKey)
 	if model == "" || key == "" {
-		return nil, fmt.Errorf("web_search aistudio model/api key is not configured")
+		return nil, outputErr("web_search.aistudio_unconfigured")
 	}
 	payload, err := json.Marshal(aistudioGenerateRequest{
 		Contents: []aistudioContent{{
@@ -282,21 +282,21 @@ func fetchAIStudioSearch(ctx context.Context, cfg config.AIStudioSearchConfig, q
 		if json.Unmarshal(b, &parsed) == nil && parsed.Error != nil && strings.TrimSpace(parsed.Error.Message) != "" {
 			msg = strings.TrimSpace(parsed.Error.Message)
 		}
-		return nil, fmt.Errorf("search API HTTP %d: %s", resp.StatusCode, msg)
+		return nil, outputErr("web_search.aistudio_http", resp.StatusCode, msg)
 	}
 	var sr aistudioResponse
 	if err := json.Unmarshal(b, &sr); err != nil {
-		return nil, fmt.Errorf("search API bad JSON: %v", err)
+		return nil, outputErr("web_search.aistudio_bad_json", err)
 	}
 	if sr.Error != nil {
 		msg := strings.TrimSpace(sr.Error.Message)
 		if msg == "" {
-			msg = "search API error"
+			msg = outputText("web_search.aistudio_api_error")
 		}
 		return nil, fmt.Errorf("%s", msg)
 	}
 	if len(sr.Candidates) == 0 {
-		return nil, fmt.Errorf("search API returned no candidates")
+		return nil, outputErr("web_search.aistudio_no_candidates")
 	}
 	cand := sr.Candidates[0]
 	var answer strings.Builder
@@ -340,13 +340,13 @@ func fetchAIStudioSearch(ctx context.Context, cfg config.AIStudioSearchConfig, q
 	// tool still returns something useful.
 	if len(out) == 0 {
 		if answerText == "" {
-			return nil, fmt.Errorf("search API returned no results (check connection/query)")
+			return nil, outputErr("web_search.no_results")
 		}
 		snip := answerText
 		if len([]rune(snip)) > 1500 {
 			snip = strings.TrimSpace(string([]rune(snip)[:1500]))
 		}
-		return []webResult{{Title: "AI Studio answer", URL: "", Snippet: snip}}, nil
+		return []webResult{{Title: outputText("web_search.answer_title"), URL: "", Snippet: snip}}, nil
 	}
 	// Attach a short excerpt of the grounded answer to the first result
 	// so the caller gets context even when chunks carry no snippets.
@@ -389,7 +389,7 @@ type exaSearchResponse struct {
 func fetchExaSearch(ctx context.Context, cfg config.ExaSearchConfig, query string, limit int) ([]webResult, error) {
 	key := strings.TrimSpace(cfg.APIKey)
 	if key == "" {
-		return nil, fmt.Errorf("web_search exa api key is not configured")
+		return nil, outputErr("web_search.exa_unconfigured")
 	}
 	payload, err := json.Marshal(exaSearchRequest{
 		Query:      strings.TrimSpace(query),
@@ -427,11 +427,11 @@ func fetchExaSearch(ctx context.Context, cfg config.ExaSearchConfig, query strin
 		if len(msg) > 500 {
 			msg = strings.TrimSpace(msg[:500])
 		}
-		return nil, fmt.Errorf("exa search HTTP %d: %s", resp.StatusCode, msg)
+		return nil, outputErr("web_search.exa_http", resp.StatusCode, msg)
 	}
 	var sr exaSearchResponse
 	if err := json.Unmarshal(b, &sr); err != nil {
-		return nil, fmt.Errorf("exa search bad JSON: %v", err)
+		return nil, outputErr("web_search.exa_bad_json", err)
 	}
 	var out []webResult
 	for _, r := range sr.Results {
@@ -462,7 +462,7 @@ func fetchExaSearch(ctx context.Context, cfg config.ExaSearchConfig, query strin
 		out = append(out, webResult{Title: title, URL: u, Snippet: snip})
 	}
 	if len(out) == 0 {
-		return nil, fmt.Errorf("search API returned no results (check connection/query)")
+		return nil, outputErr("web_search.no_results")
 	}
 	return out, nil
 }
@@ -481,7 +481,7 @@ func runWebSearch(ctx context.Context, cfg config.WebSearchConfig, query string,
 		count = 10
 	}
 	if !cfg.AIStudio.Ready() && !cfg.Exa.Ready() {
-		return "", fmt.Errorf("web_search is disabled (enable web_search.aistudio or web_search.exa in config.json)")
+		return "", outputErr("web_search.disabled")
 	}
 	var errs []string
 	if cfg.AIStudio.Ready() {
@@ -490,9 +490,9 @@ func runWebSearch(ctx context.Context, cfg config.WebSearchConfig, query string,
 			return formatWebResults(res), nil
 		}
 		if err == nil {
-			err = fmt.Errorf("search API returned no results (check connection/query)")
+			err = outputErr("web_search.no_results")
 		}
-		errs = append(errs, "aistudio: "+err.Error())
+		errs = append(errs, outputf("web_search.aistudio_prefix", err.Error()))
 	}
 	if cfg.Exa.Ready() {
 		res, err := fetchExaSearch(ctx, cfg.Exa, query, count)
@@ -500,11 +500,11 @@ func runWebSearch(ctx context.Context, cfg config.WebSearchConfig, query string,
 			return formatWebResults(res), nil
 		}
 		if err == nil {
-			err = fmt.Errorf("search API returned no results (check connection/query)")
+			err = outputErr("web_search.no_results")
 		}
-		errs = append(errs, "exa: "+err.Error())
+		errs = append(errs, outputf("web_search.exa_prefix", err.Error()))
 	}
-	return "", fmt.Errorf("web search failed: %s", strings.Join(errs, "; "))
+	return "", outputErr("web_search.failed", strings.Join(errs, "; "))
 }
 
 func formatWebResults(res []webResult) string {
@@ -558,10 +558,10 @@ func fetchDirectFetch(ctx context.Context, rawURL, section string, startLine, le
 		Timeout: webFetchTimeout,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 5 {
-				return fmt.Errorf("too many redirects")
+				return outputErr("web_fetch.too_many_redirects")
 			}
 			if !allowPrivateFetchHost && isPrivateHost(req.URL.Hostname()) {
-				return fmt.Errorf("redirect to private host rejected: %s", req.URL.Hostname())
+				return outputErr("web_fetch.redirect_rejected", req.URL.Hostname())
 			}
 			return nil
 		},
@@ -573,7 +573,7 @@ func fetchDirectFetch(ctx context.Context, rawURL, section string, startLine, le
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4*1024))
-		return "", fmt.Errorf("fetch HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
+		return "", outputErr("web_fetch.http_error", resp.StatusCode, strings.TrimSpace(string(b)))
 	}
 	b, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 	if err != nil {
@@ -581,7 +581,7 @@ func fetchDirectFetch(ctx context.Context, rawURL, section string, startLine, le
 	}
 	raw := strings.TrimSpace(string(b))
 	if raw == "" {
-		return "", fmt.Errorf("page is empty")
+		return "", outputErr("web_fetch.page_empty")
 	}
 	var full string
 	ct := strings.ToLower(resp.Header.Get("Content-Type"))
@@ -594,13 +594,13 @@ func fetchDirectFetch(ctx context.Context, rawURL, section string, startLine, le
 			full = normalizeFetchLines(raw)
 		}
 		if full == "" {
-			return "", fmt.Errorf("page is empty")
+			return "", outputErr("web_fetch.page_empty")
 		}
 	}
 	lines := strings.Split(full, "\n")
 	total := len(lines)
 	if startLine > total {
-		return "", fmt.Errorf("start_line %d beyond content lines %d", startLine, total)
+		return "", outputErr("web_fetch.start_beyond", startLine, total)
 	}
 	startIdx := startLine - 1
 	endIdx := startIdx + length
@@ -609,10 +609,10 @@ func fetchDirectFetch(ctx context.Context, rawURL, section string, startLine, le
 	}
 	page := strings.TrimSpace(strings.Join(lines[startIdx:endIdx], "\n"))
 	if page == "" {
-		return "", fmt.Errorf("page is empty")
+		return "", outputErr("web_fetch.page_empty")
 	}
 	if endIdx < total {
-		page += fmt.Sprintf(" ... [truncated, total %d lines, start_line %d — call web_fetch again with section %s start_line %d length %d for more]", total, startLine, section, endIdx+1, length)
+		page += outputf("web_fetch.more_pages", total, startLine, section, endIdx+1, length)
 	}
 	return page, nil
 }

@@ -39,15 +39,15 @@ const (
 func resolvePath(workspace string, restrict bool, p string) (string, error) {
 	p = strings.TrimSpace(p)
 	if p == "" {
-		return "", fmt.Errorf("path is empty")
+		return "", outputErr("fs.path_empty")
 	}
 	if !filepath.IsAbs(p) {
-		return "", fmt.Errorf("path must be absolute: %q", p)
+		return "", outputErr("fs.path_not_absolute", p)
 	}
 	if restrict {
 		abs := filepath.Clean(p)
 		if !insideDir(abs, workspace) {
-			return "", fmt.Errorf("outside workspace: %q", p)
+			return "", outputErr("fs.outside_workspace", p)
 		}
 		return abs, nil
 	}
@@ -72,11 +72,11 @@ func resolveWorkdir(workspace string, restrict bool, w string) (string, error) {
 		}
 		if st, err := os.Stat(workspace); err != nil {
 			if os.IsNotExist(err) {
-				return "", fmt.Errorf("workspace not found: %s", workspace)
+				return "", outputErr("fs.workspace_not_found", workspace)
 			}
-			return "", fmt.Errorf("workspace is not accessible: %s: %v", workspace, err)
+			return "", outputErr("fs.workspace_not_accessible", workspace, err)
 		} else if !st.IsDir() {
-			return "", fmt.Errorf("workspace is not a directory: %s", workspace)
+			return "", outputErr("fs.workspace_not_dir", workspace)
 		}
 		return workspace, nil
 	}
@@ -87,12 +87,12 @@ func resolveWorkdir(workspace string, restrict bool, w string) (string, error) {
 	st, err := os.Stat(abs)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return "", fmt.Errorf("cwd not found: %s. Use list_dir to see workspace contents", w)
+			return "", outputErr("fs.cwd_not_found", w)
 		}
-		return "", fmt.Errorf("cwd is not accessible: %s: %v", w, err)
+		return "", outputErr("fs.cwd_not_accessible", w, err)
 	}
 	if !st.IsDir() {
-		return "", fmt.Errorf("cwd is not a directory: %s. Use list_dir to see workspace contents", w)
+		return "", outputErr("fs.cwd_not_dir", w)
 	}
 	return abs, nil
 }
@@ -104,7 +104,7 @@ func editLocalFile(workspace string, restrict bool, p, oldStr, newStr string) er
 	}
 	b, err := os.ReadFile(abs)
 	if err != nil {
-		return fmt.Errorf("read %s: %w", p, err)
+		return outputErr("edit_file.read_failed", p, err)
 	}
 	s := string(b)
 
@@ -112,7 +112,7 @@ func editLocalFile(workspace string, restrict bool, p, oldStr, newStr string) er
 	if n := strings.Count(s, oldStr); n == 1 {
 		return os.WriteFile(abs, []byte(strings.Replace(s, oldStr, newStr, 1)), 0o644)
 	} else if n > 1 {
-		return fmt.Errorf("old_string found %d times; provide more context to make it unique", n)
+		return outputErr("edit_file.old_ambiguous", n)
 	}
 
 	// 2. Line-based fuzzy match (ignores leading/trailing whitespace and line endings)
@@ -120,7 +120,7 @@ func editLocalFile(workspace string, restrict bool, p, oldStr, newStr string) er
 	searchLines := strings.Split(strings.TrimSpace(oldStr), "\n")
 
 	if len(searchLines) == 0 || (len(searchLines) == 1 && searchLines[0] == "") {
-		return fmt.Errorf("old_string is empty")
+		return outputErr("edit_file.old_empty")
 	}
 
 	var matchIdx = -1
@@ -167,10 +167,10 @@ func editLocalFile(workspace string, restrict bool, p, oldStr, newStr string) er
 	}
 
 	if matchesFound > 1 {
-		return fmt.Errorf("fuzzy match found %d times; provide more context to make it unique", matchesFound)
+		return outputErr("edit_file.fuzzy_ambiguous", matchesFound)
 	}
 
-	return fmt.Errorf("old_string not found in %s. Make sure the text exists exactly (including indentation and spacing)", p)
+	return outputErr("edit_file.old_missing", p)
 }
 
 func editLocalFileByLine(workspace string, restrict bool, p string, startLine, endLine int64, content string) error {
@@ -180,7 +180,7 @@ func editLocalFileByLine(workspace string, restrict bool, p string, startLine, e
 	}
 	b, err := os.ReadFile(abs)
 	if err != nil {
-		return fmt.Errorf("read %s: %w", p, err)
+		return outputErr("edit_file.read_failed", p, err)
 	}
 	s := string(b)
 	hasNL := strings.HasSuffix(s, "\n")
@@ -191,16 +191,16 @@ func editLocalFileByLine(workspace string, restrict bool, p string, startLine, e
 		lines = strings.Split(strings.TrimSuffix(s, "\n"), "\n")
 	}
 	if startLine <= 0 {
-		return fmt.Errorf("start_line must be >= 1")
+		return outputErr("edit_file_by_line.start_min")
 	}
 	if endLine == 0 {
 		endLine = startLine
 	}
 	if endLine < startLine {
-		return fmt.Errorf("end_line (%d) < start_line (%d)", endLine, startLine)
+		return outputErr("edit_file_by_line.end_first", endLine, startLine)
 	}
 	if startLine > int64(len(lines)) || endLine > int64(len(lines)) {
-		return fmt.Errorf("line range %d-%d out of bounds (file has %d lines)", startLine, endLine, len(lines))
+		return outputErr("edit_file_by_line.out_of_bounds", startLine, endLine, len(lines))
 	}
 	var rep []string
 	if content != "" {
@@ -225,7 +225,7 @@ func readLocalFile(workspace string, restrict bool, p string, startLine, length 
 		startLine = 1
 	}
 	if length <= 0 {
-		return "", fmt.Errorf("length must be > 0")
+		return "", outputErr("read_file.length_min")
 	}
 	if length > maxReadFileLines {
 		length = maxReadFileLines
@@ -233,20 +233,20 @@ func readLocalFile(workspace string, restrict bool, p string, startLine, length 
 	f, err := os.Open(abs)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return "", fmt.Errorf("file not found: %s", p)
+			return "", outputErr("read_file.not_found", p)
 		}
 		if os.IsPermission(err) {
-			return "", fmt.Errorf("access denied to file: %s", p)
+			return "", outputErr("read_file.access_denied", p)
 		}
-		return "", fmt.Errorf("failed to open file: %w", err)
+		return "", outputErr("read_file.open_failed", err)
 	}
 	defer f.Close()
 	st, err := f.Stat()
 	if err != nil {
-		return "", fmt.Errorf("failed to stat file: %w", err)
+		return "", outputErr("read_file.stat_failed", err)
 	}
 	if st.IsDir() {
-		return "", fmt.Errorf("path is a directory: %s. Use list_dir to see its contents", p)
+		return "", outputErr("read_file.is_dir", p)
 	}
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 64*1024), 256*1024)
@@ -254,12 +254,12 @@ func readLocalFile(workspace string, restrict bool, p string, startLine, length 
 	for sc.Scan() {
 		line := sc.Text()
 		if strings.ContainsRune(line, 0) {
-			return "", fmt.Errorf("file appears to be binary")
+			return "", outputErr("read_file.binary")
 		}
 		all = append(all, line)
 	}
 	if err := sc.Err(); err != nil {
-		return "", fmt.Errorf("failed to read file content: %w", err)
+		return "", outputErr("read_file.read_failed", err)
 	}
 	total := len(all)
 	if total == 0 || startLine > int64(total) {
@@ -288,10 +288,10 @@ func writeLocalFile(workspace string, restrict bool, p, content string, overwrit
 	}
 	if info, err := os.Stat(abs); err == nil {
 		if info.IsDir() {
-			return fmt.Errorf("cannot write: %s is a directory. Use list_dir to see its contents", p)
+			return outputErr("write_file.is_dir", p)
 		}
 		if !overwrite {
-			return fmt.Errorf("file %q already exists with overwrite=false. To replace the whole file pass overwrite=true, for example {\"path\": %q, \"content\": \"...\", \"overwrite\": true}. To keep the current contents, use append_file to add or edit_file for partial changes.", p, p)
+			return outputErr("write_file.exists", p, p)
 		}
 	}
 	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
@@ -331,7 +331,7 @@ func listLocalDir(workspace string, restrict bool, p string) (string, error) {
 	}
 	entries, err := os.ReadDir(abs)
 	if err != nil {
-		return "", fmt.Errorf("failed to read directory: %w", err)
+		return "", outputErr("list_dir.read_failed", err)
 	}
 	sort.Slice(entries, func(i, j int) bool {
 		if entries[i].IsDir() && !entries[j].IsDir() {
@@ -346,14 +346,14 @@ func listLocalDir(workspace string, restrict bool, p string) (string, error) {
 	maxEntries := 1000
 	for i, e := range entries {
 		if i >= maxEntries {
-			sb.WriteString(fmt.Sprintf("\n... [truncated, %d more entries]", len(entries)-maxEntries))
+			sb.WriteString(outputf("list_dir.truncated", len(entries)-maxEntries))
 			break
 		}
 		if e.IsDir() {
 			sb.WriteString("DIR:  " + e.Name() + "\n")
 		} else {
 			info, err := e.Info()
-			sizeStr := "unknown size"
+			sizeStr := outputText("list_dir.unknown_size")
 			if err == nil {
 				sizeStr = formatSize(info.Size())
 			}
@@ -361,7 +361,7 @@ func listLocalDir(workspace string, restrict bool, p string) (string, error) {
 		}
 	}
 	if sb.Len() == 0 {
-		return "(empty directory)", nil
+		return outputText("list_dir.empty"), nil
 	}
 	return sb.String(), nil
 }

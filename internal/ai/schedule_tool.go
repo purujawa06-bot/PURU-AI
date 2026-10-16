@@ -7,7 +7,6 @@ package ai
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
@@ -38,7 +37,7 @@ func buildScheduleTool(a *Agent, opts *ProcessOptions, mk func(string, func(cont
 		func(ctx context.Context, args map[string]any) (any, error) {
 			store := scheduleStoreFor(a)
 			if store == nil {
-				return errVal(fmt.Errorf("manage_schedule unavailable: workspace not configured"))
+				return errVal(outputErr("manage_schedule.unavailable"))
 			}
 			action := strings.ToLower(strings.TrimSpace(argStr(args, "action")))
 			now := time.Now().UTC()
@@ -57,7 +56,7 @@ func buildScheduleTool(a *Agent, opts *ProcessOptions, mk func(string, func(cont
 					return errVal(err)
 				}
 				if len(jobs) == 0 {
-					return "No scheduled jobs.", nil
+					return outputText("manage_schedule.no_jobs"), nil
 				}
 				lines := make([]string, 0, len(jobs))
 				for _, j := range jobs {
@@ -67,32 +66,32 @@ func buildScheduleTool(a *Agent, opts *ProcessOptions, mk func(string, func(cont
 			case "get":
 				id := argStr(args, "job_id")
 				if id == "" {
-					return errVal(fmt.Errorf("job_id is required for get"))
+					return errVal(outputErr("manage_schedule.job_id_required", "get"))
 				}
 				job, err := store.Get(id)
 				if err != nil {
 					return errVal(err)
 				}
-				return job.Describe() + "\nPrompt: " + job.Prompt, nil
+				return outputf("manage_schedule.get", job.Describe(), job.Prompt), nil
 			case "remove":
 				id := argStr(args, "job_id")
 				if id == "" {
-					return errVal(fmt.Errorf("job_id is required for remove"))
+					return errVal(outputErr("manage_schedule.job_id_required", "remove"))
 				}
 				if err := store.Remove(id); err != nil {
 					return errVal(err)
 				}
-				return fmt.Sprintf("Removed job %s.", id), nil
+				return outputf("manage_schedule.removed", id), nil
 			case "enable", "disable":
 				id := argStr(args, "job_id")
 				if id == "" {
-					return errVal(fmt.Errorf("job_id is required for %s", action))
+					return errVal(outputErr("manage_schedule.job_id_required", action))
 				}
 				job, err := store.SetEnabled(id, action == "enable", now)
 				if err != nil {
 					return errVal(err)
 				}
-				return fmt.Sprintf("Job %s %sd: %s.", job.ID, action, job.Describe()), nil
+				return outputf("manage_schedule.toggled", job.ID, action, job.Describe()), nil
 			case "add":
 				job, err := scheduleJobFromArgs(a, args, chatID, userID, now)
 				if err != nil {
@@ -102,11 +101,11 @@ func buildScheduleTool(a *Agent, opts *ProcessOptions, mk func(string, func(cont
 				if err != nil {
 					return errVal(err)
 				}
-				return fmt.Sprintf("Scheduled: %s.", saved.Describe()), nil
+				return outputf("manage_schedule.scheduled", saved.Describe()), nil
 			case "update":
 				id := argStr(args, "job_id")
 				if id == "" {
-					return errVal(fmt.Errorf("job_id is required for update"))
+					return errVal(outputErr("manage_schedule.job_id_required", "update"))
 				}
 				existing, err := store.Get(id)
 				if err != nil {
@@ -120,9 +119,9 @@ func buildScheduleTool(a *Agent, opts *ProcessOptions, mk func(string, func(cont
 				if err != nil {
 					return errVal(err)
 				}
-				return fmt.Sprintf("Updated: %s.", saved.Describe()), nil
+				return outputf("manage_schedule.updated", saved.Describe()), nil
 			default:
-				return errVal(fmt.Errorf("unsupported action: %s", action))
+				return errVal(outputErr("manage_schedule.unsupported_action", action))
 			}
 		})
 }
@@ -131,11 +130,11 @@ func buildScheduleTool(a *Agent, opts *ProcessOptions, mk func(string, func(cont
 func scheduleJobFromArgs(a *Agent, args map[string]any, chatID, userID int64, now time.Time) (schedule.Job, error) {
 	prompt := strings.TrimSpace(argStr(args, "prompt"))
 	if prompt == "" {
-		return schedule.Job{}, fmt.Errorf("prompt is required (what should run)")
+		return schedule.Job{}, outputErr("manage_schedule.prompt_required")
 	}
 	kind := strings.ToLower(strings.TrimSpace(argStr(args, "type")))
 	if kind == "" {
-		return schedule.Job{}, fmt.Errorf("type is required: once, every, daily, or cron")
+		return schedule.Job{}, outputErr("manage_schedule.type_required")
 	}
 	tz := strings.TrimSpace(argStr(args, "timezone"))
 	if tz == "" {
@@ -154,7 +153,7 @@ func scheduleJobFromArgs(a *Agent, args map[string]any, chatID, userID int64, no
 	case schedule.TypeOnce:
 		atRaw := strings.TrimSpace(argStr(args, "run_once_at"))
 		if atRaw == "" {
-			return schedule.Job{}, fmt.Errorf("run_once_at is required for one-time jobs (e.g. 18:00)")
+			return schedule.Job{}, outputErr("manage_schedule.once_required")
 		}
 		at, err := schedule.ParseFlexibleTime(atRaw, loc)
 		if err != nil {
@@ -170,7 +169,7 @@ func scheduleJobFromArgs(a *Agent, args map[string]any, chatID, userID int64, no
 	case schedule.TypeDaily:
 		daily := strings.TrimSpace(argStr(args, "daily_time"))
 		if daily == "" {
-			return schedule.Job{}, fmt.Errorf("daily_time is required (HH:MM 24-hour, e.g. 06:00)")
+			return schedule.Job{}, outputErr("manage_schedule.daily_required")
 		}
 		if _, _, err := schedule.ParseDailyTime(daily); err != nil {
 			return schedule.Job{}, err
@@ -184,11 +183,11 @@ func scheduleJobFromArgs(a *Agent, args map[string]any, chatID, userID int64, no
 	case schedule.TypeCron:
 		expr := strings.TrimSpace(argStr(args, "cron_expr"))
 		if expr == "" {
-			return schedule.Job{}, fmt.Errorf("cron_expr is required (5 fields, e.g. 0 6 * * *)")
+			return schedule.Job{}, outputErr("manage_schedule.cron_required")
 		}
 		job.CronExpr = expr
 	default:
-		return schedule.Job{}, fmt.Errorf("type must be once, every, daily, or cron")
+		return schedule.Job{}, outputErr("manage_schedule.type_invalid")
 	}
 	endAt, maxRuns, err := scheduleLimitsFromArgs(args, loc, now)
 	if err != nil {
@@ -225,7 +224,7 @@ func applyScheduleUpdate(a *Agent, job schedule.Job, args map[string]any, now ti
 		case schedule.TypeOnce:
 			atRaw := strings.TrimSpace(argStr(args, "run_once_at"))
 			if atRaw == "" {
-				return schedule.Job{}, fmt.Errorf("run_once_at is required when switching to once")
+				return schedule.Job{}, outputErr("manage_schedule.once_switch")
 			}
 			at, err := schedule.ParseFlexibleTime(atRaw, loc)
 			if err != nil {
@@ -241,17 +240,17 @@ func applyScheduleUpdate(a *Agent, job schedule.Job, args map[string]any, now ti
 		case schedule.TypeDaily:
 			daily := strings.TrimSpace(argStr(args, "daily_time"))
 			if daily == "" {
-				return schedule.Job{}, fmt.Errorf("daily_time is required when switching to daily")
+				return schedule.Job{}, outputErr("manage_schedule.daily_switch")
 			}
 			job.DailyTime = daily
 		case schedule.TypeCron:
 			expr := strings.TrimSpace(argStr(args, "cron_expr"))
 			if expr == "" {
-				return schedule.Job{}, fmt.Errorf("cron_expr is required when switching to cron")
+				return schedule.Job{}, outputErr("manage_schedule.cron_switch")
 			}
 			job.CronExpr = expr
 		default:
-			return schedule.Job{}, fmt.Errorf("type must be once, every, daily, or cron")
+			return schedule.Job{}, outputErr("manage_schedule.type_invalid")
 		}
 	} else {
 		// Partial update without type switch: apply provided schedule fields.
@@ -318,20 +317,20 @@ func scheduleLimitsFromArgs(args map[string]any, loc *time.Location, now time.Ti
 	}
 	if days := argInt(args, "days"); days != 0 {
 		if days < 0 {
-			return nil, 0, fmt.Errorf("days cannot be negative")
+			return nil, 0, outputErr("manage_schedule.days_negative")
 		}
 		if days > 366 {
-			return nil, 0, fmt.Errorf("days must be under 366")
+			return nil, 0, outputErr("manage_schedule.days_max")
 		}
 		t := now.Add(time.Duration(days) * 24 * time.Hour)
 		endAt = &t
 	}
 	maxRuns := int(argInt(args, "max_runs"))
 	if maxRuns < 0 {
-		return nil, 0, fmt.Errorf("max_runs cannot be negative")
+		return nil, 0, outputErr("manage_schedule.max_runs_negative")
 	}
 	if maxRuns > 10000 {
-		return nil, 0, fmt.Errorf("max_runs must be under 10000")
+		return nil, 0, outputErr("manage_schedule.max_runs_max")
 	}
 	return endAt, maxRuns, nil
 }

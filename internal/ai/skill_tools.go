@@ -9,7 +9,6 @@ package ai
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/purujawa06-bot/PURU-AI/internal/skillstate"
@@ -130,7 +129,7 @@ func buildSkillTools(a *Agent, opts *ProcessOptions, mk func(string, func(contex
 		func(ctx context.Context, args map[string]any) (any, error) {
 			name := strings.TrimSpace(argStr(args, "name"))
 			if name == "" {
-				return errVal(fmt.Errorf("name is required (exact <name> from the <skills> catalog)"))
+				return errVal(outputErr("use_skill.name_required"))
 			}
 			persist := argBool(args, "always_active")
 			ws := ""
@@ -138,27 +137,27 @@ func buildSkillTools(a *Agent, opts *ProcessOptions, mk func(string, func(contex
 				ws = a.Config.Workspace
 			}
 			if strings.TrimSpace(ws) == "" {
-				return errVal(fmt.Errorf("use_skill unavailable: workspace not configured"))
+				return errVal(outputErr("use_skill.unavailable"))
 			}
 			canonical, ok := workspace.ResolveSkillName(ws, name)
 			if !ok {
-				return errVal(fmt.Errorf("unknown skill %q (check the <skills> catalog)", name))
+				return errVal(outputErr("use_skill.unknown", name))
 			}
 			if a != nil && a.Config != nil && !a.Config.SkillsPolicy().Allows(canonical) {
-				return errVal(fmt.Errorf("skill %q is blocked by skills policy", canonical))
+				return errVal(outputErr("use_skill.blocked", canonical))
 			}
 			body, ok := workspace.LoadSkill(ws, canonical)
 			if !ok {
-				return errVal(fmt.Errorf("skill %q has no readable SKILL.md", canonical))
+				return errVal(outputErr("use_skill.no_body", canonical))
 			}
 			if strings.TrimSpace(body) == "" {
-				body = "(No extended instructions in SKILL.md; name and description from the catalog apply.)"
+				body = outputText("use_skill.empty_body")
 			}
 			if !persist {
 				// Once mode (default): load for this turn only, never
 				// persist. When the turn ends with the final answer the
 				// skill idles automatically, no stop_skill needed.
-				return fmt.Sprintf("Skill %q loaded for this turn only (idle after final answer; pass always_active=true to persist).\n\n%s", canonical, body), nil
+				return outputf("use_skill.loaded_once", canonical, body), nil
 			}
 			chatID := int64(0)
 			if opts != nil {
@@ -166,46 +165,46 @@ func buildSkillTools(a *Agent, opts *ProcessOptions, mk func(string, func(contex
 			}
 			if chatID == 0 {
 				// No chat scope (unit tests): return the body without persisting.
-				return fmt.Sprintf("Skill %q loaded for this turn only (no chat scope to persist).\n\n%s", canonical, body), nil
+				return outputf("use_skill.loaded_no_chat", canonical, body), nil
 			}
 			store := skillStateFor(a)
 			if store == nil {
-				return fmt.Sprintf("Skill %q loaded for this turn only.\n\n%s", canonical, body), nil
+				return outputf("use_skill.loaded_plain", canonical, body), nil
 			}
 			added, err := store.Activate(chatID, canonical)
 			if err != nil {
-				return errVal(fmt.Errorf("persist active skill: %w", err))
+				return errVal(outputErr("use_skill.persist_failed", err))
 			}
 			if !added {
-				return fmt.Sprintf("Skill %q is already active.\n\n%s", canonical, body), nil
+				return outputf("use_skill.already_active", canonical, body), nil
 			}
-			return fmt.Sprintf("Skill %q activated (always_active). Its full body is now injected as Active Skills and stays active until stop_skill.\n\n%s", canonical, body), nil
+			return outputf("use_skill.activated", canonical, body), nil
 		})
 	stopSkill := mk("stop_skill",
 		func(ctx context.Context, args map[string]any) (any, error) {
 			name := strings.TrimSpace(argStr(args, "name"))
 			if name == "" {
-				return errVal(fmt.Errorf("name is required"))
+				return errVal(outputErr("stop_skill.name_required"))
 			}
 			chatID := int64(0)
 			if opts != nil {
 				chatID = opts.ChatID
 			}
 			if chatID == 0 {
-				return errVal(fmt.Errorf("stop_skill unavailable without chat scope"))
+				return errVal(outputErr("stop_skill.no_chat_scope"))
 			}
 			store := skillStateFor(a)
 			if store == nil {
-				return errVal(fmt.Errorf("stop_skill unavailable: workspace not configured"))
+				return errVal(outputErr("stop_skill.unavailable"))
 			}
 			removed, err := store.Deactivate(chatID, name)
 			if err != nil {
-				return errVal(fmt.Errorf("persist active skill: %w", err))
+				return errVal(outputErr("use_skill.persist_failed", err))
 			}
 			if !removed {
-				return fmt.Sprintf("Skill %q is not runtime-active (frontmatter defaults, if any, stay active).", name), nil
+				return outputf("stop_skill.not_active", name), nil
 			}
-			return fmt.Sprintf("Skill %q deactivated. It returns to the <skills> catalog and is no longer injected.", name), nil
+			return outputf("stop_skill.deactivated", name), nil
 		})
 	return map[string]*Tool{"use_skill": useSkill, "stop_skill": stopSkill}
 }

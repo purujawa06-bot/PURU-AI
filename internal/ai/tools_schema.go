@@ -62,6 +62,178 @@ var allToolsDesc = map[string]string{
 	"stop_skill":        "Deactivate a previously activated skill by name, removing its instructions from the conversation.",
 }
 
+// allOutputs is the single source of truth for every message a tool returns:
+// success text, status values, and the error text the model reads. Edit the
+// wording here; tool code only references the key through outputText/outputf/
+// outputErr, so no message has to be hunted across files.
+//
+// Keys are "<tool-or-helper>.<case>" and templates use fmt verbs (e.g. %s, %q,
+// %d, %w). Layout glue (list_dir "DIR:"/"FILE:" lines, read_file "N|content"
+// line numbers, web result numbering) intentionally stays in the tool code:
+// it is formatting, not a message.
+var allOutputs = map[string]string{
+	// Shared path/workspace helpers (fs.go), used by every file tool.
+	"fs.path_empty":               "path is empty",
+	"fs.path_not_absolute":        "path must be absolute: %q",
+	"fs.outside_workspace":        "outside workspace: %q",
+	"fs.workspace_not_found":      "workspace not found: %s",
+	"fs.workspace_not_accessible": "workspace is not accessible: %s: %v",
+	"fs.workspace_not_dir":        "workspace is not a directory: %s",
+	"fs.cwd_not_found":            "cwd not found: %s. Use list_dir to see workspace contents",
+	"fs.cwd_not_accessible":       "cwd is not accessible: %s: %v",
+	"fs.cwd_not_dir":              "cwd is not a directory: %s. Use list_dir to see workspace contents",
+	"fs.content_required":         "content is required",
+
+	// read_file.
+	"read_file.length_min":    "length must be > 0",
+	"read_file.not_found":     "file not found: %s",
+	"read_file.access_denied": "access denied to file: %s",
+	"read_file.open_failed":   "failed to open file: %w",
+	"read_file.stat_failed":   "failed to stat file: %w",
+	"read_file.is_dir":        "path is a directory: %s. Use list_dir to see its contents",
+	"read_file.binary":        "file appears to be binary",
+	"read_file.read_failed":   "failed to read file content: %w",
+
+	// write_file.
+	"write_file.done":   "File written: %s",
+	"write_file.is_dir": "cannot write: %s is a directory. Use list_dir to see its contents",
+	"write_file.exists": "file %q already exists with overwrite=false. To replace the whole file pass overwrite=true, for example {\"path\": %q, \"content\": \"...\", \"overwrite\": true}. To keep the current contents, use append_file to add or edit_file for partial changes.",
+
+	// list_dir.
+	"list_dir.read_failed":  "failed to read directory: %w",
+	"list_dir.empty":        "(empty directory)",
+	"list_dir.unknown_size": "unknown size",
+	"list_dir.truncated":    "\n... [truncated, %d more entries]",
+
+	// edit_file / edit_file_by_line.
+	"edit_file.done":                  "File edited: %s",
+	"edit_file.read_failed":           "read %s: %w",
+	"edit_file.old_required":          "old_string is required",
+	"edit_file.new_required":          "new_string is required",
+	"edit_file.old_empty":             "old_string is empty",
+	"edit_file.old_ambiguous":         "old_string found %d times; provide more context to make it unique",
+	"edit_file.fuzzy_ambiguous":       "fuzzy match found %d times; provide more context to make it unique",
+	"edit_file.old_missing":           "old_string not found in %s. Make sure the text exists exactly (including indentation and spacing)",
+	"edit_file_by_line.start_min":     "start_line must be >= 1",
+	"edit_file_by_line.end_first":     "end_line (%d) < start_line (%d)",
+	"edit_file_by_line.out_of_bounds": "line range %d-%d out of bounds (file has %d lines)",
+
+	// append_file.
+	"append_file.done": "Appended to %s",
+
+	// run_shell_command (tools.go + exec.go).
+	"run_shell_command.command_required":        "command is required for action \"run\"",
+	"run_shell_command.session_required":        "sessionId is required for %s",
+	"run_shell_command.unsupported_action":      "unsupported action: %s",
+	"run_shell_command.empty_command":           "command is empty",
+	"run_shell_command.session_not_found":       "session not found: %s",
+	"run_shell_command.no_sessions":             "No active sessions.",
+	"run_shell_command.truncated":               "\n...[truncated, total %s]",
+	"run_shell_command.status_running":          "running",
+	"run_shell_command.status_finished":         "finished",
+	"run_shell_command.status_killed":           "killed",
+	"run_shell_command.status_already_finished": "already finished",
+
+	// telegram_sendfile / telegram_getuser.
+	"telegram_sendfile.unavailable": "telegram_sendfile is only available in Telegram chat",
+	"telegram_sendfile.is_dir":      "path is a directory, not a file",
+	"telegram_sendfile.too_large":   "file too large: %s (max 20MB)",
+	"telegram_getuser.unavailable":  "telegram_getuser is only available in Telegram chat",
+
+	// web_fetch.
+	"web_fetch.url_required":       "url is required",
+	"web_fetch.invalid_url":        "invalid url: %v",
+	"web_fetch.scheme_rejected":    "url must be http/https (rejected %s)",
+	"web_fetch.host_required":      "url must have a host",
+	"web_fetch.private_rejected":   "local/private host rejected: %s",
+	"web_fetch.redirect_rejected":  "redirect to private host rejected: %s",
+	"web_fetch.too_many_redirects": "too many redirects",
+	"web_fetch.http_error":         "fetch HTTP %d: %s",
+	"web_fetch.page_empty":         "page is empty",
+	"web_fetch.start_beyond":       "start_line %d beyond content lines %d",
+	"web_fetch.more_pages":         " ... [truncated, total %d lines, start_line %d — call web_fetch again with section %s start_line %d length %d for more]",
+
+	// web_search.
+	"web_search.query_required":         "query is required",
+	"web_search.disabled":               "web_search is disabled (enable web_search.aistudio or web_search.exa in config.json)",
+	"web_search.aistudio_unconfigured":  "web_search aistudio model/api key is not configured",
+	"web_search.exa_unconfigured":       "web_search exa api key is not configured",
+	"web_search.aistudio_http":          "search API HTTP %d: %s",
+	"web_search.aistudio_bad_json":      "search API bad JSON: %v",
+	"web_search.aistudio_api_error":     "search API error",
+	"web_search.aistudio_no_candidates": "search API returned no candidates",
+	"web_search.no_results":             "search API returned no results (check connection/query)",
+	"web_search.exa_http":               "exa search HTTP %d: %s",
+	"web_search.exa_bad_json":           "exa search bad JSON: %v",
+	"web_search.failed":                 "web search failed: %s",
+	"web_search.aistudio_prefix":        "aistudio: %s",
+	"web_search.exa_prefix":             "exa: %s",
+	"web_search.answer_title":           "AI Studio answer",
+
+	// manage_schedule.
+	"manage_schedule.unavailable":        "manage_schedule unavailable: workspace not configured",
+	"manage_schedule.unsupported_action": "unsupported action: %s",
+	"manage_schedule.no_jobs":            "No scheduled jobs.",
+	"manage_schedule.get":                "%s\nPrompt: %s",
+	"manage_schedule.removed":            "Removed job %s.",
+	"manage_schedule.toggled":            "Job %s %sd: %s.",
+	"manage_schedule.scheduled":          "Scheduled: %s.",
+	"manage_schedule.updated":            "Updated: %s.",
+	"manage_schedule.job_id_required":    "job_id is required for %s",
+	"manage_schedule.prompt_required":    "prompt is required (what should run)",
+	"manage_schedule.type_required":      "type is required: once, every, daily, or cron",
+	"manage_schedule.type_invalid":       "type must be once, every, daily, or cron",
+	"manage_schedule.once_required":      "run_once_at is required for one-time jobs (e.g. 18:00)",
+	"manage_schedule.once_switch":        "run_once_at is required when switching to once",
+	"manage_schedule.daily_required":     "daily_time is required (HH:MM 24-hour, e.g. 06:00)",
+	"manage_schedule.daily_switch":       "daily_time is required when switching to daily",
+	"manage_schedule.cron_required":      "cron_expr is required (5 fields, e.g. 0 6 * * *)",
+	"manage_schedule.cron_switch":        "cron_expr is required when switching to cron",
+	"manage_schedule.days_negative":      "days cannot be negative",
+	"manage_schedule.days_max":           "days must be under 366",
+	"manage_schedule.max_runs_negative":  "max_runs cannot be negative",
+	"manage_schedule.max_runs_max":       "max_runs must be under 10000",
+
+	// use_skill / stop_skill.
+	"use_skill.name_required":  "name is required (exact <name> from the <skills> catalog)",
+	"use_skill.unavailable":    "use_skill unavailable: workspace not configured",
+	"use_skill.unknown":        "unknown skill %q (check the <skills> catalog)",
+	"use_skill.blocked":        "skill %q is blocked by skills policy",
+	"use_skill.no_body":        "skill %q has no readable SKILL.md",
+	"use_skill.empty_body":     "(No extended instructions in SKILL.md; name and description from the catalog apply.)",
+	"use_skill.persist_failed": "persist active skill: %w",
+	"use_skill.loaded_once":    "Skill %q loaded for this turn only (idle after final answer; pass always_active=true to persist).\n\n%s",
+	"use_skill.loaded_no_chat": "Skill %q loaded for this turn only (no chat scope to persist).\n\n%s",
+	"use_skill.loaded_plain":   "Skill %q loaded for this turn only.\n\n%s",
+	"use_skill.already_active": "Skill %q is already active.\n\n%s",
+	"use_skill.activated":      "Skill %q activated (always_active). Its full body is now injected as Active Skills and stays active until stop_skill.\n\n%s",
+	"stop_skill.name_required": "name is required",
+	"stop_skill.no_chat_scope": "stop_skill unavailable without chat scope",
+	"stop_skill.unavailable":   "stop_skill unavailable: workspace not configured",
+	"stop_skill.not_active":    "Skill %q is not runtime-active (frontmatter defaults, if any, stay active).",
+	"stop_skill.deactivated":   "Skill %q deactivated. It returns to the <skills> catalog and is no longer injected.",
+}
+
+// outputText returns the message template for key. A missing or empty key
+// panics, so a typo fails in go test instead of shipping empty tool output.
+func outputText(key string) string {
+	t, ok := allOutputs[key]
+	if !ok || t == "" {
+		panic(fmt.Sprintf("output key %q missing in allOutputs", key))
+	}
+	return t
+}
+
+// outputf renders the template for key with fmt arguments.
+func outputf(key string, args ...any) string {
+	return fmt.Sprintf(outputText(key), args...)
+}
+
+// outputErr builds an error from the template for key.
+func outputErr(key string, args ...any) error {
+	return fmt.Errorf(outputText(key), args...)
+}
+
 // toolSchemaEntry is one tool entry: description + params.
 type toolSchemaEntry struct {
 	Description string         `json:"description"`
