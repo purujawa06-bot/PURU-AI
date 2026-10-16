@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	_ "time/tzdata" // Embed IANA timezone database so Asia/Jakarta loads on hosts without system zoneinfo (npm binaries, Termux, minimal VPS, Windows).
 
 	"github.com/purujawa06-bot/PURU-AI/internal/workspace"
 )

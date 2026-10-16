@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	_ "time/tzdata" // Embed IANA timezone database so jobs resolve Asia/Jakarta without host zoneinfo.
 )
 
 // DefaultTimezone is used when a job or config leaves timezone empty.
