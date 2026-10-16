@@ -53,7 +53,7 @@ func main() {
 	switch os.Args[1] {
 	case "setup":
 		if err := runSetup(os.Args[2:]); err != nil {
-			log.Fatalf("setup: %v", err)
+			fatal("setup", err)
 		}
 	case "gateway":
 		if err := runGateway(os.Args[2:]); err != nil {
@@ -85,6 +85,8 @@ Usage:
       even ones that already have defaults (Enter = keep default).
     - N (minimal): only required fields
       (telegram token, model base_url/api_key/name, workspace).
+    Defaults come from the existing config.json when present, so Enter keeps
+    the current setup; env vars still override them.
     Non-interactive env: TELEGRAM_BOT_TOKEN, PURU_BASE_URL, PURU_API_KEY,
     PURU_MODEL, PURU_WORKSPACE. Add --force to overwrite without asking,
     --full for full setup without asking.
@@ -138,84 +140,120 @@ func runSetup(args []string) error {
 	}
 	path := config.ResolvePath(o.configPath)
 	in := bufio.NewReader(os.Stdin)
+
+	nonInteractive := os.Getenv("PURU_NON_INTERACTIVE") != "" || !isTerminal(in)
+
+	banner("PURU-AI setup", version+" · config: "+path)
 	if _, err := os.Stat(path); err == nil && !o.force {
-		if !askYesFromReader(in, fmt.Sprintf("Config %s already exists. Overwrite? [y/N]: ", path), false) {
-			fmt.Println("Cancelled, config left unchanged.")
+		warnf("config already exists: %s", path)
+		if !askBool(in, "Overwrite it?", false) {
+			hint("cancelled, existing config left unchanged")
 			return nil
 		}
 	}
-	nonInteractive := os.Getenv("PURU_NON_INTERACTIVE") != "" || !isTerminal(in)
+	// Defaults follow the current setup: env overrides, then the existing
+	// config.json, then the built-in values. Pressing Enter therefore keeps
+	// what is already configured, and the minimal wizard carries over every
+	// field it does not ask.
+	prev, hasPrev := loadPreviousConfig(path)
+	if hasPrev {
+		if nonInteractive {
+			hint("non-interactive: no questions asked, values kept from %s", path)
+		} else {
+			hint("defaults come from the existing config; Enter keeps the current value")
+		}
+	} else if nonInteractive {
+		hint("non-interactive: env vars and defaults, no questions asked")
+	}
 
-	token := firstNonEmpty(os.Getenv("TELEGRAM_BOT_TOKEN"), "")
-	baseURL := firstNonEmpty(os.Getenv("PURU_BASE_URL"), "https://api.openai.com/v1")
-	apiKey := firstNonEmpty(os.Getenv("PURU_API_KEY"), "")
-	model := firstNonEmpty(os.Getenv("PURU_MODEL"), "gpt-4o-mini")
-	workspace := firstNonEmpty(os.Getenv("PURU_WORKSPACE"), filepath.Join(config.DefaultDir(), "workspace"))
+	token := firstNonEmpty(os.Getenv("TELEGRAM_BOT_TOKEN"), prev.TelegramBotToken)
+	baseURL := firstNonEmpty(os.Getenv("PURU_BASE_URL"), prev.Model.BaseURL, "https://api.openai.com/v1")
+	apiKey := firstNonEmpty(os.Getenv("PURU_API_KEY"), prev.Model.APIKey)
+	model := firstNonEmpty(os.Getenv("PURU_MODEL"), prev.Model.Model, "gpt-4o-mini")
+	workspace := firstNonEmpty(os.Getenv("PURU_WORKSPACE"), prev.Workspace, filepath.Join(config.DefaultDir(), "workspace"))
 
-	// Defaults for the rest (same as example.config.json / config package).
-	allowedUsers := []int64{}
-	temperature := 0.0
-	restrictWorkspace := true
-	maxIterations := config.DefaultMaxIterations
-	historyTokenLimit := config.DefaultHistoryTokLimit
-	host := config.DefaultHealthHost
-	port := config.DefaultHealthPort
-	toolsPreview := true
-	loopDelay := config.DefaultLoopDelaySeconds
-	execMemory := config.DefaultExecMemoryMB
-	skillsMode := "default"
-	skillsAllow := []string{}
-	timezone := config.DefaultTimezone
-	webActive := false
-	webModel := "gemini-flash-lite-latest"
-	webAPIKey := ""
-	exaActive := false
-	exaAPIKey := ""
+	allowedUsers := prev.TelegramAllowedUsers
+	if allowedUsers == nil {
+		allowedUsers = []int64{}
+	}
+	temperature := prev.Model.Temperature
+	restrictWorkspace := prev.restrictWorkspaceDefault()
+	maxIterations := firstNonZero(prev.MaxIterations, config.DefaultMaxIterations)
+	historyTokenLimit := firstNonZero(prev.HistoryTokenLimit, config.DefaultHistoryTokLimit)
+	host := firstNonEmpty(prev.Host, config.DefaultHealthHost)
+	port := firstNonZero(prev.Port, config.DefaultHealthPort)
+	toolsPreview := prev.ShowToolsPreview()
+	loopDelay := firstNonZero(prev.LoopDelaySeconds, config.DefaultLoopDelaySeconds)
+	execMemory := firstNonZero(prev.ExecMemoryMB, config.DefaultExecMemoryMB)
+	skillsMode := firstNonEmpty(prev.SkillsMode, "default")
+	skillsAllow := prev.SkillsAllow
+	if skillsAllow == nil {
+		skillsAllow = []string{}
+	}
+	timezone := firstNonEmpty(prev.Timezone, config.DefaultTimezone)
+	webActive := prev.WebSearch.AIStudio.Active
+	webModel := firstNonEmpty(prev.WebSearch.AIStudio.Model, "gemini-flash-lite-latest")
+	webAPIKey := prev.WebSearch.AIStudio.APIKey
+	exaActive := prev.WebSearch.Exa.Active
+	exaAPIKey := prev.WebSearch.Exa.APIKey
 
 	full := o.full
-	if !nonInteractive && !o.full {
-		fmt.Println("== PURU-AI setup ==")
-		full = askYesFromReader(in, "Full setup (ask all fields)? [Y/n]: ", true)
-		if full {
-			fmt.Println("-- full setup: all fields, Enter = keep default --")
+	if !nonInteractive {
+		if o.full {
+			hint("--full: every field is asked, Enter keeps the default")
 		} else {
-			fmt.Println("-- minimal setup: required fields only, rest use defaults --")
+			full = askBool(in, "Full setup (ask every field)?", true)
+			if full {
+				hint("full: every field is asked, Enter keeps the default")
+			} else {
+				hint("minimal: required fields only, defaults for the rest")
+			}
 		}
-		token = askLine(in, "Telegram bot token (from @BotFather)", token, true)
-		baseURL = askLine(in, "Model base_url (OpenAI-compatible)", baseURL, true)
-		apiKey = askLine(in, "Model api_key", apiKey, true)
+
+		section("Telegram")
+		token = askLine(in, "Bot token (from @BotFather)", token, true)
+		if full {
+			allowedUsers = askInt64List(in, "Allowed user IDs (comma-separated, empty = everyone allowed)", allowedUsers)
+		}
+
+		section("Model (OpenAI-compatible)")
+		baseURL = askLine(in, "Base URL", baseURL, true)
+		apiKey = askLine(in, "API key", apiKey, false)
 		model = askLine(in, "Model name", model, true)
-		workspace = askLine(in, "Workspace dir", workspace, true)
-	} else if !nonInteractive && o.full {
-		fmt.Println("== PURU-AI setup (full) ==")
-		token = askLine(in, "Telegram bot token (from @BotFather)", token, true)
-		baseURL = askLine(in, "Model base_url (OpenAI-compatible)", baseURL, true)
-		apiKey = askLine(in, "Model api_key", apiKey, true)
-		model = askLine(in, "Model name", model, true)
-		workspace = askLine(in, "Workspace dir", workspace, true)
-	} else if nonInteractive {
-		// env-only, minimal defaults; --full has no extra effect without TTY.
-		full = o.full
-	}
-	if !nonInteractive && full {
-		allowedUsers = askInt64List(in, "Telegram allowed user IDs (comma-separated, empty = all allowed)", allowedUsers)
-		temperature = askFloat(in, "Model temperature", temperature)
-		restrictWorkspace = askBool(in, "Restrict workspace (jail files/exec inside workspace)", restrictWorkspace)
-		maxIterations = askInt(in, "Max iterations", maxIterations)
-		historyTokenLimit = askInt(in, "History token limit", historyTokenLimit)
-		host = askLine(in, "Health host", host, false)
-		port = askInt(in, "Health port", port)
-		toolsPreview = askBool(in, "Tools preview (live tool calls)", toolsPreview)
-		loopDelay = askInt(in, "Loop delay seconds", loopDelay)
-		execMemory = askInt(in, "Exec memory MB (min 64)", execMemory)
-		skillsMode = askSkillsMode(in, skillsMode)
-		skillsAllow = askStringList(in, "Skills allowlist (comma-separated, used when skills_mode=custom)", skillsAllow)
-		timezone = askLine(in, "Timezone (IANA, e.g. Asia/Jakarta)", timezone, false)
-		webActive = askBool(in, "Web search (aistudio) active", webActive)
-		webModel = askLine(in, "Web search model", webModel, false)
-		webAPIKey = askLine(in, "Web search api_key (empty = disabled)", webAPIKey, false)
-		exaActive = askBool(in, "Web search (exa) active", exaActive)
-		exaAPIKey = askLine(in, "Exa api_key (empty = disabled)", exaAPIKey, false)
+		if full {
+			temperature = askFloat(in, "Temperature (0 = provider default)", temperature)
+		}
+
+		section("Workspace")
+		workspace = askLine(in, "Workspace directory", workspace, true)
+		if full {
+			restrictWorkspace = askBool(in, "Restrict file/exec access to the workspace?", restrictWorkspace)
+		}
+
+		if full {
+			section("Runtime")
+			maxIterations = askInt(in, "Max iterations per message", maxIterations)
+			historyTokenLimit = askInt(in, "History token limit (compaction trigger)", historyTokenLimit)
+			toolsPreview = askBool(in, "Tools preview (live tool calls)", toolsPreview)
+			loopDelay = askInt(in, "Loop delay seconds", loopDelay)
+			execMemory = askInt(in, "Exec memory MB (min 64)", execMemory)
+			timezone = askLine(in, "Timezone (IANA, e.g. Asia/Jakarta)", timezone, false)
+
+			section("Health server")
+			host = askLine(in, "Host", host, false)
+			port = askInt(in, "Port", port)
+
+			section("Skills")
+			skillsMode = askSkillsMode(in, skillsMode)
+			skillsAllow = askStringList(in, "Allowlist (used when skills_mode=custom)", skillsAllow)
+
+			section("Web search")
+			webActive = askBool(in, "AI Studio (Gemini grounding) active?", webActive)
+			webModel = askLine(in, "AI Studio model", webModel, false)
+			webAPIKey = askLine(in, "AI Studio API key (empty = disabled)", webAPIKey, false)
+			exaActive = askBool(in, "Exa active?", exaActive)
+			exaAPIKey = askLine(in, "Exa API key (empty = disabled)", exaAPIKey, false)
+		}
 	}
 	if strings.TrimSpace(token) == "" {
 		return errors.New("telegram_bot_token is required (env TELEGRAM_BOT_TOKEN)")
@@ -260,6 +298,34 @@ func runSetup(args []string) error {
 			},
 		},
 	}
+	// Preview what will be written; advanced fields appear in full setup only.
+	rows := [][2]string{
+		{"telegram token", maskSecret(token)},
+		{"telegram users", userIDsText(allowedUsers)},
+		{"model", strings.TrimSpace(model)},
+		{"base_url", strings.TrimSpace(baseURL)},
+		{"api_key", maskSecret(apiKey)},
+		{"workspace", strings.TrimSpace(workspace)},
+	}
+	if full {
+		rows = append(rows,
+			[2]string{"restrict_workspace", boolText(restrictWorkspace)},
+			[2]string{"max_iterations", strconv.Itoa(maxIterations)},
+			[2]string{"history_token_limit", strconv.Itoa(historyTokenLimit)},
+			[2]string{"tools_preview", boolText(toolsPreview)},
+			[2]string{"loop_delay_seconds", strconv.Itoa(loopDelay)},
+			[2]string{"exec_memory_mb", strconv.Itoa(execMemory)},
+			[2]string{"temperature", strconv.FormatFloat(temperature, 'g', -1, 64)},
+			[2]string{"timezone", strings.TrimSpace(timezone)},
+			[2]string{"health", strings.TrimSpace(host) + ":" + strconv.Itoa(port)},
+			[2]string{"skills_mode", skillsMode},
+			[2]string{"skills_allow", listText(skillsAllow)},
+			[2]string{"web aistudio", boolText(webActive) + " · " + webModel + " · key " + secretText(webAPIKey)},
+			[2]string{"web exa", boolText(exaActive) + " · key " + secretText(exaAPIKey)},
+		)
+	}
+	summary("Configuration", rows)
+
 	if err := writeConfigJSON(path, cfg); err != nil {
 		return err
 	}
@@ -273,9 +339,50 @@ func runSetup(args []string) error {
 	if _, err := config.Load(path); err != nil {
 		return fmt.Errorf("config written but invalid: %w", err)
 	}
-	fmt.Printf("OK config saved: %s\n", path)
-	fmt.Println("Next: puru gateway --config " + path)
+	next := "puru gateway"
+	if path != config.DefaultPath() {
+		next = "puru gateway --config " + path
+	}
+	done("Config saved: "+path, next)
 	return nil
+}
+
+// previousConfig holds the values of an existing config.json, used as wizard
+// defaults so re-running setup starts from the current setup.
+type previousConfig struct {
+	config.Config
+	// restrictWorkspaceSet separates an absent key (default on) from an
+	// explicit false, which binary unmarshalling alone cannot tell apart.
+	restrictWorkspaceSet bool
+}
+
+// loadPreviousConfig reads path and reports whether values were loaded. A
+// missing, unreadable, or invalid file yields zero values: the wizard is about
+// to rewrite it, so it continues with built-in defaults.
+func loadPreviousConfig(path string) (*previousConfig, bool) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return &previousConfig{}, false
+	}
+	prev := &previousConfig{}
+	if err := json.Unmarshal(raw, prev); err != nil {
+		warnf("ignoring existing %s: %v", path, err)
+		return prev, false
+	}
+	var keys map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &keys); err == nil {
+		_, prev.restrictWorkspaceSet = keys["restrict_workspace"]
+	}
+	return prev, true
+}
+
+// restrictWorkspaceDefault reports the stored workspace jail setting; an absent
+// key means on, the same default config.Load applies.
+func (p *previousConfig) restrictWorkspaceDefault() bool {
+	if !p.restrictWorkspaceSet {
+		return true
+	}
+	return p.RestrictWorkspace
 }
 
 func writeConfigJSON(path string, v map[string]any) error {
@@ -288,136 +395,6 @@ func writeConfigJSON(path string, v map[string]any) error {
 		return err
 	}
 	return os.WriteFile(path, raw, 0o600)
-}
-
-func askLine(in *bufio.Reader, label, def string, required bool) string {
-	if def != "" {
-		fmt.Printf("%s [%s]: ", label, def)
-	} else {
-		fmt.Printf("%s: ", label)
-	}
-	line, _ := in.ReadString('\n')
-	line = strings.TrimSpace(line)
-	if line == "" {
-		return def
-	}
-	return line
-}
-
-func askYesFromReader(in *bufio.Reader, label string, def bool) bool {
-	fmt.Print(label)
-	line, _ := in.ReadString('\n')
-	return normalizeYes(line, def)
-}
-
-func askBool(in *bufio.Reader, label string, def bool) bool {
-	defStr := "y/N"
-	if def {
-		defStr = "Y/n"
-	}
-	fmt.Printf("%s [%s]: ", label, defStr)
-	line, _ := in.ReadString('\n')
-	return normalizeYes(line, def)
-}
-
-func askInt(in *bufio.Reader, label string, def int) int {
-	fmt.Printf("%s [%d]: ", label, def)
-	line, _ := in.ReadString('\n')
-	line = strings.TrimSpace(line)
-	if line == "" {
-		return def
-	}
-	n, err := strconv.Atoi(line)
-	if err != nil {
-		fmt.Printf("Invalid number, keeping default %d.\n", def)
-		return def
-	}
-	return n
-}
-
-func askFloat(in *bufio.Reader, label string, def float64) float64 {
-	fmt.Printf("%s [%g]: ", label, def)
-	line, _ := in.ReadString('\n')
-	line = strings.TrimSpace(line)
-	if line == "" {
-		return def
-	}
-	f, err := strconv.ParseFloat(line, 64)
-	if err != nil {
-		fmt.Printf("Invalid number, keeping default %g.\n", def)
-		return def
-	}
-	return f
-}
-
-func askInt64List(in *bufio.Reader, label string, def []int64) []int64 {
-	defStr := ""
-	if len(def) > 0 {
-		parts := make([]string, len(def))
-		for i, v := range def {
-			parts[i] = strconv.FormatInt(v, 10)
-		}
-		defStr = strings.Join(parts, ",")
-	}
-	fmt.Printf("%s [%s]: ", label, defStr)
-	line, _ := in.ReadString('\n')
-	line = strings.TrimSpace(line)
-	if line == "" {
-		return def
-	}
-	var out []int64
-	for _, p := range strings.Split(line, ",") {
-		p = strings.TrimSpace(p)
-		if p == "" {
-			continue
-		}
-		n, err := strconv.ParseInt(p, 10, 64)
-		if err != nil {
-			fmt.Printf("Skipping invalid id %q.\n", p)
-			continue
-		}
-		out = append(out, n)
-	}
-	if out == nil {
-		return []int64{}
-	}
-	return out
-}
-
-func askStringList(in *bufio.Reader, label string, def []string) []string {
-	fmt.Printf("%s [%s]: ", label, strings.Join(def, ","))
-	line, _ := in.ReadString('\n')
-	line = strings.TrimSpace(line)
-	if line == "" {
-		return def
-	}
-	var out []string
-	for _, p := range strings.Split(line, ",") {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			out = append(out, p)
-		}
-	}
-	if out == nil {
-		return []string{}
-	}
-	return out
-}
-
-func askSkillsMode(in *bufio.Reader, def string) string {
-	fmt.Printf("Skills mode (default/off/custom) [%s]: ", def)
-	line, _ := in.ReadString('\n')
-	line = strings.ToLower(strings.TrimSpace(line))
-	if line == "" {
-		return def
-	}
-	switch line {
-	case "default", "off", "custom":
-		return line
-	default:
-		fmt.Printf("Unknown skills_mode, keeping default %s.\n", def)
-		return def
-	}
 }
 
 // normalizeYes is split out for unit tests.
@@ -443,6 +420,15 @@ func firstNonEmpty(v ...string) string {
 		}
 	}
 	return ""
+}
+
+// firstNonZero returns v, or fallback when v is zero or negative — the
+// "unset" sentinel config.Load uses for the optional numeric fields.
+func firstNonZero(v, fallback int) int {
+	if v > 0 {
+		return v
+	}
+	return fallback
 }
 
 func isTerminal(r *bufio.Reader) bool {
