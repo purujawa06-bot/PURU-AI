@@ -11,7 +11,7 @@ var allParamsDesc = map[string]string{
 	"length":        "Maximum number of lines to return.",
 	"content":       "Text content to write or insert.",
 	"overwrite":     "Replace the whole file when true. Default false; existing files error unless overwrite is set.",
-	"old_string":    "Exact text to find. Must appear exactly once in the file.",
+	"old_string":    "Exact text to find; must match exactly once. Use edit_file_by_line to edit by line numbers instead.",
 	"new_string":    "Text to replace old_string with.",
 	"end_line":      "1-based last line to replace. Defaults to start_line (single line).",
 	"action":        "The operation to perform; allowed values are listed in the enum.",
@@ -97,7 +97,7 @@ var allOutputs = map[string]string{
 	// write_file.
 	"write_file.done":   "File written: %s",
 	"write_file.is_dir": "cannot write: %s is a directory. Use list_dir to see its contents",
-	"write_file.exists": "file %q already exists with overwrite=false. To replace the whole file pass overwrite=true, for example {\"path\": %q, \"content\": \"...\", \"overwrite\": true}. To keep the current contents, use append_file to add or edit_file for partial changes.",
+	"write_file.exists": "file %s already exists. Set overwrite=true to replace it, or use edit_file / edit_file_by_line for partial changes.",
 
 	// list_dir.
 	"list_dir.read_failed":  "failed to read directory: %w",
@@ -108,12 +108,12 @@ var allOutputs = map[string]string{
 	// edit_file / edit_file_by_line.
 	"edit_file.done":                  "File edited: %s",
 	"edit_file.read_failed":           "read %s: %w",
-	"edit_file.old_required":          "old_string is required",
+	"edit_file.old_required":          "old_string is required. Use edit_file_by_line to edit by line numbers instead.",
 	"edit_file.new_required":          "new_string is required",
-	"edit_file.old_empty":             "old_string is empty",
-	"edit_file.old_ambiguous":         "old_string found %d times; provide more context to make it unique",
-	"edit_file.fuzzy_ambiguous":       "fuzzy match found %d times; provide more context to make it unique",
-	"edit_file.old_missing":           "old_string not found in %s. Make sure the text exists exactly (including indentation and spacing)",
+	"edit_file.old_empty":             "old_string is empty. Use edit_file_by_line to edit by line numbers instead.",
+	"edit_file.old_ambiguous":         "old_string found %d times; add more context, or use edit_file_by_line.",
+	"edit_file.fuzzy_ambiguous":       "fuzzy match found %d times; add more context, or use edit_file_by_line.",
+	"edit_file.old_missing":           "old_string not found in %s; match the exact text (indentation included), or use edit_file_by_line.",
 	"edit_file_by_line.start_min":     "start_line must be >= 1",
 	"edit_file_by_line.end_first":     "end_line (%d) < start_line (%d)",
 	"edit_file_by_line.out_of_bounds": "line range %d-%d out of bounds (file has %d lines)",

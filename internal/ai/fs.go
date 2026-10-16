@@ -291,7 +291,7 @@ func writeLocalFile(workspace string, restrict bool, p, content string, overwrit
 			return outputErr("write_file.is_dir", p)
 		}
 		if !overwrite {
-			return outputErr("write_file.exists", p, p)
+			return outputErr("write_file.exists", p)
 		}
 	}
 	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
