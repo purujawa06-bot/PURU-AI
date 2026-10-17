@@ -168,27 +168,52 @@ jobs:
           done
           echo "release never showed up; the APK stays in the run artifact"
 
-      - name: Publish Gradle log on failure
-        if: failure()
+      - name: Publish build evidence
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
-          WORK="$(mktemp -d)"
-          mkdir -p "$WORK/publish"
-          tail -c 60000 "$RUNNER_TEMP/gradle.log" > "$WORK/publish/android-build.log" 2>/dev/null || true
-          cd "$WORK/publish"
+          # Job logs need admin rights, so the interesting bits of every build
+          # land on the debug-android-build branch where they can be read.
+          set -eo pipefail
+          OUT="$(mktemp -d)"
+          APK="$(ls android/app/build/outputs/apk/release/*.apk 2>/dev/null | head -1 || true)"
+          {
+            echo "== run =="
+            echo "sha ${GITHUB_SHA} ref ${GITHUB_REF} version ${PURU_VERSION_NAME:-?} code ${PURU_VERSION_CODE:-?}"
+            echo
+            echo "== APK =="
+            if [ -n "$APK" ]; then
+              ls -l "$APK"
+              echo
+              echo "== zip entries =="
+              unzip -l "$APK" | grep -E "lib/|\.dex|META-INF" || true
+              echo
+              echo "== aapt2 badging =="
+              "${ANDROID_SDK_ROOT}/build-tools/35.0.0/aapt2" dump badging "$APK" 2>&1 | head -40 || true
+              echo
+              echo "== merged manifest =="
+              find android/app/build/intermediates -name AndroidManifest.xml -path "*merged*" -exec cat {} \; 2>/dev/null || true
+            else
+              echo "no APK produced"
+            fi
+            echo
+            echo "== gradle log (tail) =="
+            tail -c 60000 "$RUNNER_TEMP/gradle.log" 2>/dev/null || true
+          } > "$OUT/android-build.txt" 2>&1 || true
+          cd "$OUT"
           git init -q
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git checkout -q -b debug-android-build
           git add -A
-          git commit -q -m "Android build log from ${GITHUB_SHA::7}" || true
+          git commit -q -m "Android build evidence from ${GITHUB_SHA::7}" || true
           for attempt in 1 2 3; do
             if git push -q -f origin debug-android-build; then
-              echo "log pushed to debug-android-build"
+              echo "evidence pushed to debug-android-build"
               exit 0
             fi
             sleep 5
           done
-          echo "could not push the build log"
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
+          echo "could not push the build evidence"

@@ -44,6 +44,10 @@ CI builds the APK on every change under `android/` or the Go sources:
 **Actions → Android APK** (artifact `puru-launcher-apk`). Tag pushes (`v*`)
 also attach `puru-launcher-<tag>.apk` to the GitHub release.
 
+Every run also force-pushes a short build report (APK contents, merged
+manifest, Gradle tail) to the `debug-android-build` branch, because job logs
+are not readable from outside without admin rights.
+
 Locally:
 
 ```sh
