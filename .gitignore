@@ -7,3 +7,15 @@ picoclaw/
 .claude
 openclaw-reference/
 AGENTS.md
+
+# Android launcher (android/)
+android/.gradle/
+android/.idea/
+android/.kotlin/
+android/build/
+android/app/build/
+android/local.properties
+*.iml
+android/app/src/main/jniLibs/arm64-v8a/libpuru.so
+android/app/src/main/jniLibs/armeabi-v7a/libpuru.so
+android/app/src/main/jniLibs/x86_64/libpuru.so

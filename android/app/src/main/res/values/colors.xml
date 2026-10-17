@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="accent">#FF5A2D</color>
+    <color name="accent_dark">#C6431B</color>
+    <color name="status_running">#1B8A3A</color>
+    <color name="status_stopped">#7A7A7A</color>
+    <color name="log_background">#14000000</color>
+</resources>

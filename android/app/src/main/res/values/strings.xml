@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PURU-AI</string>
+    <string name="app_title">PURU-AI launcher</string>
+    <string name="binary_unknown">puru binary: checking&#8230;</string>
+    <string name="binary_unavailable">puru binary is not runnable: %1$s</string>
+
+    <string name="status_running">running</string>
+    <string name="status_stopped">stopped</string>
+
+    <string name="action_start">Start</string>
+    <string name="action_stop">Stop</string>
+    <string name="action_save">Save config</string>
+    <string name="action_clear_log">Clear log</string>
+
+    <string name="section_config">Configuration</string>
+    <string name="section_log">Log</string>
+
+    <string name="hint_token">Telegram bot token (from @BotFather)</string>
+    <string name="hint_base_url">Base URL, e.g. https://api.openai.com/v1</string>
+    <string name="hint_api_key">API key (empty = keep current)</string>
+    <string name="hint_model">Model, e.g. gpt-4o-mini</string>
+    <string name="hint_workspace">Workspace directory</string>
+    <string name="config_note">Empty fields keep the current config.json value, or puru&#8217;s own default. Save writes config.json by running `puru setup`; Start saves first, then runs `puru gateway`.</string>
+
+    <string name="log_empty">(no output yet)</string>
+    <string name="error_token_required">Bot token is required</string>
+    <string name="config_saved">config.json saved</string>
+    <string name="config_failed">config.json was not saved, see the log</string>
+    <string name="gateway_starting">Starting the gateway&#8230;</string>
+
+    <string name="notification_title">PURU-AI gateway</string>
+    <string name="notification_text">Telegram bot is running</string>
+    <string name="channel_name">Gateway status</string>
+</resources>

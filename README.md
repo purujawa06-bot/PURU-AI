@@ -86,6 +86,18 @@ puru setup
 puru gateway
 ```
 
+### Android APK launcher (no Termux)
+
+`android/` holds a self-contained launcher APK: the same `puru` binary is
+bundled inside the APK and runs `puru gateway` as a foreground service, with a
+config form, start/stop buttons, and a log view on the phone.
+
+- Download: **Actions → Android APK** artifact `puru-launcher-apk`, or
+  `puru-launcher-<tag>.apk` on the release of a `v*` tag.
+- Needs Android 8.0+ on `arm64-v8a` / `armeabi-v7a`; config, memory, and
+  workspace stay in the app's private storage (`<filesDir>/.puru/`).
+- Build, signing, and limits: [`android/README.md`](android/README.md).
+
 ### Deploy with Docker (Recommended)
 
 ```bash

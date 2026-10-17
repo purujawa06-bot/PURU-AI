@@ -1,0 +1,194 @@
+name: Android APK
+
+# Builds the self-contained launcher APK (android/): the puru Go binary is
+# cross-built for the phone ABIs, bundled as jniLibs/<abi>/libpuru.so, and the
+# Kotlin app is assembled around it.
+#
+# Artifact: puru-launcher-apk (Actions run page).
+# Tag pushes also attach puru-launcher-<tag>.apk to the GitHub release.
+# Failures push the Gradle log to the debug-android-build branch, because job
+# logs are not reachable without admin rights.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths:
+      - 'android/**'
+      - 'cmd/**'
+      - 'internal/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/android.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    env:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+
+      - name: Build puru binaries for Android ABIs
+        run: |
+          set -euo pipefail
+          mkdir -p android/app/src/main/jniLibs/arm64-v8a android/app/src/main/jniLibs/armeabi-v7a
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" \
+            -o android/app/src/main/jniLibs/arm64-v8a/libpuru.so ./cmd/puru
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags="-s -w" \
+            -o android/app/src/main/jniLibs/armeabi-v7a/libpuru.so ./cmd/puru
+          ls -lh android/app/src/main/jniLibs/*/libpuru.so
+
+      - name: Setup Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Ensure Android SDK platform 35
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          if [ -z "$SDK" ]; then
+            echo "no ANDROID_SDK_ROOT/ANDROID_HOME in the runner image" >&2
+            exit 1
+          fi
+          if [ ! -d "$SDK/platforms/android-35" ]; then
+            yes | sdkmanager "platforms;android-35" "build-tools;35.0.0" >/dev/null
+          fi
+          ls "$SDK/platforms"
+
+      - name: Restore cached signing keystore
+        if: env.ANDROID_KEYSTORE_BASE64 == ''
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/puru-launcher.jks
+          key: puru-launcher-keystore-v1
+
+      - name: Prepare signing keystore
+        run: |
+          set -euo pipefail
+          KS="$RUNNER_TEMP/puru-launcher.jks"
+          if [ -n "${ANDROID_KEYSTORE_BASE64}" ]; then
+            # Permanent key from repository secrets.
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$KS"
+            echo "PURU_KEYSTORE_PASSWORD=${ANDROID_KEYSTORE_PASSWORD:-puru-launcher}" >> "$GITHUB_ENV"
+            echo "PURU_KEY_ALIAS=${ANDROID_KEY_ALIAS:-puru}" >> "$GITHUB_ENV"
+            echo "PURU_KEY_PASSWORD=${ANDROID_KEY_PASSWORD:-puru-launcher}" >> "$GITHUB_ENV"
+            echo "signing with the keystore from secrets"
+          else
+            if [ ! -f "$KS" ]; then
+              # Throwaway key, cached between runs so updates stay installable.
+              keytool -genkeypair -v -keystore "$KS" -alias puru -keyalg RSA -keysize 2048 \
+                -validity 36500 -storepass puru-launcher -keypass puru-launcher \
+                -dname "CN=PURU-AI Launcher, O=puru, C=ID"
+            fi
+            echo "PURU_KEYSTORE_PASSWORD=puru-launcher" >> "$GITHUB_ENV"
+            echo "PURU_KEY_ALIAS=puru" >> "$GITHUB_ENV"
+            echo "PURU_KEY_PASSWORD=puru-launcher" >> "$GITHUB_ENV"
+            echo "signing with the cached generated keystore"
+          fi
+          echo "PURU_KEYSTORE=$KS" >> "$GITHUB_ENV"
+
+      - name: Stamp version
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME}"
+          else
+            VERSION="main-${GITHUB_RUN_NUMBER}"
+          fi
+          echo "PURU_VERSION_NAME=$VERSION" >> "$GITHUB_ENV"
+          echo "PURU_VERSION_CODE=${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+          echo "version $VERSION (code ${GITHUB_RUN_NUMBER})"
+
+      - name: Build APK
+        working-directory: android
+        run: |
+          set -o pipefail
+          gradle assembleRelease --no-daemon --stacktrace 2>&1 | tee "$RUNNER_TEMP/gradle.log"
+
+      - name: Rename APK
+        if: success()
+        run: |
+          set -euo pipefail
+          cd android/app/build/outputs/apk/release
+          for apk in *.apk; do
+            mv "$apk" "puru-launcher-${PURU_VERSION_NAME}.apk"
+          done
+          ls -lh
+
+      - name: Upload APK
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: puru-launcher-apk
+          path: android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: warn
+
+      - name: Attach APK to release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The release for this tag is created by the Release workflow, which
+          # may still be running; retry briefly and never fail the job here.
+          for attempt in $(seq 1 15); do
+            if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+              if gh release upload "${GITHUB_REF_NAME}" \
+                android/app/build/outputs/apk/release/*.apk --clobber; then
+                echo "APK attached to ${GITHUB_REF_NAME}"
+                exit 0
+              fi
+            fi
+            echo "release ${GITHUB_REF_NAME} not ready, retry ${attempt}"
+            sleep 20
+          done
+          echo "release never showed up; the APK stays in the run artifact"
+
+      - name: Publish Gradle log on failure
+        if: failure()
+        run: |
+          WORK="$(mktemp -d)"
+          mkdir -p "$WORK/publish"
+          tail -c 60000 "$RUNNER_TEMP/gradle.log" > "$WORK/publish/android-build.log" 2>/dev/null || true
+          cd "$WORK/publish"
+          git init -q
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git checkout -q -b debug-android-build
+          git add -A
+          git commit -q -m "Android build log from ${GITHUB_SHA::7}" || true
+          for attempt in 1 2 3; do
+            if git push -q -f origin debug-android-build; then
+              echo "log pushed to debug-android-build"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "could not push the build log"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
