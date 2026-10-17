@@ -3,6 +3,7 @@ package com.purujawa.puru.launcher
 import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Typeface
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -15,6 +16,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -38,6 +40,9 @@ class MainActivity : AppCompatActivity() {
         const val REFRESH_MS = 2_000L
         const val SETUP_TIMEOUT_SECONDS = 60L
         const val VERSION_TIMEOUT_SECONDS = 15L
+
+        /** Largest config.json the import accepts, a sane guard. */
+        const val MAX_IMPORT_CHARS = 1 shl 20
     }
 
     /** How a config row is edited. */
@@ -149,6 +154,17 @@ class MainActivity : AppCompatActivity() {
     private val toggles = mutableMapOf<String, CheckBox>()
     private var saving = false
 
+    /**
+     * The user picks an existing config.json (Downloads, Drive, …) and the file
+     * is handed to `puru setup` for validation before it becomes the live one.
+     */
+    private val pickConfigFile =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) {
+                importConfig(uri)
+            }
+        }
+
     private lateinit var binaryView: TextView
     private lateinit var statusView: TextView
     private lateinit var startButton: Button
@@ -182,6 +198,7 @@ class MainActivity : AppCompatActivity() {
             advancedContainer.visibility = if (checked) View.VISIBLE else View.GONE
         }
         findViewById<Button>(R.id.button_save).setOnClickListener { saveConfig(startAfter = false) }
+        findViewById<Button>(R.id.button_import).setOnClickListener { pickConfigFile.launch(arrayOf("*/*")) }
         findViewById<Button>(R.id.button_start).setOnClickListener { startGateway() }
         findViewById<Button>(R.id.button_stop).setOnClickListener { PuruService.stop(this) }
         findViewById<Button>(R.id.button_clear_log).setOnClickListener {
@@ -318,6 +335,68 @@ class MainActivity : AppCompatActivity() {
                 }
                 toast(getString(R.string.gateway_starting))
                 PuruService.start(appContext)
+            }
+        }.apply {
+            isDaemon = true
+            start()
+        }
+    }
+
+    /**
+     * Imports a config.json the user picked: the file is copied into app
+     * storage, validated and normalized by `puru setup` on that copy, and only
+     * then moved over the live config.json — so a broken file never destroys the
+     * working setup, and the Go binary still produces the final content.
+     */
+    private fun importConfig(uri: Uri) {
+        val text = try {
+            contentResolver.openInputStream(uri)?.use { it.bufferedReader().readText() }
+                ?: throw IllegalStateException(uri.lastPathSegment.orEmpty())
+        } catch (error: Exception) {
+            toast(getString(R.string.import_failed, error.message.orEmpty()))
+            return
+        }
+        if (text.length > MAX_IMPORT_CHARS) {
+            toast(getString(R.string.import_failed, "${text.length} chars"))
+            return
+        }
+
+        val appContext = applicationContext
+        val scratch = PuruRuntime.importFile(appContext)
+        saving = true
+        renderStatus()
+        Thread {
+            scratch.parentFile?.mkdirs()
+            scratch.writeText(text)
+            val (code, output) = PuruRuntime.run(
+                appContext,
+                emptyMap(),
+                SETUP_TIMEOUT_SECONDS,
+                "setup",
+                "--force",
+                "--config",
+                scratch.absolutePath,
+            )
+            var imported = false
+            if (code == 0) {
+                imported = runCatching {
+                    scratch.copyTo(PuruRuntime.configFile(appContext), overwrite = true)
+                }.isSuccess
+            }
+            scratch.delete()
+            val reason = output.trim().lines().lastOrNull { it.isNotBlank() }.orEmpty()
+
+            runOnUiThread {
+                saving = false
+                PuruRuntime.appendLog(appContext, "\n$ puru setup (import)\n$output")
+                renderStatus()
+                renderLog()
+                if (!imported) {
+                    toast(getString(R.string.import_failed, reason))
+                    return@runOnUiThread
+                }
+                prefillFromConfig()
+                toast(getString(R.string.config_imported))
             }
         }.apply {
             isDaemon = true

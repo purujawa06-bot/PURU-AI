@@ -100,6 +100,8 @@ config form, start/stop buttons, and a log view on the phone.
   base URL, model name) and hides the runtime/skills/web-search knobs behind
   *Show advanced settings*; an empty optional row keeps what `config.json`
   already has.
+- **Import config.json** (file picker) brings a config from another device or a
+  backup into the phone, after `puru setup` validates and normalizes it.
 - Needs Android 8.0+ on `arm64-v8a` / `armeabi-v7a`; config, memory, and
   workspace stay in the app's private storage (`<filesDir>/.puru/`).
 - Build, signing, and limits: [`android/README.md`](android/README.md).

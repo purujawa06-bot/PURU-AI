@@ -58,6 +58,13 @@ wizard cannot drift apart:
 - **Advanced settings** stay collapsed behind a checkbox: runtime knobs
   (timezone, iterations, history limit, tool preview, loop delay, shell memory),
   skills, and web search providers.
+- **Import config.json** (below Save) opens the Android file picker, so a config
+  from this laptop, another phone, or a backup can be dropped straight in. The
+  picked file is copied to `<filesDir>/.puru/import.json`, `puru setup --force`
+  validates and normalizes it there, and only then is it moved over
+  `config.json` — a broken file never destroys the working setup. A config from
+  another machine can carry a `workspace` path that does not exist on the phone,
+  so check the Workspace row (its hint shows the phone default) before starting.
 
 
 App data (and therefore the bot memory and workspace) lives in the app's

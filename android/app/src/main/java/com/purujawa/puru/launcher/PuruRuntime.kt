@@ -28,6 +28,13 @@ object PuruRuntime {
     fun configFile(context: Context): File =
         File(context.filesDir, ".puru/config.json")
 
+    /**
+     * Scratch file for `puru setup` while importing a config.json: the wizard
+     * normalizes it there, and only a valid result is copied over configFile.
+     */
+    fun importFile(context: Context): File =
+        File(context.filesDir, ".puru/import.json")
+
     fun logFile(context: Context): File =
         File(context.filesDir, "puru.log")
 
