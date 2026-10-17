@@ -7,12 +7,12 @@
 ```json
 {
   "content": "\nappended",
-  "path": "/tmp/puru-tools-dump-3673454015/appendme.txt"
+  "path": "/tmp/puru-tools-dump-4074839954/appendme.txt"
 }
 ```
 
 ## output
 
 ```
-Appended to /tmp/puru-tools-dump-3673454015/appendme.txt
+Appended to /tmp/puru-tools-dump-4074839954/appendme.txt
 ```
