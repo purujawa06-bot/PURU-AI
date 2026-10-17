@@ -257,19 +257,12 @@ jobs:
 
   android-apk:
     needs: [tag, github-release]
-    runs-on: ubuntu-24.04
     permissions:
-      actions: write
-      contents: read
-    steps:
-      # Tag dari workflow ini di-push pakai GITHUB_TOKEN, dan event seperti itu
-      # tidak memicu workflow lain. Jadi build APK dipanggil eksplisit; job
-      # Android APK sendiri yang mengunggah APK ke release tag ini.
-      - name: Dispatch the Android APK build for this tag
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="${{ needs.tag.outputs.tag }}"
-          gh workflow run android.yml --ref "$TAG"
-          echo "Android APK build dipicu untuk $TAG."
+      contents: write
+    # Tag dari workflow ini di-push pakai GITHUB_TOKEN, dan event seperti itu
+    # tidak memicu workflow lain, jadi build APK dipanggil langsung sebagai
+    # reusable workflow. Job Android-lah yang mengunggah APK ke release ini.
+    uses: ./.github/workflows/android.yml
+    with:
+      tag: ${{ needs.tag.outputs.tag }}
+    secrets: inherit

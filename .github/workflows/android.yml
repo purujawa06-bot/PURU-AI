@@ -4,13 +4,33 @@ name: Android APK
 # cross-built for the phone ABIs, bundled as jniLibs/<abi>/libpuru.so, and the
 # Kotlin app is assembled around it.
 #
-# Artifact: puru-launcher-apk (Actions run page).
-# Tag pushes also attach puru-launcher-<tag>.apk to the GitHub release.
-# Failures push the Gradle log to the debug-android-build branch, because job
-# logs are not reachable without admin rights.
+# Triggers:
+#   - workflow_call:    the Release workflow calls this with its new tag, so the
+#                       APK lands on the release it just published. (A tag
+#                       pushed with GITHUB_TOKEN cannot trigger workflows, which
+#                       is why this is a call instead of a tag push filter.)
+#   - workflow_dispatch: manual build; fill the tag input to stamp the version
+#                       and attach the APK to that release.
+#   - push to main:     normal verification build.
+#
+# Artifact: puru-launcher-apk. Every run also force-pushes a build report to the
+# debug-android-build branch, because job logs need admin rights to read.
 
 on:
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Release tag to stamp and attach the APK to'
+        required: false
+        type: string
+        default: ''
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to stamp and attach the APK to (optional)'
+        required: false
+        type: string
+        default: ''
   push:
     branches: [main]
     tags: ['v*']
@@ -26,7 +46,9 @@ permissions:
   contents: write
 
 concurrency:
-  group: android-apk-${{ github.ref }}
+  # Event name is part of the key so a release build is never cancelled by a
+  # concurrent push build on the same ref.
+  group: android-apk-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
@@ -41,6 +63,42 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      # The inputs context only exists for workflow_call/workflow_dispatch, so
+      # it is read in a step the push trigger never runs.
+      - name: Resolve release tag (call or manual dispatch)
+        if: github.event_name != 'push'
+        run: |
+          set -euo pipefail
+          TAG="${{ inputs.tag }}"
+          if [ -z "$TAG" ] && [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          echo "RELEASE_TAG=$TAG" >> "$GITHUB_ENV"
+          echo "release tag: ${TAG:-none}"
+
+      - name: Resolve release tag (push)
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          TAG=""
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          echo "RELEASE_TAG=$TAG" >> "$GITHUB_ENV"
+          echo "release tag: ${TAG:-none}"
+
+      - name: Stamp version
+        run: |
+          set -euo pipefail
+          if [ -n "${RELEASE_TAG}" ]; then
+            VERSION="${RELEASE_TAG}"
+          else
+            VERSION="main-${GITHUB_RUN_NUMBER}"
+          fi
+          echo "PURU_VERSION_NAME=$VERSION" >> "$GITHUB_ENV"
+          echo "PURU_VERSION_CODE=${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+          echo "version $VERSION (code ${GITHUB_RUN_NUMBER})"
+
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
@@ -50,9 +108,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p android/app/src/main/jniLibs/arm64-v8a android/app/src/main/jniLibs/armeabi-v7a
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" \
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath \
+            -ldflags="-s -w -X main.version=${PURU_VERSION_NAME}" \
             -o android/app/src/main/jniLibs/arm64-v8a/libpuru.so ./cmd/puru
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags="-s -w" \
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath \
+            -ldflags="-s -w -X main.version=${PURU_VERSION_NAME}" \
             -o android/app/src/main/jniLibs/armeabi-v7a/libpuru.so ./cmd/puru
           ls -lh android/app/src/main/jniLibs/*/libpuru.so
 
@@ -112,18 +172,6 @@ jobs:
           fi
           echo "PURU_KEYSTORE=$KS" >> "$GITHUB_ENV"
 
-      - name: Stamp version
-        run: |
-          set -euo pipefail
-          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
-            VERSION="${GITHUB_REF_NAME}"
-          else
-            VERSION="main-${GITHUB_RUN_NUMBER}"
-          fi
-          echo "PURU_VERSION_NAME=$VERSION" >> "$GITHUB_ENV"
-          echo "PURU_VERSION_CODE=${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
-          echo "version $VERSION (code ${GITHUB_RUN_NUMBER})"
-
       - name: Build APK
         working-directory: android
         run: |
@@ -149,24 +197,25 @@ jobs:
           if-no-files-found: warn
 
       - name: Attach APK to release
-        if: github.ref_type == 'tag'
+        if: env.RELEASE_TAG != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # The release for this tag is created by the Release workflow, which
-          # may still be running; retry briefly and never fail the job here.
+          # The release may still be under construction when this workflow is
+          # called, so retry briefly instead of failing on a race.
           for attempt in $(seq 1 15); do
-            if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
-              if gh release upload "${GITHUB_REF_NAME}" \
+            if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+              if gh release upload "${RELEASE_TAG}" \
                 android/app/build/outputs/apk/release/*.apk --clobber; then
-                echo "APK attached to ${GITHUB_REF_NAME}"
+                echo "APK attached to ${RELEASE_TAG}"
                 exit 0
               fi
             fi
-            echo "release ${GITHUB_REF_NAME} not ready, retry ${attempt}"
+            echo "release ${RELEASE_TAG} not ready, retry ${attempt}"
             sleep 20
           done
           echo "release never showed up; the APK stays in the run artifact"
+          exit 1
 
       - name: Publish build evidence
         if: always()
@@ -180,7 +229,8 @@ jobs:
           APK="$(ls android/app/build/outputs/apk/release/*.apk 2>/dev/null | head -1 || true)"
           {
             echo "== run =="
-            echo "sha ${GITHUB_SHA} ref ${GITHUB_REF} version ${PURU_VERSION_NAME:-?} code ${PURU_VERSION_CODE:-?}"
+            echo "sha ${GITHUB_SHA} ref ${GITHUB_REF} event ${GITHUB_EVENT_NAME}"
+            echo "release tag ${RELEASE_TAG:-none} version ${PURU_VERSION_NAME:-?} code ${PURU_VERSION_CODE:-?}"
             echo
             echo "== APK =="
             if [ -n "$APK" ]; then
@@ -190,7 +240,8 @@ jobs:
               unzip -l "$APK" | grep -E "lib/|\.dex|META-INF" || true
               echo
               echo "== aapt2 badging =="
-              "${ANDROID_SDK_ROOT}/build-tools/35.0.0/aapt2" dump badging "$APK" 2>&1 | head -40 || true
+              "${ANDROID_SDK_ROOT}/build-tools/35.0.0/aapt2" dump badging "$APK" 2>&1 | grep -E \
+                "package:|sdkVersion|application-label:|launchable-activity|native-code|uses-permission" || true
               echo
               echo "== merged manifest =="
               find android/app/build/intermediates -name AndroidManifest.xml -path "*merged*" -exec cat {} \; 2>/dev/null || true

@@ -41,8 +41,11 @@ private storage: `config.json` in `<filesDir>/.puru/`, the workspace in
 ## Build
 
 CI builds the APK on every change under `android/` or the Go sources:
-**Actions → Android APK** (artifact `puru-launcher-apk`). Tag pushes (`v*`)
-also attach `puru-launcher-<tag>.apk` to the GitHub release.
+**Actions → Android APK** (artifact `puru-launcher-apk`). The workflow is also
+a reusable workflow: the Release workflow calls it for the new tag, so
+`puru-launcher-<tag>.apk` also lands on the GitHub release (a tag pushed with
+`GITHUB_TOKEN` cannot trigger workflows by itself). A manual run accepts a tag
+input to stamp the version and attach the APK to that release.
 
 Every run also force-pushes a short build report (APK contents, merged
 manifest, Gradle tail) to the `debug-android-build` branch, because job logs
