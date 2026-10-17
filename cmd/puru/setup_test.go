@@ -20,11 +20,17 @@ func isolateSetupEnv(t *testing.T) string {
 	t.Setenv("CONFIG", "")
 	t.Setenv("PURU_CONFIG", "")
 	t.Setenv("PURU_NON_INTERACTIVE", "1")
-	t.Setenv("TELEGRAM_BOT_TOKEN", "")
-	t.Setenv("PURU_BASE_URL", "")
-	t.Setenv("PURU_API_KEY", "")
-	t.Setenv("PURU_MODEL", "")
-	t.Setenv("PURU_WORKSPACE", "")
+	for _, name := range []string{
+		"TELEGRAM_BOT_TOKEN", "PURU_BASE_URL", "PURU_API_KEY", "PURU_MODEL", "PURU_WORKSPACE",
+		"PURU_ALLOWED_USERS", "PURU_TEMPERATURE", "PURU_RESTRICT_WORKSPACE", "PURU_TIMEZONE",
+		"PURU_MAX_ITERATIONS", "PURU_HISTORY_TOKEN_LIMIT", "PURU_TOOLS_PREVIEW",
+		"PURU_LOOP_DELAY_SECONDS", "PURU_EXEC_MEMORY_MB", "PURU_SKILLS_MODE", "PURU_SKILLS_ALLOW",
+		"PURU_HEALTH_HOST", "PURU_HEALTH_PORT", "PURU_WEBSEARCH_AISTUDIO_ACTIVE",
+		"PURU_WEBSEARCH_AISTUDIO_MODEL", "PURU_WEBSEARCH_AISTUDIO_KEY",
+		"PURU_WEBSEARCH_EXA_ACTIVE", "PURU_WEBSEARCH_EXA_KEY",
+	} {
+		t.Setenv(name, "")
+	}
 	return home
 }
 
@@ -157,6 +163,142 @@ func TestRunSetupFreshConfigUsesBuiltInDefaults(t *testing.T) {
 	}
 	if len(got.TelegramAllowedUsers) != 0 || len(got.SkillsAllow) != 0 {
 		t.Fatalf("expected empty lists, got %v/%v", got.TelegramAllowedUsers, got.SkillsAllow)
+	}
+}
+
+// Every wizard field has an env override, so a GUI (the Android launcher) can
+// drive `puru setup` without a terminal.
+func TestRunSetupEnvOverridesEveryField(t *testing.T) {
+	home := isolateSetupEnv(t)
+	t.Setenv("TELEGRAM_BOT_TOKEN", "444:env-token")
+	t.Setenv("PURU_BASE_URL", "http://env.example/v1")
+	t.Setenv("PURU_API_KEY", "env-key")
+	t.Setenv("PURU_MODEL", "env-model")
+	t.Setenv("PURU_WORKSPACE", filepath.Join(home, "env-workspace"))
+	t.Setenv("PURU_ALLOWED_USERS", "11, 22 33")
+	t.Setenv("PURU_TEMPERATURE", "0")
+	t.Setenv("PURU_RESTRICT_WORKSPACE", "no")
+	t.Setenv("PURU_TIMEZONE", "Asia/Makassar")
+	t.Setenv("PURU_MAX_ITERATIONS", "77")
+	t.Setenv("PURU_HISTORY_TOKEN_LIMIT", "4242")
+	t.Setenv("PURU_TOOLS_PREVIEW", "off")
+	t.Setenv("PURU_LOOP_DELAY_SECONDS", "5")
+	t.Setenv("PURU_EXEC_MEMORY_MB", "96")
+	t.Setenv("PURU_SKILLS_MODE", "custom")
+	t.Setenv("PURU_SKILLS_ALLOW", "find-skills,weather")
+	t.Setenv("PURU_WEBSEARCH_AISTUDIO_ACTIVE", "true")
+	t.Setenv("PURU_WEBSEARCH_AISTUDIO_MODEL", "gemini-env")
+	t.Setenv("PURU_WEBSEARCH_AISTUDIO_KEY", "ai-env-key")
+	t.Setenv("PURU_WEBSEARCH_EXA_ACTIVE", "1")
+	t.Setenv("PURU_WEBSEARCH_EXA_KEY", "exa-env-key")
+
+	// The file must lose to the env on every field the env sets.
+	path := filepath.Join(t.TempDir(), "config.json")
+	writeJSON(t, path, map[string]any{
+		"telegram_bot_token":     "111:old-token",
+		"telegram_allowed_users": []int64{7},
+		"model": map[string]any{
+			"base_url":    "http://old.example/v1",
+			"api_key":     "old-key",
+			"model":       "old-model",
+			"temperature": 0.7,
+		},
+		"workspace":           filepath.Join(home, "old-workspace"),
+		"restrict_workspace":  true,
+		"max_iterations":      250,
+		"history_token_limit": 12345,
+		"tools_preview":       true,
+		"loop_delay_seconds":  9,
+		"exec_memory_mb":      128,
+		"skills_mode":         "default",
+		"skills_allow":        []string{"old-skill"},
+		"timezone":            "UTC",
+		"web_search": map[string]any{
+			"aistudio": map[string]any{"active": false, "model": "gemini-old"},
+			"exa":      map[string]any{"active": false, "api_key": "old-exa"},
+		},
+	})
+
+	if err := runSetup([]string{"--force", "--config", path}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got.TelegramBotToken != "444:env-token" || got.Model.BaseURL != "http://env.example/v1" ||
+		got.Model.APIKey != "env-key" || got.Model.Model != "env-model" {
+		t.Fatalf("env did not win over the file: %+v", got.Model)
+	}
+	if got.Workspace != filepath.Join(home, "env-workspace") {
+		t.Fatalf("workspace env ignored: %q", got.Workspace)
+	}
+	if len(got.TelegramAllowedUsers) != 3 || got.TelegramAllowedUsers[2] != 33 {
+		t.Fatalf("allowed users env ignored: %v", got.TelegramAllowedUsers)
+	}
+	if got.Model.Temperature != 0 {
+		t.Fatalf("temperature env ignored (0 is a real value): %v", got.Model.Temperature)
+	}
+	if got.RestrictWorkspace || got.ShowToolsPreview() {
+		t.Fatalf("boolean env ignored: %v/%v", got.RestrictWorkspace, got.ShowToolsPreview())
+	}
+	if got.Timezone != "Asia/Makassar" || got.MaxIterations != 77 || got.HistoryTokenLimit != 4242 {
+		t.Fatalf("runtime env ignored: %s/%d/%d", got.Timezone, got.MaxIterations, got.HistoryTokenLimit)
+	}
+	if got.LoopDelaySeconds != 5 || got.ExecMemoryMB != 96 {
+		t.Fatalf("delay/memory env ignored: %d/%d", got.LoopDelaySeconds, got.ExecMemoryMB)
+	}
+	if got.SkillsMode != "custom" || len(got.SkillsAllow) != 2 || got.SkillsAllow[1] != "weather" {
+		t.Fatalf("skills env ignored: %q %v", got.SkillsMode, got.SkillsAllow)
+	}
+	if !got.WebSearch.AIStudio.Ready() || got.WebSearch.AIStudio.Model != "gemini-env" ||
+		got.WebSearch.AIStudio.APIKey != "ai-env-key" {
+		t.Fatalf("aistudio env ignored: %+v", got.WebSearch.AIStudio)
+	}
+	if !got.WebSearch.Exa.Ready() || got.WebSearch.Exa.APIKey != "exa-env-key" {
+		t.Fatalf("exa env ignored: %+v", got.WebSearch.Exa)
+	}
+}
+
+// A malformed env value must not wipe a good value from config.json.
+func TestRunSetupIgnoresInvalidEnvValues(t *testing.T) {
+	isolateSetupEnv(t)
+	t.Setenv("TELEGRAM_BOT_TOKEN", "555:env-token")
+	t.Setenv("PURU_MAX_ITERATIONS", "five")
+	t.Setenv("PURU_TEMPERATURE", "hot")
+	t.Setenv("PURU_RESTRICT_WORKSPACE", "maybe")
+	t.Setenv("PURU_ALLOWED_USERS", "12,abc")
+
+	path := filepath.Join(t.TempDir(), "config.json")
+	writeJSON(t, path, map[string]any{
+		"telegram_bot_token":     "555:old-token",
+		"telegram_allowed_users": []int64{12, 34},
+		"model": map[string]any{
+			"base_url":    "http://old.example/v1",
+			"model":       "old-model",
+			"temperature": 0.7,
+		},
+		"restrict_workspace": false,
+		"max_iterations":     250,
+	})
+
+	if err := runSetup([]string{"--force", "--config", path}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got.MaxIterations != 250 || got.Model.Temperature != 0.7 {
+		t.Fatalf("invalid env clobbered the file: %d/%v", got.MaxIterations, got.Model.Temperature)
+	}
+	if got.RestrictWorkspace {
+		t.Fatal("invalid PURU_RESTRICT_WORKSPACE must keep the file value (false)")
+	}
+	if len(got.TelegramAllowedUsers) != 2 || got.TelegramAllowedUsers[1] != 34 {
+		t.Fatalf("invalid id list must keep the file value: %v", got.TelegramAllowedUsers)
 	}
 }
 

@@ -24,6 +24,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode"
 
 	"github.com/purujawa06-bot/PURU-AI/internal/ai"
 	"github.com/purujawa06-bot/PURU-AI/internal/app"
@@ -88,7 +89,14 @@ Usage:
     Defaults come from the existing config.json when present, so Enter keeps
     the current setup; env vars still override them.
     Non-interactive env: TELEGRAM_BOT_TOKEN, PURU_BASE_URL, PURU_API_KEY,
-    PURU_MODEL, PURU_WORKSPACE. Add --force to overwrite without asking,
+    PURU_MODEL, PURU_WORKSPACE, PURU_ALLOWED_USERS, PURU_TEMPERATURE,
+    PURU_RESTRICT_WORKSPACE, PURU_TIMEZONE, PURU_MAX_ITERATIONS,
+    PURU_HISTORY_TOKEN_LIMIT, PURU_TOOLS_PREVIEW, PURU_LOOP_DELAY_SECONDS,
+    PURU_EXEC_MEMORY_MB, PURU_SKILLS_MODE, PURU_SKILLS_ALLOW,
+    PURU_HEALTH_HOST, PURU_HEALTH_PORT, PURU_WEBSEARCH_AISTUDIO_ACTIVE,
+    PURU_WEBSEARCH_AISTUDIO_MODEL, PURU_WEBSEARCH_AISTUDIO_KEY,
+    PURU_WEBSEARCH_EXA_ACTIVE, PURU_WEBSEARCH_EXA_KEY — every wizard field,
+    so a GUI can drive the same setup. Add --force to overwrite without asking,
     --full for full setup without asking.
 
   puru gateway [--config PATH] [--health] [--host H] [--port P]
@@ -154,7 +162,13 @@ func runSetup(args []string) error {
 	// Defaults follow the current setup: env overrides, then the existing
 	// config.json, then the built-in values. Pressing Enter therefore keeps
 	// what is already configured, and the minimal wizard carries over every
-	// field it does not ask.
+	// field it does not ask. Every field has an env override (TELEGRAM_BOT_TOKEN,
+	// PURU_BASE_URL, PURU_API_KEY, PURU_MODEL, PURU_WORKSPACE, PURU_ALLOWED_USERS,
+	// PURU_TEMPERATURE, PURU_RESTRICT_WORKSPACE, PURU_TIMEZONE, PURU_MAX_ITERATIONS,
+	// PURU_HISTORY_TOKEN_LIMIT, PURU_HEALTH_HOST, PURU_HEALTH_PORT,
+	// PURU_TOOLS_PREVIEW, PURU_LOOP_DELAY_SECONDS, PURU_EXEC_MEMORY_MB,
+	// PURU_SKILLS_MODE, PURU_SKILLS_ALLOW, PURU_WEBSEARCH_AISTUDIO_*,
+	// PURU_WEBSEARCH_EXA_*), so a GUI or container can drive the same wizard.
 	prev, hasPrev := loadPreviousConfig(path)
 	if hasPrev {
 		if nonInteractive {
@@ -176,26 +190,28 @@ func runSetup(args []string) error {
 	if allowedUsers == nil {
 		allowedUsers = []int64{}
 	}
-	temperature := prev.Model.Temperature
-	restrictWorkspace := prev.restrictWorkspaceDefault()
-	maxIterations := firstNonZero(prev.MaxIterations, config.DefaultMaxIterations)
-	historyTokenLimit := firstNonZero(prev.HistoryTokenLimit, config.DefaultHistoryTokLimit)
-	host := firstNonEmpty(prev.Host, config.DefaultHealthHost)
-	port := firstNonZero(prev.Port, config.DefaultHealthPort)
-	toolsPreview := prev.ShowToolsPreview()
-	loopDelay := firstNonZero(prev.LoopDelaySeconds, config.DefaultLoopDelaySeconds)
-	execMemory := firstNonZero(prev.ExecMemoryMB, config.DefaultExecMemoryMB)
-	skillsMode := firstNonEmpty(prev.SkillsMode, "default")
+	allowedUsers = envOrInt64List("PURU_ALLOWED_USERS", allowedUsers)
+	temperature := envOrFloat("PURU_TEMPERATURE", prev.Model.Temperature)
+	restrictWorkspace := envOrBool("PURU_RESTRICT_WORKSPACE", prev.restrictWorkspaceDefault())
+	maxIterations := envOrInt("PURU_MAX_ITERATIONS", firstNonZero(prev.MaxIterations, config.DefaultMaxIterations))
+	historyTokenLimit := envOrInt("PURU_HISTORY_TOKEN_LIMIT", firstNonZero(prev.HistoryTokenLimit, config.DefaultHistoryTokLimit))
+	host := envOrString("PURU_HEALTH_HOST", firstNonEmpty(prev.Host, config.DefaultHealthHost))
+	port := envOrInt("PURU_HEALTH_PORT", firstNonZero(prev.Port, config.DefaultHealthPort))
+	toolsPreview := envOrBool("PURU_TOOLS_PREVIEW", prev.ShowToolsPreview())
+	loopDelay := envOrInt("PURU_LOOP_DELAY_SECONDS", firstNonZero(prev.LoopDelaySeconds, config.DefaultLoopDelaySeconds))
+	execMemory := envOrInt("PURU_EXEC_MEMORY_MB", firstNonZero(prev.ExecMemoryMB, config.DefaultExecMemoryMB))
+	skillsMode := envOrString("PURU_SKILLS_MODE", firstNonEmpty(prev.SkillsMode, "default"))
 	skillsAllow := prev.SkillsAllow
 	if skillsAllow == nil {
 		skillsAllow = []string{}
 	}
-	timezone := firstNonEmpty(prev.Timezone, config.DefaultTimezone)
-	webActive := prev.WebSearch.AIStudio.Active
-	webModel := firstNonEmpty(prev.WebSearch.AIStudio.Model, "gemini-flash-lite-latest")
-	webAPIKey := prev.WebSearch.AIStudio.APIKey
-	exaActive := prev.WebSearch.Exa.Active
-	exaAPIKey := prev.WebSearch.Exa.APIKey
+	skillsAllow = envOrList("PURU_SKILLS_ALLOW", skillsAllow)
+	timezone := envOrString("PURU_TIMEZONE", firstNonEmpty(prev.Timezone, config.DefaultTimezone))
+	webActive := envOrBool("PURU_WEBSEARCH_AISTUDIO_ACTIVE", prev.WebSearch.AIStudio.Active)
+	webModel := envOrString("PURU_WEBSEARCH_AISTUDIO_MODEL", firstNonEmpty(prev.WebSearch.AIStudio.Model, "gemini-flash-lite-latest"))
+	webAPIKey := envOrString("PURU_WEBSEARCH_AISTUDIO_KEY", prev.WebSearch.AIStudio.APIKey)
+	exaActive := envOrBool("PURU_WEBSEARCH_EXA_ACTIVE", prev.WebSearch.Exa.Active)
+	exaAPIKey := envOrString("PURU_WEBSEARCH_EXA_KEY", prev.WebSearch.Exa.APIKey)
 
 	full := o.full
 	if !nonInteractive {
@@ -420,6 +436,146 @@ func firstNonEmpty(v ...string) string {
 		}
 	}
 	return ""
+}
+
+// envString returns the trimmed value of name, reporting false when unset.
+func envString(name string) (string, bool) {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return "", false
+	}
+	return value, true
+}
+
+// envInt parses name as an int; unset or unparsable values report false, so the
+// caller keeps its previous value.
+func envInt(name string) (int, bool) {
+	value, ok := envString(name)
+	if !ok {
+		return 0, false
+	}
+	n, err := strconv.Atoi(value)
+	if err != nil {
+		warnf("ignoring %s=%q: not a number", name, value)
+		return 0, false
+	}
+	return n, true
+}
+
+// envFloat parses name as a float. Zero is a meaningful value (temperature),
+// so the caller must rely on the boolean, never on the value.
+func envFloat(name string) (float64, bool) {
+	value, ok := envString(name)
+	if !ok {
+		return 0, false
+	}
+	f, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		warnf("ignoring %s=%q: not a number", name, value)
+		return 0, false
+	}
+	return f, true
+}
+
+// envBool parses name as a boolean: 1/0, true/false, yes/no, on/off.
+func envBool(name string) (bool, bool) {
+	value, ok := envString(name)
+	if !ok {
+		return false, false
+	}
+	switch strings.ToLower(value) {
+	case "1", "true", "yes", "y", "on":
+		return true, true
+	case "0", "false", "no", "n", "off":
+		return false, true
+	}
+	warnf("ignoring %s=%q: not a boolean", name, value)
+	return false, false
+}
+
+// splitList splits a comma or whitespace separated environment value.
+func splitList(value string) []string {
+	fields := strings.FieldsFunc(value, func(r rune) bool {
+		return r == ',' || unicode.IsSpace(r)
+	})
+	out := make([]string, 0, len(fields))
+	for _, field := range fields {
+		if field = strings.TrimSpace(field); field != "" {
+			out = append(out, field)
+		}
+	}
+	return out
+}
+
+// envList parses name as a comma/whitespace separated string list.
+func envList(name string) ([]string, bool) {
+	value, ok := envString(name)
+	if !ok {
+		return nil, false
+	}
+	return splitList(value), true
+}
+
+// envInt64List parses name as a comma/whitespace separated integer list, e.g.
+// the Telegram user ID allowlist.
+func envInt64List(name string) ([]int64, bool) {
+	value, ok := envString(name)
+	if !ok {
+		return nil, false
+	}
+	fields := splitList(value)
+	ids := make([]int64, 0, len(fields))
+	for _, field := range fields {
+		id, err := strconv.ParseInt(field, 10, 64)
+		if err != nil {
+			warnf("ignoring %s=%q: not an integer list", name, value)
+			return nil, false
+		}
+		ids = append(ids, id)
+	}
+	return ids, true
+}
+
+func envOrString(name, fallback string) string {
+	if value, ok := envString(name); ok {
+		return value
+	}
+	return fallback
+}
+
+func envOrInt(name string, fallback int) int {
+	if value, ok := envInt(name); ok {
+		return value
+	}
+	return fallback
+}
+
+func envOrFloat(name string, fallback float64) float64 {
+	if value, ok := envFloat(name); ok {
+		return value
+	}
+	return fallback
+}
+
+func envOrBool(name string, fallback bool) bool {
+	if value, ok := envBool(name); ok {
+		return value
+	}
+	return fallback
+}
+
+func envOrList(name string, fallback []string) []string {
+	if value, ok := envList(name); ok {
+		return value
+	}
+	return fallback
+}
+
+func envOrInt64List(name string, fallback []int64) []int64 {
+	if value, ok := envInt64List(name); ok {
+		return value
+	}
+	return fallback
 }
 
 // firstNonZero returns v, or fallback when v is zero or negative — the
