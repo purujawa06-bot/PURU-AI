@@ -16,7 +16,15 @@ function pkgVersion() {
 
 function resolveTag() {
   const v = (process.env.PURU_AI_VERSION || pkgVersion()).trim();
-  return v.startsWith('v') ? v : `v${v}`;
+  return /^[vV]/.test(v) ? v : `v${v}`;
+}
+
+// GitHub release tags are case sensitive, so a repo that publishes V6.3.0 (or a
+// user who passes 6.3.0 while only V6.3.0 exists) must try both spellings.
+function tagVariants(tag) {
+  if (tag.startsWith('v')) return [tag, `V${tag.slice(1)}`];
+  if (tag.startsWith('V')) return [tag, `v${tag.slice(1)}`];
+  return [tag];
 }
 
 function fetch(url, dest, redirects = 5) {
@@ -48,21 +56,29 @@ async function main() {
     return;
   }
   const repo = process.env.PURU_AI_REPO || 'purujawa06-bot/PURU-AI';
-  const tag = resolveTag();
+  const tags = tagVariants(resolveTag());
   const goos = mapOS();
   const goarch = mapArch();
-  const url = downloadURL({ repo, tag, goos, goarch });
   const dest = binaryPath();
   fs.mkdirSync(path.dirname(dest), { recursive: true });
-  console.log(`[puru-ai] downloading ${assetName(goos, goarch)} ${tag} from ${repo}...`);
-  try {
-    await fetch(url, dest);
-  } catch (err) {
-    try { fs.unlinkSync(dest); } catch (_) {}
-    console.error(`[puru-ai] FAILED: ${err.message}`);
-    console.error(`[puru-ai] Check the release at https://github.com/${repo}/releases/tag/${tag}`);
+  let lastErr = null;
+  for (const tag of tags) {
+    const url = downloadURL({ repo, tag, goos, goarch });
+    console.log(`[puru-ai] downloading ${assetName(goos, goarch)} ${tag} from ${repo}...`);
+    try {
+      await fetch(url, dest);
+      lastErr = null;
+      break;
+    } catch (err) {
+      lastErr = err;
+      try { fs.unlinkSync(dest); } catch (_) {}
+      console.error(`[puru-ai] FAILED: ${err.message}`);
+    }
+  }
+  if (lastErr) {
+    console.error(`[puru-ai] Check the release at https://github.com/${repo}/releases/tag/${tags[0]}`);
     console.error(`[puru-ai] Or set PURU_AI_BINARY=/path/to/puru and reinstall.`);
-    throw err;
+    throw lastErr;
   }
   if (goos !== 'windows') {
     try { fs.chmodSync(dest, 0o755); } catch (_) {}
@@ -78,4 +94,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { resolveTag, fetch };
+module.exports = { resolveTag, tagVariants, fetch };

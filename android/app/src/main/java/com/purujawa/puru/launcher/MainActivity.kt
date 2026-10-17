@@ -2,24 +2,33 @@ package com.purujawa.puru.launcher
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.Typeface
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.text.InputType
+import android.view.View
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import org.json.JSONArray
 import org.json.JSONObject
+import kotlin.math.floor
 
 /**
  * Single screen: the config form, start/stop controls, and the gateway log.
  *
- * Saving the form shells out to `puru setup --force`, so the Go binary stays
- * the only writer of config.json and the app never duplicates that schema.
+ * Every row of the form maps to one `puru setup` environment variable, so saving
+ * shells out to the Go binary and config.json keeps a single writer. A row left
+ * empty is simply not passed, and puru then keeps the value already in
+ * config.json (or its own default), which each hint states.
  */
 class MainActivity : AppCompatActivity() {
 
@@ -31,18 +40,120 @@ class MainActivity : AppCompatActivity() {
         const val VERSION_TIMEOUT_SECONDS = 15L
     }
 
+    /** How a config row is edited. */
+    private enum class Kind { TEXT, NUMBER, TOGGLE }
+
+    /**
+     * One `puru setup` field: the env var it feeds, the label and hint shown,
+     * and how it is edited. Required rows are validated before saving; advanced
+     * rows stay hidden until the user asks for them.
+     */
+    private class Field(
+        val env: String,
+        val label: String,
+        val hint: String,
+        val section: String,
+        val kind: Kind = Kind.TEXT,
+        val required: Boolean = false,
+        val advanced: Boolean = false,
+        val checkedByDefault: Boolean = false,
+    )
+
+    private val fields = listOf(
+        Field(
+            "TELEGRAM_BOT_TOKEN", "Bot token (required)", "123456:ABC… from @BotFather",
+            "Telegram", required = true,
+        ),
+        Field(
+            "PURU_ALLOWED_USERS", "Allowed Telegram user IDs (optional)",
+            "empty = anyone can use the bot, else comma separated IDs", "Telegram",
+        ),
+        Field(
+            "PURU_BASE_URL", "Base URL (required)", "https://api.openai.com/v1",
+            "Model", required = true,
+        ),
+        Field("PURU_MODEL", "Model name (required)", "gpt-4o-mini", "Model", required = true),
+        Field(
+            "PURU_API_KEY", "API key (optional)",
+            "empty = keep current; local endpoints need none", "Model",
+        ),
+        Field(
+            "PURU_TEMPERATURE", "Temperature (optional)", "0 = provider default, e.g. 0.7",
+            "Model", kind = Kind.NUMBER,
+        ),
+        Field(
+            "PURU_WORKSPACE", "Workspace directory (optional)", "where the agent reads and writes files",
+            "Workspace",
+        ),
+        Field(
+            "PURU_RESTRICT_WORKSPACE", "Keep the agent inside the workspace",
+            "recommended: blocks paths outside it", "Workspace",
+            kind = Kind.TOGGLE, checkedByDefault = true,
+        ),
+        Field(
+            "PURU_TIMEZONE", "Timezone (optional)", "Asia/Jakarta", "Runtime", advanced = true,
+        ),
+        Field(
+            "PURU_MAX_ITERATIONS", "Max tool iterations (optional)", "500",
+            "Runtime", kind = Kind.NUMBER, advanced = true,
+        ),
+        Field(
+            "PURU_HISTORY_TOKEN_LIMIT", "History token limit (optional)", "30000",
+            "Runtime", kind = Kind.NUMBER, advanced = true,
+        ),
+        Field(
+            "PURU_TOOLS_PREVIEW", "Show live tool calls",
+            "edits the chat message as each tool runs", "Runtime",
+            kind = Kind.TOGGLE, checkedByDefault = true, advanced = true,
+        ),
+        Field(
+            "PURU_LOOP_DELAY_SECONDS", "Loop delay seconds (optional)", "3",
+            "Runtime", kind = Kind.NUMBER, advanced = true,
+        ),
+        Field(
+            "PURU_EXEC_MEMORY_MB", "Shell memory limit MB (optional)", "64",
+            "Runtime", kind = Kind.NUMBER, advanced = true,
+        ),
+        Field(
+            "PURU_SKILLS_MODE", "Skills mode (optional)", "default | off | custom",
+            "Skills", advanced = true,
+        ),
+        Field(
+            "PURU_SKILLS_ALLOW", "Skills allowlist (optional)",
+            "only used when skills_mode=custom, comma separated", "Skills", advanced = true,
+        ),
+        Field(
+            "PURU_WEBSEARCH_AISTUDIO_ACTIVE", "AI Studio web search (Gemini grounding)",
+            "off unless enabled", "Web search", kind = Kind.TOGGLE, advanced = true,
+        ),
+        Field(
+            "PURU_WEBSEARCH_AISTUDIO_MODEL", "AI Studio model (optional)",
+            "gemini-flash-lite-latest", "Web search", advanced = true,
+        ),
+        Field(
+            "PURU_WEBSEARCH_AISTUDIO_KEY", "AI Studio API key (optional)",
+            "required to search", "Web search", advanced = true,
+        ),
+        Field(
+            "PURU_WEBSEARCH_EXA_ACTIVE", "Exa web search", "off unless enabled",
+            "Web search", kind = Kind.TOGGLE, advanced = true,
+        ),
+        Field(
+            "PURU_WEBSEARCH_EXA_KEY", "Exa API key (optional)", "required to search",
+            "Web search", advanced = true,
+        ),
+    )
+
     private val handler = Handler(Looper.getMainLooper())
+    private val inputs = mutableMapOf<String, EditText>()
+    private val toggles = mutableMapOf<String, CheckBox>()
     private var saving = false
 
     private lateinit var binaryView: TextView
     private lateinit var statusView: TextView
     private lateinit var startButton: Button
     private lateinit var stopButton: Button
-    private lateinit var tokenInput: EditText
-    private lateinit var baseUrlInput: EditText
-    private lateinit var apiKeyInput: EditText
-    private lateinit var modelInput: EditText
-    private lateinit var workspaceInput: EditText
+    private lateinit var advancedContainer: LinearLayout
     private lateinit var logView: TextView
 
     private val refresh = object : Runnable {
@@ -61,15 +172,15 @@ class MainActivity : AppCompatActivity() {
         statusView = findViewById(R.id.text_status)
         startButton = findViewById(R.id.button_start)
         stopButton = findViewById(R.id.button_stop)
-        tokenInput = findViewById(R.id.input_token)
-        baseUrlInput = findViewById(R.id.input_base_url)
-        apiKeyInput = findViewById(R.id.input_api_key)
-        modelInput = findViewById(R.id.input_model)
-        workspaceInput = findViewById(R.id.input_workspace)
+        advancedContainer = findViewById(R.id.container_advanced)
         logView = findViewById(R.id.text_log)
 
-        workspaceInput.hint = PuruRuntime.defaultWorkspace(this)
+        buildForm()
+        prefillFromConfig()
 
+        findViewById<CheckBox>(R.id.toggle_advanced).setOnCheckedChangeListener { _, checked ->
+            advancedContainer.visibility = if (checked) View.VISIBLE else View.GONE
+        }
         findViewById<Button>(R.id.button_save).setOnClickListener { saveConfig(startAfter = false) }
         findViewById<Button>(R.id.button_start).setOnClickListener { startGateway() }
         findViewById<Button>(R.id.button_stop).setOnClickListener { PuruService.stop(this) }
@@ -78,7 +189,6 @@ class MainActivity : AppCompatActivity() {
             renderLog()
         }
 
-        prefillFromConfig()
         showBinaryVersion()
     }
 
@@ -91,6 +201,70 @@ class MainActivity : AppCompatActivity() {
         super.onPause()
         handler.removeCallbacks(refresh)
     }
+
+    /** Builds the whole form from [fields], one row per puru setup variable. */
+    private fun buildForm() {
+        val basicContainer = findViewById<LinearLayout>(R.id.container_fields)
+        var section = ""
+        for (field in fields) {
+            val parent = if (field.advanced) advancedContainer else basicContainer
+            if (field.section != section) {
+                section = field.section
+                parent.addView(sectionTitle(field.section))
+            }
+            parent.addView(fieldLabel(field))
+            if (field.kind == Kind.TOGGLE) {
+                val toggle = CheckBox(this).apply {
+                    text = field.hint
+                    isChecked = field.checkedByDefault
+                }
+                toggles[field.env] = toggle
+                parent.addView(toggle)
+            } else {
+                val input = EditText(this).apply {
+                    hint = field.hint
+                    maxLines = 1
+                    importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
+                    inputType = if (field.kind == Kind.NUMBER) {
+                        InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+                    } else {
+                        InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+                    }
+                }
+                inputs[field.env] = input
+                parent.addView(input)
+            }
+        }
+    }
+
+    private fun sectionTitle(text: String): TextView = TextView(this).apply {
+        this.text = text.uppercase()
+        setTextColor(ContextCompat.getColor(context, R.color.accent))
+        textSize = 14f
+        typeface = Typeface.DEFAULT_BOLD
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(24) }
+    }
+
+    private fun fieldLabel(field: Field): TextView = TextView(this).apply {
+        text = field.label
+        setTextColor(
+            ContextCompat.getColor(
+                context,
+                if (field.required) R.color.label_required else R.color.label_optional,
+            ),
+        )
+        textSize = 13f
+        typeface = Typeface.DEFAULT_BOLD
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(12) }
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     /** Start = save the form first, then launch the gateway. */
     private fun startGateway() {
@@ -108,21 +282,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun saveConfig(startAfter: Boolean) {
-        val token = tokenInput.text.toString().trim()
-        if (token.isEmpty()) {
-            toast(getString(R.string.error_token_required))
+        val missing = missingRequired()
+        if (missing.isNotEmpty()) {
+            toast(getString(R.string.error_missing_fields, missing.joinToString(", ")))
             return
         }
-        val values = linkedMapOf(
-            "TELEGRAM_BOT_TOKEN" to token,
-            "PURU_BASE_URL" to baseUrlInput.text.toString().trim(),
-            "PURU_API_KEY" to apiKeyInput.text.toString().trim(),
-            "PURU_MODEL" to modelInput.text.toString().trim(),
-            "PURU_WORKSPACE" to workspaceInput.text.toString().trim(),
-        )
-        // Empty fields are skipped, so `puru setup` keeps the existing value or
-        // its own default for them.
-        val env = values.filterValues { it.isNotEmpty() }
+        val env = collectEnv()
 
         val appContext = applicationContext
         saving = true
@@ -158,6 +323,35 @@ class MainActivity : AppCompatActivity() {
             isDaemon = true
             start()
         }
+    }
+
+    /** Env for `puru setup`; empty text rows are skipped so puru keeps its own value. */
+    private fun collectEnv(): Map<String, String> {
+        val env = linkedMapOf<String, String>()
+        for (field in fields) {
+            if (field.kind == Kind.TOGGLE) {
+                toggles[field.env]?.let { env[field.env] = if (it.isChecked) "1" else "0" }
+                continue
+            }
+            val value = inputs[field.env]?.text?.toString()?.trim().orEmpty()
+            if (value.isNotEmpty()) {
+                env[field.env] = value
+            }
+        }
+        return env
+    }
+
+    /** Marks empty required rows and returns their labels. */
+    private fun missingRequired(): List<String> {
+        val missing = mutableListOf<String>()
+        for (field in fields.filter { it.required }) {
+            val input = inputs[field.env] ?: continue
+            if (input.text.toString().trim().isEmpty()) {
+                input.error = getString(R.string.error_required_field)
+                missing += field.label
+            }
+        }
+        return missing
     }
 
     private fun renderStatus() {
@@ -199,21 +393,74 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Fills the form with the values of an existing config.json, if any. */
+    /** Shows the values of an existing config.json, so the form reflects reality. */
     private fun prefillFromConfig() {
         val file = PuruRuntime.configFile(this)
-        if (!file.isFile) {
-            return
+        val root = if (file.isFile) runCatching { JSONObject(file.readText()) }.getOrNull() else null
+        val model = root?.optJSONObject("model")
+        val search = root?.optJSONObject("web_search")
+        val aistudio = search?.optJSONObject("aistudio")
+        val exa = search?.optJSONObject("exa")
+        val workspace = root?.optString("workspace").orEmpty().ifEmpty {
+            PuruRuntime.defaultWorkspace(this)
         }
-        val root = runCatching { JSONObject(file.readText()) }.getOrNull() ?: return
-        val model = root.optJSONObject("model")
-        tokenInput.setText(root.optString("telegram_bot_token"))
-        baseUrlInput.setText(model?.optString("base_url").orEmpty())
-        apiKeyInput.setText(model?.optString("api_key").orEmpty())
-        modelInput.setText(model?.optString("model").orEmpty())
-        workspaceInput.setText(
-            root.optString("workspace").ifEmpty { PuruRuntime.defaultWorkspace(this) },
-        )
+
+        inputs["TELEGRAM_BOT_TOKEN"]?.setText(root?.optString("telegram_bot_token").orEmpty())
+        inputs["PURU_ALLOWED_USERS"]?.setText(numberList(root?.optJSONArray("telegram_allowed_users")))
+        inputs["PURU_BASE_URL"]?.setText(model?.optString("base_url").orEmpty())
+        inputs["PURU_MODEL"]?.setText(model?.optString("model").orEmpty())
+        inputs["PURU_API_KEY"]?.setText(model?.optString("api_key").orEmpty())
+        inputs["PURU_TEMPERATURE"]?.setText(number(model, "temperature"))
+        inputs["PURU_WORKSPACE"]?.setText(workspace)
+        toggles["PURU_RESTRICT_WORKSPACE"]?.isChecked = root?.optBoolean("restrict_workspace", true) ?: true
+        inputs["PURU_TIMEZONE"]?.setText(root?.optString("timezone").orEmpty())
+        inputs["PURU_MAX_ITERATIONS"]?.setText(number(root, "max_iterations"))
+        inputs["PURU_HISTORY_TOKEN_LIMIT"]?.setText(number(root, "history_token_limit"))
+        toggles["PURU_TOOLS_PREVIEW"]?.isChecked = root?.optBoolean("tools_preview", true) ?: true
+        inputs["PURU_LOOP_DELAY_SECONDS"]?.setText(number(root, "loop_delay_seconds"))
+        inputs["PURU_EXEC_MEMORY_MB"]?.setText(number(root, "exec_memory_mb"))
+        inputs["PURU_SKILLS_MODE"]?.setText(root?.optString("skills_mode").orEmpty())
+        inputs["PURU_SKILLS_ALLOW"]?.setText(textList(root?.optJSONArray("skills_allow")))
+        toggles["PURU_WEBSEARCH_AISTUDIO_ACTIVE"]?.isChecked = aistudio?.optBoolean("active") == true
+        inputs["PURU_WEBSEARCH_AISTUDIO_MODEL"]?.setText(aistudio?.optString("model").orEmpty())
+        inputs["PURU_WEBSEARCH_AISTUDIO_KEY"]?.setText(aistudio?.optString("api_key").orEmpty())
+        toggles["PURU_WEBSEARCH_EXA_ACTIVE"]?.isChecked = exa?.optBoolean("active") == true
+        inputs["PURU_WEBSEARCH_EXA_KEY"]?.setText(exa?.optString("api_key").orEmpty())
+    }
+
+    /** Formats an optional JSON number as text (0.7 stays 0.7, 500.0 becomes 500). */
+    private fun number(parent: JSONObject?, key: String): String {
+        if (parent == null || !parent.has(key) || parent.isNull(key)) {
+            return ""
+        }
+        val value = parent.optDouble(key)
+        if (value.isNaN()) {
+            return ""
+        }
+        return if (value == floor(value)) value.toLong().toString() else value.toString()
+    }
+
+    /** Telegram user IDs, skipping anything that is not a number. */
+    private fun numberList(array: JSONArray?): String = joinList(array, digitsOnly = true)
+
+    private fun textList(array: JSONArray?): String = joinList(array, digitsOnly = false)
+
+    private fun joinList(array: JSONArray?, digitsOnly: Boolean): String {
+        if (array == null) {
+            return ""
+        }
+        val parts = mutableListOf<String>()
+        for (index in 0 until array.length()) {
+            val text = array.opt(index)?.toString()?.trim().orEmpty()
+            if (text.isEmpty() || text == "null") {
+                continue
+            }
+            if (digitsOnly && text.toLongOrNull() == null) {
+                continue
+            }
+            parts += text
+        }
+        return parts.joinToString(", ")
     }
 
     private fun toast(message: String) {

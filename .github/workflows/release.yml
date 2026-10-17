@@ -1,16 +1,25 @@
-name: Release (manual)
+name: Release
 
-# Satu-satunya workflow: hanya jalan via Run workflow manual.
-# Pilih bump (major/minor/patch) → verify → buat tag → build CLI+Docker → GitHub Release → npm publish.
+# Dua cara memicu release:
+#   1. Push tag versi manual:  git tag v6.3.0 && git push origin v6.3.0
+#      Huruf besar juga dikenali: git push origin V6.3.0
+#      Tag itu langsung dipakai apa adanya (tidak ada bump).
+#   2. Run workflow manual: pilih bump (major/minor/patch), tag dibuat otomatis
+#      dari tag versi terakhir — v* maupun V* ikut terdeteksi.
+# Alur: verify → tag → build CLI+Docker → GitHub Release → npm publish → APK.
 on:
   workflow_dispatch:
     inputs:
       bump:
-        description: 'Version bump dari tag v* terakhir'
+        description: 'Version bump dari tag v*/V* terakhir'
         required: true
         default: 'minor'
         type: choice
         options: [major, minor, patch]
+  push:
+    tags:
+      - 'v[0-9]*'
+      - 'V[0-9]*'
 
 permissions:
   contents: write
@@ -39,6 +48,7 @@ jobs:
           go build -v -o /dev/null ./... 2>&1 | tee logs/build.logs
           node --check npm/bin/puru.js 2>&1 | tee logs/npm-bin.logs
           node --check npm/scripts/install.js 2>&1 | tee logs/npm-install.logs
+          node --test npm/scripts/install.test.js 2>&1 | tee logs/npm-native-version.logs
           node --check npm/scripts/binary.js 2>&1 | tee logs/npm-binary.logs
           cat logs/*.logs > logs/latest_all.logs
           grep -E "^--- FAIL|^FAIL|exit status [1-9]|: error:|: fatal:" logs/latest_all.logs > logs/latest_error.logs || true
@@ -77,31 +87,43 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Bump version & push tag
+      - name: Resolve release tag (tag push) atau bump (manual)
         id: bump
         run: |
+          set -euo pipefail
           git fetch --tags origin
-          latest=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)
-          [ -z "$latest" ] && latest=v0.0.0
-          echo "Tag terakhir: $latest (bump: ${{ inputs.bump }})"
-          ver=${latest#v}
-          IFS=. read -r major minor patch <<< "$ver"
-          case "${{ inputs.bump }}" in
-            major) major=$((major+1)); minor=0; patch=0 ;;
-            minor) minor=$((minor+1)); patch=0 ;;
-            patch) patch=$((patch+1)) ;;
-          esac
-          TAG="v$major.$minor.$patch"
-          if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG sudah ada, batal."
-            exit 1
+          if [ "${GITHUB_EVENT_NAME}" = "push" ] && [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            # Tag yang di-push dipakai apa adanya, huruf besar/kecil sama saja.
+            TAG="${GITHUB_REF_NAME}"
+            if ! printf '%s' "$TAG" | grep -Eq '^[vV][0-9]+(\.[0-9]+){1,2}$'; then
+              echo "Tag $TAG bukan versi (contoh: v6.3.0 atau V6.3.0), batal." >&2
+              exit 1
+            fi
+            echo "Tag dari push: $TAG"
+          else
+            # Bump mode: tag versi terakhir, v* dan V* dua-duanya dihitung.
+            latest=$(git tag --list '[vV][0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)
+            ver=$(printf '%s' "$latest" | sed -E 's/^[vV]//')
+            [ -z "$ver" ] && ver=0.0.0
+            echo "Tag terakhir: ${latest:-none} (versi $ver, bump: ${{ inputs.bump }})"
+            IFS=. read -r major minor patch <<< "$ver"
+            case "${{ inputs.bump }}" in
+              major) major=$((major+1)); minor=0; patch=0 ;;
+              minor) minor=$((minor+1)); patch=0 ;;
+              patch) patch=$((patch+1)) ;;
+            esac
+            TAG="v$major.$minor.$patch"
+            if git rev-parse "$TAG" >/dev/null 2>&1; then
+              echo "Tag $TAG sudah ada, batal."
+              exit 1
+            fi
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag "$TAG"
+            git push origin "$TAG"
+            echo "Tag baru: $TAG"
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "$TAG"
-          git push origin "$TAG"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "Tag baru: $TAG"
 
   build-binaries:
     needs: tag
@@ -239,7 +261,7 @@ jobs:
       - name: Sync npm version with tag
         run: |
           TAG="${{ needs.tag.outputs.tag }}"
-          VER="${TAG#v}"
+          VER="${TAG#[vV]}"
           node -e "const fs=require('fs');const p='npm/package.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));j.version='$VER';fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n')"
           node -p "require('./npm/package.json').version"
 

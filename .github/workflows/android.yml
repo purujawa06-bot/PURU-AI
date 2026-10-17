@@ -33,7 +33,9 @@ on:
         default: ''
   push:
     branches: [main]
-    tags: ['v*']
+    # Tag push tidak perlu didengar di sini: Release workflow sudah memanggil
+    # workflow ini sebagai reusable workflow saat tag v*/V* di-push, jadi
+    # mendengarkan tag akan menggandakan build APK.
     paths:
       - 'android/**'
       - 'cmd/**'
@@ -107,13 +109,33 @@ jobs:
       - name: Build puru binaries for Android ABIs
         run: |
           set -euo pipefail
+          # Android tidak punya /etc/resolv.conf, jadi resolver pure-Go tidak bisa
+          # DNS (Go net/conf.go: "DNS requests don't work on Android, so prefer
+          # the cgo resolver"). Binary di-build GOOS=android + cgo supaya lookup
+          # lewat bionic/getaddrinfo → netd, sama seperti aplikasi Android lain.
+          # NDK terbaru (30.x) bisa menaikkan minimum API, jadi pakai NDK default
+          # image (27.3) yang masih punya wrapper API 21 untuk kedua ABI.
+          NDK="${ANDROID_NDK_HOME:-${ANDROID_NDK_LATEST_HOME:-${ANDROID_NDK_ROOT:-}}}"
+          if [ -z "$NDK" ] || [ ! -d "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin" ]; then
+            echo "no usable Android NDK in the runner image (ANDROID_NDK_*_HOME)" >&2
+            exit 1
+          fi
+          TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          for cc in aarch64-linux-android21-clang armv7a-linux-androideabi21-clang; do
+            if [ ! -x "$TOOLCHAIN/$cc" ]; then
+              echo "missing NDK compiler: $TOOLCHAIN/$cc" >&2
+              exit 1
+            fi
+          done
+          echo "NDK: $NDK"
           mkdir -p android/app/src/main/jniLibs/arm64-v8a android/app/src/main/jniLibs/armeabi-v7a
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath \
-            -ldflags="-s -w -X main.version=${PURU_VERSION_NAME}" \
+          CGO_ENABLED=1 GOOS=android GOARCH=arm64 CC="$TOOLCHAIN/aarch64-linux-android21-clang" \
+            go build -trimpath -ldflags="-s -w -X main.version=${PURU_VERSION_NAME}" \
             -o android/app/src/main/jniLibs/arm64-v8a/libpuru.so ./cmd/puru
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath \
-            -ldflags="-s -w -X main.version=${PURU_VERSION_NAME}" \
+          CGO_ENABLED=1 GOOS=android GOARCH=arm GOARM=7 CC="$TOOLCHAIN/armv7a-linux-androideabi21-clang" \
+            go build -trimpath -ldflags="-s -w -X main.version=${PURU_VERSION_NAME}" \
             -o android/app/src/main/jniLibs/armeabi-v7a/libpuru.so ./cmd/puru
+          file android/app/src/main/jniLibs/*/libpuru.so
           ls -lh android/app/src/main/jniLibs/*/libpuru.so
 
       - name: Setup Java
@@ -231,6 +253,12 @@ jobs:
             echo "== run =="
             echo "sha ${GITHUB_SHA} ref ${GITHUB_REF} event ${GITHUB_EVENT_NAME}"
             echo "release tag ${RELEASE_TAG:-none} version ${PURU_VERSION_NAME:-?} code ${PURU_VERSION_CODE:-?}"
+            echo
+            echo "== puru binaries (GOOS=android + cgo, DNS via bionic) =="
+            file android/app/src/main/jniLibs/arm64-v8a/libpuru.so android/app/src/main/jniLibs/armeabi-v7a/libpuru.so 2>/dev/null || true
+            ls -l android/app/src/main/jniLibs/*/libpuru.so 2>/dev/null || true
+            READELF="${ANDROID_NDK_HOME:-${ANDROID_NDK_LATEST_HOME:-}}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+            "$READELF" -l android/app/src/main/jniLibs/arm64-v8a/libpuru.so 2>/dev/null | grep -E "Type:|interpreter" || true
             echo
             echo "== APK =="
             if [ -n "$APK" ]; then

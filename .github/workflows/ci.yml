@@ -35,6 +35,7 @@ jobs:
           node --check npm/bin/puru.js
           node --check npm/scripts/install.js
           node --check npm/scripts/binary.js
+          node --test npm/scripts/install.test.js
 
   # Debug helper: renders one representative system prompt via
   # cmd/dump-prompt, uploads it as the SYSTEMPROMPT artifact, and pushes

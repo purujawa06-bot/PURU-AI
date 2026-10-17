@@ -73,9 +73,10 @@ puru chat "halo"  # local debug without Telegram
 
 > The npm package downloads the prebuilt `puru` binary from GitHub Releases
 > on postinstall (linux/darwin/windows × amd64/arm64, plus linux/arm untuk
-> Termux Android 32-bit). Binaries are built
-> automatically by the manual **Release** workflow (`verify → tag →
-> build-binaries + docker → GitHub Release → npm publish`).
+> Termux Android 32-bit). Releases are built by the **Release** workflow
+> (`verify → tag → build-binaries + docker → GitHub Release → npm publish → APK`),
+> triggered either by pushing a version tag (`git push origin v6.3.0`, `V6.3.0`
+> also accepted) or manually via *Run workflow* with a major/minor/patch bump.
 
 ### Termux (Android)
 
@@ -93,7 +94,12 @@ bundled inside the APK and runs `puru gateway` as a foreground service, with a
 config form, start/stop buttons, and a log view on the phone.
 
 - Download: **Actions → Android APK** artifact `puru-launcher-apk`, or
-  `puru-launcher-<tag>.apk` on the release of a `v*` tag.
+  `puru-launcher-<tag>.apk` on the release of a tag (the Release workflow builds
+  it for `v*` / `V*` tags).
+- The form marks every row **required** or **optional** (required: bot token,
+  base URL, model name) and hides the runtime/skills/web-search knobs behind
+  *Show advanced settings*; an empty optional row keeps what `config.json`
+  already has.
 - Needs Android 8.0+ on `arm64-v8a` / `armeabi-v7a`; config, memory, and
   workspace stay in the app's private storage (`<filesDir>/.puru/`).
 - Build, signing, and limits: [`android/README.md`](android/README.md).

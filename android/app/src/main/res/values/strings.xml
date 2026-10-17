@@ -12,19 +12,16 @@
     <string name="action_stop">Stop</string>
     <string name="action_save">Save config</string>
     <string name="action_clear_log">Clear log</string>
+    <string name="advanced_toggle">Show advanced settings</string>
 
     <string name="section_config">Configuration</string>
     <string name="section_log">Log</string>
 
-    <string name="hint_token">Telegram bot token (from @BotFather)</string>
-    <string name="hint_base_url">Base URL, e.g. https://api.openai.com/v1</string>
-    <string name="hint_api_key">API key (empty = keep current)</string>
-    <string name="hint_model">Model, e.g. gpt-4o-mini</string>
-    <string name="hint_workspace">Workspace directory</string>
-    <string name="config_note">Empty fields keep the current config.json value, or puru&#8217;s own default. Save writes config.json by running `puru setup`; Start saves first, then runs `puru gateway`.</string>
+    <string name="config_note">Required rows must be filled. An empty optional row sends nothing, so puru keeps what config.json already has (or its own default). Save writes config.json through `puru setup`; Start saves first, then runs `puru gateway`.</string>
 
     <string name="log_empty">(no output yet)</string>
-    <string name="error_token_required">Bot token is required</string>
+    <string name="error_required_field">Required</string>
+    <string name="error_missing_fields">Fill in: %1$s</string>
     <string name="config_saved">config.json saved</string>
     <string name="config_failed">config.json was not saved, see the log</string>
     <string name="gateway_starting">Starting the gateway&#8230;</string>

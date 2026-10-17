@@ -37,9 +37,9 @@ object PuruRuntime {
 
     /**
      * Environment shared by every puru process: HOME keeps `~/.puru` inside app
-     * storage, PATH reaches Android's `sh` (the exec tool runs `sh -c`), and
-     * SSL_CERT_DIR points at the system certificate stores, which a Go binary
-     * built for linux does not know about by itself.
+     * storage, PATH reaches Android's `sh` (the exec tool runs `sh -c`),
+     * SSL_CERT_DIR points at the system certificate stores, and NO_COLOR keeps
+     * ANSI escapes out of the plain-text log view.
      */
     fun environment(context: Context): Map<String, String> = mapOf(
         "HOME" to context.filesDir.absolutePath,
@@ -47,6 +47,7 @@ object PuruRuntime {
         "PATH" to "/system/bin:/system/xbin:/apex/com.android.runtime/bin",
         "SSL_CERT_DIR" to "/system/etc/security/cacerts:/apex/com.android.conscrypt/cacerts",
         "PURU_NON_INTERACTIVE" to "1",
+        "NO_COLOR" to "1",
     )
 
     /** Starts puru with [args], the shared environment, and merged output. */

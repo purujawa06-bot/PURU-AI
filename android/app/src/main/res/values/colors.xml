@@ -4,5 +4,7 @@
     <color name="accent_dark">#C6431B</color>
     <color name="status_running">#1B8A3A</color>
     <color name="status_stopped">#7A7A7A</color>
+    <color name="label_required">#C62828</color>
+    <color name="label_optional">#8A8A8A</color>
     <color name="log_background">#14000000</color>
 </resources>

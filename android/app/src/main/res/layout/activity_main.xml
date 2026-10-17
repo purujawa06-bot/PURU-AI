@@ -61,56 +61,33 @@
             style="@style/SectionTitle"
             android:text="@string/section_config" />
 
-        <EditText
-            android:id="@+id/input_token"
+        <!-- Rows are built in MainActivity from the config table, so labels,
+             required/optional markers and env vars stay in one place. -->
+        <LinearLayout
+            android:id="@+id/container_fields"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="@string/hint_token"
-            android:importantForAutofill="no"
-            android:inputType="textNoSuggestions"
-            android:maxLines="1" />
+            android:orientation="vertical" />
 
-        <EditText
-            android:id="@+id/input_base_url"
-            android:layout_width="match_parent"
+        <CheckBox
+            android:id="@+id/toggle_advanced"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:hint="@string/hint_base_url"
-            android:importantForAutofill="no"
-            android:inputType="textUri"
-            android:maxLines="1" />
+            android:layout_marginTop="16dp"
+            android:text="@string/advanced_toggle" />
 
-        <EditText
-            android:id="@+id/input_api_key"
+        <LinearLayout
+            android:id="@+id/container_advanced"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="@string/hint_api_key"
-            android:importantForAutofill="no"
-            android:inputType="textNoSuggestions"
-            android:maxLines="1" />
-
-        <EditText
-            android:id="@+id/input_model"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="@string/hint_model"
-            android:importantForAutofill="no"
-            android:inputType="textNoSuggestions"
-            android:maxLines="1" />
-
-        <EditText
-            android:id="@+id/input_workspace"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="@string/hint_workspace"
-            android:importantForAutofill="no"
-            android:inputType="textNoSuggestions"
-            android:maxLines="1" />
+            android:orientation="vertical"
+            android:visibility="gone" />
 
         <Button
             android:id="@+id/button_save"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="16dp"
             android:text="@string/action_save" />
 
         <TextView
