@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.os.Environment
 import androidx.core.content.ContextCompat
 import java.io.File
+import java.nio.file.Files
 import java.util.concurrent.TimeUnit
 
 /**
@@ -96,18 +97,27 @@ object PuruRuntime {
      * Creates `<filesDir>/bin` and links `puru` there, so the agent's shell can
      * run `puru fetch` / `puru doctor`: the binary itself lives in the native
      * library dir under the name libpuru.so, which is not typeable.
+     *
+     * An app update extracts the libraries into a new directory, so an existing
+     * link is refreshed instead of being left dangling.
      */
     fun ensureBinDir(context: Context) {
         val bin = binDir(context)
         if (!bin.isDirectory && !bin.mkdirs()) {
             return
         }
-        val link = File(bin, "puru")
-        if (link.exists()) {
+        val target = binary(context).toPath()
+        val link = File(bin, "puru").toPath()
+        val current = runCatching { Files.readSymbolicLink(link) }.getOrNull()
+        if (current == target) {
             return
         }
+        if (Files.exists(link) && !Files.isSymbolicLink(link)) {
+            return // never clobber a real file the user put there
+        }
         runCatching {
-            java.nio.file.Files.createSymbolicLink(link.toPath(), binary(context).toPath())
+            Files.deleteIfExists(link)
+            Files.createSymbolicLink(link, target)
         }
     }
 

@@ -115,6 +115,10 @@ and then call a tool in one step. `puru doctor` reports config, workspace
 write/delete, HOME, TMPDIR, the shell, which tools are on PATH, plus DNS and
 HTTPS, which is the fastest way to see why a phone build misbehaves.
 
+Android has no `/usr/bin/env`, so a downloaded script that starts with
+`#!/usr/bin/env sh` has to be started as `sh script`; one with `#!/system/bin/sh`
+runs directly, and ELF binaries (busybox, a static curl, …) run as-is.
+
 Release builds are `debuggable` on purpose: this launcher is sideloaded and
 support happens over adb, where `adb shell run-as com.purujawa.puru.launcher …`
 is the only way to inspect app storage and run the bundled binary with the app's
