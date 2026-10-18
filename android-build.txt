@@ -1,0 +1,318 @@
+== run ==
+sha 3287d278e936dbab3a13e01b1a6495aa059619a2 ref refs/tags/v6.5.1 event push
+release tag v6.5.1 version v6.5.1 code 32
+
+== puru binaries (GOOS=android + cgo, DNS via bionic) ==
+android/app/src/main/jniLibs/arm64-v8a/libpuru.so:   ELF 64-bit LSB pie executable, ARM aarch64, version 1 (SYSV), dynamically linked, interpreter /system/bin/linker64, Go BuildID=Uv1XVqMftgApsrf2QiXd/bbwH1gEnrjGsempDaDhi/RXmAl8Y2AlcwhS4VMsHu/1l0BZxlto3tK0KpaN4Xe, BuildID[sha1]=607719a2c89edd2b6c0515221b4e8038b9a561f7, stripped
+android/app/src/main/jniLibs/armeabi-v7a/libpuru.so: ELF 32-bit LSB pie executable, ARM, EABI5 version 1 (SYSV), dynamically linked, interpreter /system/bin/linker, Go BuildID=qEwKtW9Thwchcdbt-cWn/VYuehmlYMucgBAT7ycLD/ZntyJxajzKtd6GR2FEXL/KlOzyd0no3nBp3NcGx5G, BuildID[sha1]=00410bf1fb07d9d5ec7980c6e2cfca39dc4ef789, stripped
+-rwxr-xr-x 1 runner runner 40275776 Oct 18 01:37 android/app/src/main/jniLibs/arm64-v8a/libpuru.so
+-rwxr-xr-x 1 runner runner 28672600 Oct 18 01:37 android/app/src/main/jniLibs/armeabi-v7a/libpuru.so
+      [Requesting program interpreter: /system/bin/linker64]
+
+== APK ==
+-rw-r--r-- 1 runner runner 26822039 Oct 18 01:38 android/app/build/outputs/apk/release/puru-launcher-v6.5.1.apk
+
+== zip entries ==
+       56  1981-01-01 01:01   META-INF/com/android/build/gradle/app-metadata.properties
+  6668872  1981-01-01 01:01   classes.dex
+   125008  1981-01-01 01:01   classes2.dex
+    60244  1981-01-01 01:01   classes3.dex
+ 40275776  1981-01-01 01:01   lib/arm64-v8a/libpuru.so
+ 28672600  1981-01-01 01:01   lib/armeabi-v7a/libpuru.so
+        6  1981-01-01 01:01   META-INF/androidx.activity_activity.version
+        6  1981-01-01 01:01   META-INF/androidx.annotation_annotation-experimental.version
+        6  1981-01-01 01:01   META-INF/androidx.appcompat_appcompat-resources.version
+        6  1981-01-01 01:01   META-INF/androidx.appcompat_appcompat.version
+       67  1981-01-01 01:01   META-INF/androidx.arch.core_core-runtime.version
+        7  1981-01-01 01:01   META-INF/androidx.core_core-ktx.version
+        7  1981-01-01 01:01   META-INF/androidx.core_core.version
+        6  1981-01-01 01:01   META-INF/androidx.cursoradapter_cursoradapter.version
+        6  1981-01-01 01:01   META-INF/androidx.customview_customview.version
+        6  1981-01-01 01:01   META-INF/androidx.drawerlayout_drawerlayout.version
+        6  1981-01-01 01:01   META-INF/androidx.emoji2_emoji2-views-helper.version
+        6  1981-01-01 01:01   META-INF/androidx.emoji2_emoji2.version
+        6  1981-01-01 01:01   META-INF/androidx.fragment_fragment.version
+        6  1981-01-01 01:01   META-INF/androidx.interpolator_interpolator.version
+       78  1981-01-01 01:01   META-INF/androidx.lifecycle_lifecycle-livedata-core.version
+       73  1981-01-01 01:01   META-INF/androidx.lifecycle_lifecycle-livedata.version
+       72  1981-01-01 01:01   META-INF/androidx.lifecycle_lifecycle-process.version
+       72  1981-01-01 01:01   META-INF/androidx.lifecycle_lifecycle-runtime.version
+       85  1981-01-01 01:01   META-INF/androidx.lifecycle_lifecycle-viewmodel-savedstate.version
+       74  1981-01-01 01:01   META-INF/androidx.lifecycle_lifecycle-viewmodel.version
+        6  1981-01-01 01:01   META-INF/androidx.loader_loader.version
+        6  1981-01-01 01:01   META-INF/androidx.profileinstaller_profileinstaller.version
+        6  1981-01-01 01:01   META-INF/androidx.savedstate_savedstate.version
+        6  1981-01-01 01:01   META-INF/androidx.startup_startup-runtime.version
+        6  1981-01-01 01:01   META-INF/androidx.tracing_tracing.version
+        6  1981-01-01 01:01   META-INF/androidx.vectordrawable_vectordrawable-animated.version
+        6  1981-01-01 01:01   META-INF/androidx.vectordrawable_vectordrawable.version
+        6  1981-01-01 01:01   META-INF/androidx.versionedparcelable_versionedparcelable.version
+        6  1981-01-01 01:01   META-INF/androidx.viewpager_viewpager.version
+        5  1981-01-01 01:01   META-INF/kotlinx_coroutines_android.version
+        5  1981-01-01 01:01   META-INF/kotlinx_coroutines_core.version
+       54  1981-01-01 01:01   META-INF/services/kotlinx.coroutines.CoroutineExceptionHandler
+       52  1981-01-01 01:01   META-INF/services/kotlinx.coroutines.internal.MainDispatcherFactory
+
+== aapt2 badging ==
+package: name='com.purujawa.puru.launcher' versionCode='32' versionName='v6.5.1' platformBuildVersionName='15' platformBuildVersionCode='35' compileSdkVersion='35' compileSdkVersionCodename='15'
+uses-permission: name='android.permission.INTERNET'
+uses-permission: name='android.permission.FOREGROUND_SERVICE'
+uses-permission: name='android.permission.FOREGROUND_SERVICE_SPECIAL_USE'
+uses-permission: name='android.permission.POST_NOTIFICATIONS'
+uses-permission: name='android.permission.READ_EXTERNAL_STORAGE'
+uses-permission: name='android.permission.WRITE_EXTERNAL_STORAGE'
+uses-permission: name='com.purujawa.puru.launcher.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION'
+application-label:'PURU-AI'
+launchable-activity: name='com.purujawa.puru.launcher.MainActivity'  label='' icon=''
+native-code: 'arm64-v8a' 'armeabi-v7a'
+
+== merged manifest ==
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.purujawa.puru.launcher"
+    android:versionCode="32"
+    android:versionName="v6.5.1" >
+
+    <uses-sdk
+        android:minSdkVersion="26"
+        android:targetSdkVersion="28" />
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!--
+         Classic storage access: with targetSdk 28 plus the requestLegacyExternalStorage
+         flag below, the agent and its shell can read, write and delete files
+         anywhere on /sdcard instead of only inside app-private folders.
+    -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+
+    <permission
+        android:name="com.purujawa.puru.launcher.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+        android:protectionLevel="signature" />
+
+    <uses-permission android:name="com.purujawa.puru.launcher.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
+
+    <application
+        android:allowBackup="false"
+        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
+        android:debuggable="true"
+        android:extractNativeLibs="true"
+        android:icon="@drawable/ic_launcher"
+        android:label="@string/app_name"
+        android:requestLegacyExternalStorage="true"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Puru"
+        android:usesCleartextTraffic="true" >
+        <activity
+            android:name="com.purujawa.puru.launcher.MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop" >
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+             The bot has to keep running while the phone sleeps, so the gateway
+             lives in a foreground service.
+        -->
+        <service
+            android:name="com.purujawa.puru.launcher.PuruService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse" >
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="telegram_bot_gateway" />
+        </service>
+
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="com.purujawa.puru.launcher.androidx-startup"
+            android:exported="false" >
+            <meta-data
+                android:name="androidx.emoji2.text.EmojiCompatInitializer"
+                android:value="androidx.startup" />
+            <meta-data
+                android:name="androidx.lifecycle.ProcessLifecycleInitializer"
+                android:value="androidx.startup" />
+            <meta-data
+                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
+                android:value="androidx.startup" />
+        </provider>
+
+        <receiver
+            android:name="androidx.profileinstaller.ProfileInstallReceiver"
+            android:directBootAware="false"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.DUMP" >
+            <intent-filter>
+                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="androidx.profileinstaller.action.SKIP_FILE" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" />
+            </intent-filter>
+        </receiver>
+    </application>
+
+</manifest><?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.purujawa.puru.launcher"
+    android:versionCode="32"
+    android:versionName="v6.5.1" >
+
+    <uses-sdk
+        android:minSdkVersion="26"
+        android:targetSdkVersion="28" />
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!--
+         Classic storage access: with targetSdk 28 plus the requestLegacyExternalStorage
+         flag below, the agent and its shell can read, write and delete files
+         anywhere on /sdcard instead of only inside app-private folders.
+    -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+
+    <permission
+        android:name="com.purujawa.puru.launcher.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+        android:protectionLevel="signature" />
+
+    <uses-permission android:name="com.purujawa.puru.launcher.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
+
+    <application
+        android:allowBackup="false"
+        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
+        android:debuggable="true"
+        android:extractNativeLibs="true"
+        android:icon="@drawable/ic_launcher"
+        android:label="@string/app_name"
+        android:requestLegacyExternalStorage="true"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Puru"
+        android:usesCleartextTraffic="true" >
+        <activity
+            android:name="com.purujawa.puru.launcher.MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop" >
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+             The bot has to keep running while the phone sleeps, so the gateway
+             lives in a foreground service.
+        -->
+        <service
+            android:name="com.purujawa.puru.launcher.PuruService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse" >
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="telegram_bot_gateway" />
+        </service>
+
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="com.purujawa.puru.launcher.androidx-startup"
+            android:exported="false" >
+            <meta-data
+                android:name="androidx.emoji2.text.EmojiCompatInitializer"
+                android:value="androidx.startup" />
+            <meta-data
+                android:name="androidx.lifecycle.ProcessLifecycleInitializer"
+                android:value="androidx.startup" />
+            <meta-data
+                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
+                android:value="androidx.startup" />
+        </provider>
+
+        <receiver
+            android:name="androidx.profileinstaller.ProfileInstallReceiver"
+            android:directBootAware="false"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.DUMP" >
+            <intent-filter>
+                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="androidx.profileinstaller.action.SKIP_FILE" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" />
+            </intent-filter>
+        </receiver>
+    </application>
+
+</manifest>
+== gradle log (tail) ==
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.10.2/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preReleaseBuild UP-TO-DATE
+> Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:generateReleaseResValues FROM-CACHE
+> Task :app:checkReleaseAarMetadata
+> Task :app:mapReleaseSourceSetPaths
+> Task :app:generateReleaseResources FROM-CACHE
+> Task :app:mergeReleaseResources FROM-CACHE
+> Task :app:packageReleaseResources FROM-CACHE
+> Task :app:parseReleaseLocalResources FROM-CACHE
+> Task :app:createReleaseCompatibleScreenManifests
+> Task :app:extractDeepLinksRelease FROM-CACHE
+> Task :app:processReleaseMainManifest
+> Task :app:processReleaseManifest
+> Task :app:javaPreCompileRelease FROM-CACHE
+> Task :app:mergeReleaseShaders
+> Task :app:compileReleaseShaders NO-SOURCE
+> Task :app:generateReleaseAssets UP-TO-DATE
+> Task :app:mergeReleaseAssets
+> Task :app:compressReleaseAssets FROM-CACHE
+> Task :app:desugarReleaseFileDependencies FROM-CACHE
+> Task :app:processReleaseManifestForPackage
+> Task :app:checkReleaseDuplicateClasses
+> Task :app:mergeExtDexRelease FROM-CACHE
+> Task :app:mergeLibDexRelease FROM-CACHE
+> Task :app:mergeReleaseJniLibFolders
+> Task :app:processReleaseResources
+> Task :app:validateSigningRelease
+> Task :app:mergeReleaseNativeLibs
+> Task :app:compileReleaseKotlin FROM-CACHE
+> Task :app:compileReleaseJavaWithJavac NO-SOURCE
+> Task :app:dexBuilderRelease FROM-CACHE
+> Task :app:mergeProjectDexRelease FROM-CACHE
+> Task :app:mergeReleaseGlobalSynthetics FROM-CACHE
+> Task :app:processReleaseJavaRes
+> Task :app:writeReleaseAppMetadata
+> Task :app:writeReleaseSigningConfigVersions
+> Task :app:stripReleaseDebugSymbols
+> Task :app:mergeReleaseJavaResource
+> Task :app:packageRelease
+> Task :app:createReleaseApkListingFileRedirect
+> Task :app:assembleRelease
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_7-1792287487306.json
+
+BUILD SUCCESSFUL in 15s
+35 actionable tasks: 20 executed, 15 from cache
