@@ -69,6 +69,8 @@ puru setup        # wizard → writes ~/.puru/config.json
 puru gateway      # run the Telegram bot (long-polling, no /health by default)
 puru gateway --health --port 8080   # opt-in health check for Docker/VPS
 puru chat "halo"  # local debug without Telegram
+puru doctor       # environment report: config, workspace, shell, DNS, HTTPS
+puru fetch -o tool URL   # download with the bot's network stack (no curl needed)
 ```
 
 > The npm package downloads the prebuilt `puru` binary from GitHub Releases
@@ -100,11 +102,16 @@ config form, start/stop buttons, and a log view on the phone.
   base URL, model name) and hides the runtime/skills/web-search knobs behind
   *Show advanced settings*; an empty optional row keeps what `config.json`
   already has.
-- **Import config.json** (file picker) brings a config from another device or a
-  backup into the phone, after `puru setup` validates and normalizes it.
-- Needs Android 8.0+ on `arm64-v8a` / `armeabi-v7a`; config, memory, and
-  workspace stay in the app's private storage (`<filesDir>/.puru/`).
-- Build, signing, and limits: [`android/README.md`](android/README.md).
+- **Import config.json** / **Export config.json** (file picker) move a config
+  between this phone and a laptop or a backup, after `puru setup` validates and
+  normalizes it.
+- With storage access granted the agent works on real files: the workspace
+  defaults to `/sdcard/PURU-AI/workspace` and `restrict_workspace` off lets it
+  read, write and delete anywhere on `/sdcard`. Tools are installed with
+  `puru fetch -o $HOME/bin/tool URL` (Android has no curl).
+- Needs Android 8.0+ on `arm64-v8a` / `armeabi-v7a`; config and logs stay in the
+  app's private storage (`<filesDir>/.puru/`).
+- Build, signing, storage mode, and limits: [`android/README.md`](android/README.md).
 
 ### Deploy with Docker (Recommended)
 

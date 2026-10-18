@@ -5,7 +5,8 @@
 // web_search is removed from the tool list unless at least one provider is
 // ready (active + credentials). Order is fixed: aistudio (0), exa (1) —
 // first ready error falls through to the next ready one.
-// No PuruBoy API anywhere. No new dependencies.
+// No PuruBoy API anywhere. Body decoding uses golang.org/x/text (already in
+// the module graph) so non-UTF-8 pages arrive as valid UTF-8.
 package ai
 
 import (
@@ -21,8 +22,11 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/purujawa06-bot/PURU-AI/internal/config"
+	"golang.org/x/text/encoding/htmlindex"
+	"golang.org/x/text/transform"
 )
 
 const (
@@ -220,6 +224,78 @@ func stripHTMLToText(s string) string {
 	s = webTagRe.ReplaceAllString(s, "\n")
 	s = html.UnescapeString(s)
 	return normalizeFetchLines(s)
+}
+
+// webCharsetRe pulls the charset name out of a Content-Type header or an HTML
+// <meta charset=...> / <meta http-equiv="Content-Type" ...> declaration.
+var webCharsetRe = regexp.MustCompile(`(?i)charset\s*=\s*["']?\s*([a-z0-9][a-z0-9._-]*)`)
+
+// decodeToUTF8 converts a fetched body to valid UTF-8. The declared charset
+// wins (Content-Type header first, then an HTML meta tag in the first 4 KiB);
+// undeclared bodies that are already valid UTF-8 are kept as-is, anything else
+// is decoded as windows-1252 — the encoding browsers assume for legacy 8-bit
+// pages. The result is always valid UTF-8 so neither the agent nor Telegram
+// ever sees mangled bytes.
+func decodeToUTF8(body []byte, contentType string) string {
+	name := ""
+	if m := webCharsetRe.FindSubmatch([]byte(contentType)); m != nil {
+		name = string(m[1])
+	}
+	if name == "" {
+		head := body
+		if len(head) > 4*1024 {
+			head = head[:4*1024]
+		}
+		if m := webCharsetRe.FindSubmatch(head); m != nil {
+			name = string(m[1])
+		}
+	}
+	text := transcodeToUTF8(body, name)
+	text = strings.TrimPrefix(text, "\uFEFF")
+	if !utf8.ValidString(text) {
+		text = strings.ToValidUTF8(text, "\uFFFD")
+	}
+	return text
+}
+
+// transcodeToUTF8 decodes body with the named charset. An empty or UTF-8 name
+// keeps valid UTF-8 untouched but still falls back to windows-1252 for
+// undeclared non-UTF-8 bytes; an unknown name falls back the same way.
+func transcodeToUTF8(body []byte, name string) string {
+	name = strings.ToLower(strings.TrimSpace(name))
+	switch name {
+	case "utf-8", "utf8", "us-ascii", "ascii":
+		name = ""
+	}
+	if name == "" {
+		if utf8.Valid(body) {
+			return string(body)
+		}
+		name = "windows-1252"
+	}
+	if text, ok := transcode(body, name); ok {
+		return text
+	}
+	if name != "windows-1252" {
+		if text, ok := transcode(body, "windows-1252"); ok {
+			return text
+		}
+	}
+	return string(body)
+}
+
+// transcode runs one x/text decoder, keeping partial output when the input is
+// cut mid-character (the fetch size cap can do that).
+func transcode(body []byte, name string) (string, bool) {
+	enc, err := htmlindex.Get(name)
+	if err != nil {
+		return "", false
+	}
+	out, _, err := transform.Bytes(enc.NewDecoder(), body)
+	if err != nil && len(out) == 0 {
+		return "", false
+	}
+	return string(out), true
 }
 
 // aistudioSearchURL builds the Gemini generateContent URL for a model:
@@ -573,13 +649,13 @@ func fetchDirectFetch(ctx context.Context, rawURL, section string, startLine, le
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4*1024))
-		return "", outputErr("web_fetch.http_error", resp.StatusCode, strings.TrimSpace(string(b)))
+		return "", outputErr("web_fetch.http_error", resp.StatusCode, strings.TrimSpace(decodeToUTF8(b, resp.Header.Get("Content-Type"))))
 	}
 	b, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 	if err != nil {
 		return "", err
 	}
-	raw := strings.TrimSpace(string(b))
+	raw := strings.TrimSpace(decodeToUTF8(b, resp.Header.Get("Content-Type")))
 	if raw == "" {
 		return "", outputErr("web_fetch.page_empty")
 	}

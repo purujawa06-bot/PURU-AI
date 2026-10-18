@@ -64,6 +64,14 @@ func main() {
 		if err := runChat(os.Args[2:]); err != nil {
 			log.Fatalf("chat: %v", err)
 		}
+	case "fetch":
+		if err := runFetch(os.Args[2:]); err != nil {
+			fatal("fetch", err)
+		}
+	case "doctor":
+		if err := runDoctor(os.Args[2:]); err != nil {
+			fatal("doctor", err)
+		}
 	case "-h", "--help", "help":
 		usage()
 	case "-v", "--version", "version":
@@ -105,6 +113,18 @@ Usage:
 
   puru chat "message..." [--config PATH] [--chat ID] [--reset]
     Local debug without Telegram (REPL when no args).
+
+  puru fetch [-o FILE|-] URL [--max-bytes N] [--timeout SECONDS]
+    Download a URL with the bot's own network stack. Use it on phones, where
+    the shell has no curl and toybox wget cannot do HTTPS:
+      puru fetch -o "$HOME/bin/tool" https://example.com/tool
+    The file is downloaded to FILE.part and renamed, so a failed transfer
+    never truncates an existing file. Executables (ELF / #!) get +x.
+
+  puru doctor [--config PATH] [--offline]
+    Print the environment report: config, workspace write/delete, HOME, TMPDIR,
+    the shell the agent spawns, which tools are on PATH, DNS and HTTPS. Run it
+    first when a build misbehaves. --offline skips the DNS/TLS checks.
 
 Global flags:
   --config PATH   path to config.json (default ~/.puru/config.json)

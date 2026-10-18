@@ -1,6 +1,10 @@
 package com.purujawa.puru.launcher
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Environment
+import androidx.core.content.ContextCompat
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -38,20 +42,92 @@ object PuruRuntime {
     fun logFile(context: Context): File =
         File(context.filesDir, "puru.log")
 
-    /** Default workspace inside app storage; mirrors the Go side's config dir. */
+    /** Directory on PATH for tools the user installs with `puru fetch`. */
+    fun binDir(context: Context): File = File(context.filesDir, "bin")
+
+    /**
+     * App-external storage root (`/sdcard/Android/data/<pkg>/files`) or null
+     * when external storage is not mounted. Files there need no permission and
+     * the user can read, write and delete them from a file manager or over USB.
+     */
+    fun externalRoot(context: Context): File? = try {
+        context.getExternalFilesDir(null)?.let { if (it.exists() || it.mkdirs()) it else null }
+    } catch (error: Exception) {
+        null
+    }
+
+    /**
+     * True when the classic storage permission is granted. The launcher targets
+     * API 28 with requestLegacyExternalStorage, so this single permission is
+     * what lets the agent (and the shell it spawns) read, write and delete real
+     * files under /sdcard.
+     */
+    fun hasStorageAccess(context: Context): Boolean =
+        ContextCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE) ==
+            PackageManager.PERMISSION_GRANTED
+
+    /**
+     * Root for the agent's files: `/sdcard/PURU-AI` once storage access is
+     * granted, so the user sees a normal folder in a file manager or over USB.
+     * Without it: app-external files dir, then app-internal storage.
+     */
+    fun shareRoot(context: Context): File {
+        if (hasStorageAccess(context)) {
+            val external = Environment.getExternalStorageDirectory()
+            if (external != null && external.exists()) {
+                return File(external, "PURU-AI")
+            }
+        }
+        return externalRoot(context) ?: File(context.filesDir, ".puru")
+    }
+
+    /**
+     * Default workspace: the shared folder when storage access exists, with
+     * app-internal storage as fallback.
+     */
     fun defaultWorkspace(context: Context): String =
+        File(shareRoot(context), "workspace").absolutePath
+
+    /** App-internal workspace of older builds, migrated to app-external storage. */
+    fun legacyWorkspace(context: Context): String =
         File(context.filesDir, ".puru/workspace").absolutePath
 
     /**
+     * Creates `<filesDir>/bin` and links `puru` there, so the agent's shell can
+     * run `puru fetch` / `puru doctor`: the binary itself lives in the native
+     * library dir under the name libpuru.so, which is not typeable.
+     */
+    fun ensureBinDir(context: Context) {
+        val bin = binDir(context)
+        if (!bin.isDirectory && !bin.mkdirs()) {
+            return
+        }
+        val link = File(bin, "puru")
+        if (link.exists()) {
+            return
+        }
+        runCatching {
+            java.nio.file.Files.createSymbolicLink(link.toPath(), binary(context).toPath())
+        }
+    }
+
+    /**
      * Environment shared by every puru process: HOME keeps `~/.puru` inside app
-     * storage, PATH reaches Android's `sh` (the exec tool runs `sh -c`),
-     * SSL_CERT_DIR points at the system certificate stores, and NO_COLOR keeps
-     * ANSI escapes out of the plain-text log view.
+     * storage, PATH reaches the installed tools, the bundled binary and
+     * Android's `sh` (the exec tool runs `sh -c`), SSL_CERT_DIR points at the
+     * system certificate stores, and NO_COLOR keeps ANSI escapes out of the
+     * plain-text log view.
      */
     fun environment(context: Context): Map<String, String> = mapOf(
         "HOME" to context.filesDir.absolutePath,
         "TMPDIR" to context.cacheDir.absolutePath,
-        "PATH" to "/system/bin:/system/xbin:/apex/com.android.runtime/bin",
+        "PATH" to listOf(
+            binDir(context).absolutePath,
+            context.applicationInfo.nativeLibraryDir,
+            "/system/bin",
+            "/system/xbin",
+            "/apex/com.android.runtime/bin",
+        ).joinToString(":"),
         "SSL_CERT_DIR" to "/system/etc/security/cacerts:/apex/com.android.conscrypt/cacerts",
         "PURU_NON_INTERACTIVE" to "1",
         "NO_COLOR" to "1",
@@ -106,6 +182,46 @@ object PuruRuntime {
             }
             file.appendText(text)
         }
+    }
+
+    /**
+     * Copies a directory tree and verifies every file arrived with the same
+     * size, used when the workspace moves to app-external storage. Any error
+     * fails the whole copy so the caller can keep the old location.
+     */
+    fun copyTree(source: File, target: File): Boolean {
+        if (!source.isDirectory) {
+            return true
+        }
+        if (!target.isDirectory && !target.mkdirs()) {
+            return false
+        }
+        for (entry in source.listFiles() ?: return true) {
+            val destination = File(target, entry.name)
+            if (entry.isDirectory) {
+                if (!copyTree(entry, destination)) {
+                    return false
+                }
+                continue
+            }
+            val copied = runCatching { entry.copyTo(destination, overwrite = true) }.getOrNull()
+            if (copied == null || copied.length() != entry.length()) {
+                return false
+            }
+        }
+        return true
+    }
+
+    /** Deletes a directory tree; used once a workspace move has been verified. */
+    fun deleteTree(root: File) {
+        root.listFiles()?.forEach { entry ->
+            if (entry.isDirectory) {
+                deleteTree(entry)
+            } else {
+                entry.delete()
+            }
+        }
+        root.delete()
     }
 
     /** Returns the last [lines] lines of the log file. */

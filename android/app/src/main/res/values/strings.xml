@@ -12,13 +12,14 @@
     <string name="action_stop">Stop</string>
     <string name="action_save">Save config</string>
     <string name="action_import">Import config.json</string>
+    <string name="action_export">Export config.json</string>
     <string name="action_clear_log">Clear log</string>
     <string name="advanced_toggle">Show advanced settings</string>
 
     <string name="section_config">Configuration</string>
     <string name="section_log">Log</string>
 
-    <string name="config_note">Required rows must be filled. An empty optional row sends nothing, so puru keeps what config.json already has (or its own default). Save writes config.json through `puru setup`; Start saves first, then runs `puru gateway`. Import copies a config.json you pick (Downloads, Drive, &#8230;) into place after `puru setup` accepts it.</string>
+    <string name="config_note">Required rows must be filled. An empty optional row sends nothing, so puru keeps what config.json already has (or its own default). Save writes config.json through `puru setup`; Start saves first, then runs `puru gateway`. Import copies a config.json you pick (Downloads, Drive, &#8230;) into place after `puru setup` accepts it; Export saves a copy wherever you choose. With storage access granted the agent works on real files: the workspace defaults to /sdcard/PURU-AI/workspace, and `restrict_workspace` off lets it read, write and delete anywhere on /sdcard (Downloads, Documents, DCIM, &#8230;). Tools downloaded with `puru fetch -o $HOME/bin/tool URL` land on the shell PATH — that is the phone-friendly replacement for curl/wget, which Android does not ship.</string>
 
     <string name="log_empty">(no output yet)</string>
     <string name="error_required_field">Required</string>
@@ -27,6 +28,8 @@
     <string name="config_failed">config.json was not saved, see the log</string>
     <string name="config_imported">config.json imported</string>
     <string name="import_failed">Import failed: %1$s</string>
+    <string name="config_exported">config.json exported to %1$s</string>
+    <string name="export_failed">Export failed: %1$s</string>
     <string name="gateway_starting">Starting the gateway&#8230;</string>
 
     <string name="notification_title">PURU-AI gateway</string>

@@ -14,7 +14,15 @@ android {
     defaultConfig {
         applicationId = "com.purujawa.puru.launcher"
         minSdk = 26
-        targetSdk = 34
+        // API 28 on purpose, the same trade-off Termux makes:
+        //  - requestLegacyExternalStorage is still honoured, so the agent can
+        //    read, write and delete real files under /sdcard (scoped storage
+        //    for targetSdk 30+ cannot be bypassed without root, and "All files
+        //    access" does not exist on Android 10 — the device this targets).
+        //  - apps targeting API 29+ may not execute files from their own data
+        //    dir, which would make `puru fetch`-installed tools unusable.
+        // Google Play would reject this target; this launcher is sideloaded.
+        targetSdk = 28
         versionCode = versionCodeOverride
         versionName = versionNameOverride
     }
@@ -44,6 +52,12 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            // Debuggable on purpose: this launcher is sideloaded and support
+            // happens over adb, where `adb shell run-as <pkg> …` is the only way
+            // to inspect the app's own storage, run the bundled binary with the
+            // app's network policy, or read a crash. It is not published on any
+            // store, and USB debugging is already required to install it.
+            isDebuggable = true
             // Without a configured keystore the debug key is used, so a plain
             // `gradle assembleRelease` still produces an installable APK.
             signingConfig = if (System.getenv("PURU_KEYSTORE").isNullOrBlank()) {

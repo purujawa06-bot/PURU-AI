@@ -12,6 +12,8 @@ puru setup        # interactive wizard → writes ~/.puru/config.json
 puru gateway      # run the Telegram bot (long-polling, no /health endpoint)
 puru gateway --health --port 8080   # opt-in health check for Docker/VPS
 puru chat "hello" # local debugging without Telegram
+puru doctor       # environment report: config, workspace, shell, DNS, HTTPS
+puru fetch -o tool URL   # download with puru's own network stack (no curl needed)
 ```
 
 ## Non-interactive setup (CI)

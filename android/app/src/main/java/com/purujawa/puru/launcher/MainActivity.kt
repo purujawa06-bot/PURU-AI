@@ -22,6 +22,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import kotlin.math.floor
 
 /**
@@ -36,6 +37,7 @@ class MainActivity : AppCompatActivity() {
 
     private companion object {
         const val REQUEST_NOTIFICATIONS = 1
+        const val REQUEST_STORAGE = 2
         const val LOG_TAIL_LINES = 200
         const val REFRESH_MS = 2_000L
         const val SETUP_TIMEOUT_SECONDS = 60L
@@ -87,7 +89,8 @@ class MainActivity : AppCompatActivity() {
             "Model", kind = Kind.NUMBER,
         ),
         Field(
-            "PURU_WORKSPACE", "Workspace directory (optional)", "where the agent reads and writes files",
+            "PURU_WORKSPACE", "Workspace directory (optional)",
+            "where the agent reads and writes files; default /sdcard/PURU-AI/workspace",
             "Workspace",
         ),
         Field(
@@ -165,6 +168,14 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+    /** Destination for "Export config.json" (Downloads, Drive, …). */
+    private val createConfigFile =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+            if (uri != null) {
+                exportConfig(uri)
+            }
+        }
+
     private lateinit var binaryView: TextView
     private lateinit var statusView: TextView
     private lateinit var startButton: Button
@@ -199,6 +210,9 @@ class MainActivity : AppCompatActivity() {
         }
         findViewById<Button>(R.id.button_save).setOnClickListener { saveConfig(startAfter = false) }
         findViewById<Button>(R.id.button_import).setOnClickListener { pickConfigFile.launch(arrayOf("*/*")) }
+        findViewById<Button>(R.id.button_export).setOnClickListener {
+            createConfigFile.launch("puru-config.json")
+        }
         findViewById<Button>(R.id.button_start).setOnClickListener { startGateway() }
         findViewById<Button>(R.id.button_stop).setOnClickListener { PuruService.stop(this) }
         findViewById<Button>(R.id.button_clear_log).setOnClickListener {
@@ -207,11 +221,16 @@ class MainActivity : AppCompatActivity() {
         }
 
         showBinaryVersion()
+        PuruRuntime.ensureBinDir(this)
+        ensureStoragePermission()
     }
 
     override fun onResume() {
         super.onResume()
         handler.post(refresh)
+        // The workspace moves to /sdcard/PURU-AI only once storage access is
+        // granted, so it is retried on every resume (and is a no-op after).
+        migrateWorkspace()
     }
 
     override fun onPause() {
@@ -470,6 +489,96 @@ class MainActivity : AppCompatActivity() {
             isDaemon = true
             start()
         }
+    }
+
+    /**
+     * Asks for the classic storage permission: it is what lets the agent, and
+     * the shell it spawns, read, write and delete files on /sdcard. Without it
+     * everything still works, but only inside the app's own folders.
+     */
+    private fun ensureStoragePermission() {
+        val missing = listOf(
+            Manifest.permission.READ_EXTERNAL_STORAGE,
+            Manifest.permission.WRITE_EXTERNAL_STORAGE,
+        ).filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isNotEmpty()) {
+            ActivityCompat.requestPermissions(this, missing.toTypedArray(), REQUEST_STORAGE)
+        }
+    }
+
+    /**
+     * Moves a workspace that still lives in app-internal storage to the shared
+     * folder (`/sdcard/PURU-AI/workspace`) and points config.json at it, so the
+     * user can read, write and delete the agent's files with a file manager or
+     * over USB. Only that one JSON key changes; every other setting stays
+     * untouched. The old copy is deleted only after each file arrived with the
+     * same size, an existing shared workspace is never overwritten, and nothing
+     * happens while storage access is still missing.
+     */
+    private fun migrateWorkspace() {
+        val appContext = applicationContext
+        if (!PuruRuntime.hasStorageAccess(appContext)) {
+            return
+        }
+        val target = PuruRuntime.defaultWorkspace(appContext)
+        val legacy = PuruRuntime.legacyWorkspace(appContext)
+        if (target == legacy) {
+            return
+        }
+        val config = PuruRuntime.configFile(appContext)
+        Thread {
+            val root = runCatching { JSONObject(config.readText()) }.getOrNull() ?: return@Thread
+            if (root.optString("workspace").trimEnd('/') != legacy.trimEnd('/')) {
+                return@Thread
+            }
+            val source = File(legacy)
+            val destination = File(target)
+            if (destination.exists()) {
+                PuruRuntime.appendLog(appContext, "\nworkspace migration skipped: $target already exists\n")
+                return@Thread
+            }
+            if (source.isDirectory && !PuruRuntime.copyTree(source, destination)) {
+                PuruRuntime.appendLog(appContext, "\nworkspace migration failed, keeping $legacy\n")
+                return@Thread
+            }
+            root.put("workspace", target)
+            if (!runCatching { config.writeText(root.toString(2)) }.isSuccess) {
+                PuruRuntime.appendLog(appContext, "\nworkspace migration: cannot write ${config.name}\n")
+                return@Thread
+            }
+            if (source.isDirectory) {
+                PuruRuntime.deleteTree(source)
+            }
+            PuruRuntime.appendLog(
+                appContext,
+                "\nworkspace moved to $target (restart the bot to use it)\n",
+            )
+            runOnUiThread { prefillFromConfig() }
+        }.apply {
+            isDaemon = true
+            start()
+        }
+    }
+
+    /** Writes a copy of config.json to the location the user picked. */
+    private fun exportConfig(uri: Uri) {
+        val text = runCatching { PuruRuntime.configFile(this).readText() }.getOrNull()
+        if (text == null) {
+            toast(getString(R.string.export_failed, PuruRuntime.configFile(this).name))
+            return
+        }
+        val error = runCatching {
+            val stream = contentResolver.openOutputStream(uri)
+                ?: throw IllegalStateException(uri.lastPathSegment.orEmpty())
+            stream.use { it.write(text.toByteArray()) }
+        }.exceptionOrNull()
+        if (error != null) {
+            toast(getString(R.string.export_failed, error.message.orEmpty()))
+            return
+        }
+        toast(getString(R.string.config_exported, uri.lastPathSegment.orEmpty()))
     }
 
     /** Shows the values of an existing config.json, so the form reflects reality. */

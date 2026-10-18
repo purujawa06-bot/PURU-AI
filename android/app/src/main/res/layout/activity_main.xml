@@ -97,6 +97,13 @@
             android:layout_marginTop="8dp"
             android:text="@string/action_import" />
 
+        <Button
+            android:id="@+id/button_export"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/action_export" />
+
         <TextView
             style="@style/Note"
             android:text="@string/config_note" />

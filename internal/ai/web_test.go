@@ -6,8 +6,11 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/purujawa06-bot/PURU-AI/internal/config"
+	"golang.org/x/text/encoding/htmlindex"
+	"golang.org/x/text/transform"
 )
 
 func testSearchConfig() config.WebSearchConfig {
@@ -565,5 +568,102 @@ func TestWebFetchSchemaUsesSectionStartLineLength(t *testing.T) {
 	}
 	if _, ok := props["max_chars"]; ok {
 		t.Fatalf("web_fetch max_chars must be gone: %v", props)
+	}
+}
+
+// encodeTestBody encodes plain text into a non-UTF-8 charset for decode tests.
+func encodeTestBody(t *testing.T, charset, text string) []byte {
+	t.Helper()
+	enc, err := htmlindex.Get(charset)
+	if err != nil {
+		t.Fatalf("htmlindex.Get(%q): %v", charset, err)
+	}
+	out, _, err := transform.Bytes(enc.NewEncoder(), []byte(text))
+	if err != nil {
+		t.Fatalf("encode %s: %v", charset, err)
+	}
+	return out
+}
+
+func TestDecodeToUTF8KeepsUTF8(t *testing.T) {
+	body := []byte("<p>Halo dunia — rapi</p>")
+	got := decodeToUTF8(body, "text/html; charset=utf-8")
+	if got != string(body) {
+		t.Fatalf("utf-8 diubah: %q", got)
+	}
+	// A UTF-8 BOM must not leak into the output.
+	if got := decodeToUTF8(append([]byte("\xef\xbb\xbf"), body...), "text/html"); got != string(body) {
+		t.Fatalf("BOM tidak dibuang: %q", got)
+	}
+}
+
+func TestDecodeToUTF8HeaderCharsetWins(t *testing.T) {
+	body := encodeTestBody(t, "shift_jis", "日本語のページ")
+	got := decodeToUTF8(body, "text/html; charset=Shift_JIS")
+	if got != "日本語のページ" {
+		t.Fatalf("shift_jis salah decode: %q", got)
+	}
+}
+
+func TestDecodeToUTF8MetaCharset(t *testing.T) {
+	page := "<html><head><meta charset=\"windows-1252\"></head><body>Café Crème</body></html>"
+	body := encodeTestBody(t, "windows-1252", page)
+	got := decodeToUTF8([]byte(body), "text/html")
+	if !strings.Contains(got, "Café Crème") {
+		t.Fatalf("windows-1252 meta salah decode: %q", got)
+	}
+}
+
+func TestDecodeToUTF8UndeclaredLatin1FallsBackToWindows1252(t *testing.T) {
+	body := encodeTestBody(t, "windows-1252", "Café Crème — naïve")
+	got := decodeToUTF8(body, "text/html")
+	if got != "Café Crème — naïve" {
+		t.Fatalf("fallback windows-1252 salah: %q", got)
+	}
+}
+
+func TestDecodeToUTF8AlwaysValidUTF8(t *testing.T) {
+	// Un-declared bytes that are neither UTF-8 nor printable windows-1252
+	// must still come out as valid UTF-8 (never raw mangled bytes).
+	garbage := []byte{0xff, 0xfe, 0x80, 0x81, 0x00, 0xc3}
+	got := decodeToUTF8(garbage, "application/octet-stream")
+	if !utf8.ValidString(got) {
+		t.Fatalf("output bukan UTF-8 valid: %q (%x)", got, got)
+	}
+	// Truncated multi-byte sequence at the size cap is the same story.
+	cut := append([]byte("halo "), []byte("日本")[:2]...)
+	if !utf8.ValidString(decodeToUTF8(cut, "text/plain")) {
+		t.Fatalf("truncated rune tidak diperbaiki")
+	}
+}
+
+func TestDecodeToUTF8UnknownCharsetFallsBack(t *testing.T) {
+	body := encodeTestBody(t, "windows-1252", "Große Straße")
+	got := decodeToUTF8(body, "text/html; charset=x-bogus-9000")
+	if got != "Große Straße" {
+		t.Fatalf("charset tak dikenal harus fallback: %q", got)
+	}
+}
+
+func TestFetchDirectDecodesNonUTF8Page(t *testing.T) {
+	body := encodeTestBody(t, "windows-1252", "<html><body><h1>Café Kecil</h1></body></html>")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.Write(body)
+	}))
+	defer srv.Close()
+	old := allowPrivateFetchHost
+	allowPrivateFetchHost = true
+	defer func() { allowPrivateFetchHost = old }()
+
+	text, err := fetchDirectFetch(context.Background(), srv.URL, "text", 1, 100)
+	if err != nil {
+		t.Fatalf("fetchDirectFetch error: %v", err)
+	}
+	if !strings.Contains(text, "Café Kecil") {
+		t.Fatalf("halaman non-UTF8 salah decode: %q", text)
+	}
+	if !utf8.ValidString(text) {
+		t.Fatalf("output web_fetch bukan UTF-8 valid: %q", text)
 	}
 }

@@ -17,9 +17,9 @@ android/
 ## How it works
 
 - The Go binary is packaged as `lib/<abi>/libpuru.so`, so Android extracts it
-  into the app's native library directory. That is the only location an app
-  targeting API 29+ may execute a file from; executables inside the writable
-  data directory are blocked by the platform.
+  into the app's native library directory with the execute permission already
+  set. That is how the bundled binary runs without shipping it as an asset
+  (assets are never executable), and it works on every API level.
 - The binary is cross-built as `GOOS=android` **with cgo** (the Android NDK
   compiler). Android has no `/etc/resolv.conf`, so the pure-Go resolver cannot
   do DNS there (Go's own `net/conf.go` says "DNS requests don't work on Android,
@@ -27,6 +27,8 @@ android/
   bionic/`getaddrinfo`, exactly like any other Android app.
 - `PuruRuntime` gives the child process the environment Android needs:
   `HOME` inside app storage (so `~/.puru` lands there), `PATH` reaching
+  `<filesDir>/bin` (tools installed with `puru fetch`), the native library
+  directory (the bundled `puru` itself, linked there as `$HOME/bin/puru`) and
   `/system/bin/sh` (the exec tool runs `sh -c`), `SSL_CERT_DIR` pointing at the
   system certificate stores, and `NO_COLOR=1` so the log view shows plain text
   instead of ANSI escapes.
@@ -65,11 +67,58 @@ wizard cannot drift apart:
   `config.json` — a broken file never destroys the working setup. A config from
   another machine can carry a `workspace` path that does not exist on the phone,
   so check the Workspace row (its hint shows the phone default) before starting.
+- **Export config.json** saves a copy wherever the picker sends it (Downloads,
+  Drive, …), which is how a phone setup travels back to a laptop.
 
+## Files and storage access
 
-App data (and therefore the bot memory and workspace) lives in the app's
-private storage: `config.json` in `<filesDir>/.puru/`, the workspace in
-`<filesDir>/.puru/workspace`, logs in `<filesDir>/puru.log`.
+With storage access granted the agent works on real files:
+
+- Workspace: `/sdcard/PURU-AI/workspace` (default). Visible in any file manager
+  and over USB. A workspace that still points at the old app-private location is
+  moved there on the first launch after the permission is granted — the JSON key
+  is rewritten only after every copied file arrived with the same size, and an
+  existing folder is never overwritten.
+- `restrict_workspace` off (Workspace section) lets the agent read, write and
+  delete anywhere on `/sdcard`: Downloads, Documents, DCIM, … With it on, the
+  file tools refuse paths outside the workspace.
+- `config.json` and `puru.log` stay in app-private storage
+  (`<filesDir>/.puru/config.json`, `<filesDir>/puru.log`); use Import/Export to
+  move the config around.
+
+This works because the launcher targets **API 28** with
+`requestLegacyExternalStorage="true"` and asks for the classic
+`READ/WRITE_EXTERNAL_STORAGE` permission — the same trade-off Termux makes:
+
+- Legacy storage keeps `/sdcard` reachable. Scoped storage (targetSdk 30+)
+  cannot be bypassed without root, `MANAGE_EXTERNAL_STORAGE` does not exist on
+  Android 10, and SAF tree permissions do not give the Go binary a filesystem
+  path it could open.
+- Target API 29+ would forbid executing files in the app data directory, which
+  is where `puru fetch` puts downloaded tools. API 28 keeps that working.
+- Google Play rejects both; this launcher is sideloaded by design.
+
+## Shell tools
+
+Android ships a trimmed `toybox` (`ls`, `cat`, `grep`, `sed`, `awk`, `tar`,
+`unzip`, …) and there is no `curl`, no `wget` with TLS, and no package manager
+without root. So tools are installed by downloading static builds:
+
+```sh
+puru fetch -o "$HOME/bin/mytool" https://example.com/mytool   # +x when it is ELF or has a shebang
+puru doctor                                                   # shows what the shell can do
+```
+
+`puru fetch` uses the bot's own Go network stack, so TLS and DNS work wherever
+the gateway works, and `$HOME/bin` is on the shell PATH — the agent can install
+and then call a tool in one step. `puru doctor` reports config, workspace
+write/delete, HOME, TMPDIR, the shell, which tools are on PATH, plus DNS and
+HTTPS, which is the fastest way to see why a phone build misbehaves.
+
+Release builds are `debuggable` on purpose: this launcher is sideloaded and
+support happens over adb, where `adb shell run-as com.purujawa.puru.launcher …`
+is the only way to inspect app storage and run the bundled binary with the app's
+network policy.
 
 ## Build
 
@@ -131,5 +180,9 @@ base64 -w0 puru-launcher.jks > puru-launcher.jks.base64
 - Android may still stop the service on aggressive battery-saving ROMs; the
   launch notification is the app's lifecycle, and the log shows whether the bot
   stayed up.
-- The media/tool features that need extra binaries (`ffmpeg`, `git`, ...) are
-  limited to what the phone ships in `/system/bin`.
+- Tools that are not bundled and not installable as a static binary (anything
+  needing a package manager, e.g. `apt`/`pkg`) cannot be added without root.
+  Everything else goes through `puru fetch` into `$HOME/bin`.
+- Full `/sdcard` access means the agent can also delete user files. Keep
+  `restrict_workspace` on unless that is what you want, and keep the Telegram
+  allowlist filled so only you can talk to the bot.
